@@ -6,7 +6,7 @@ import asyncio
 from enum import Enum
 import logging
 from typing import Dict, List, Optional, Any
-from api.models import Account, AccountIdentifierType
+from api.models import Account, AccountIdentifier, AccountIdentifierType
 from api.game_account_manager import GameAccountManager
 
 logger = logging.getLogger(__name__)
@@ -109,11 +109,18 @@ class AccountManager:
             if roc_account:
                 await roc_account.cleanup()
     
-    async def execute_bulk_action(self, account_ids: List[int], action: str, **kwargs) -> List[Dict[str, Any]]:
+    async def execute_bulk_action(self, accounts: List[AccountIdentifier], action: str, **kwargs) -> List[Dict[str, Any]]:
         """Execute an action on multiple accounts using on-demand creation"""
         tasks = []
-        for account_id in account_ids:
-            task = self.execute_action(account_id, action, **kwargs)
+        
+        # find if action is an actiontype
+        if action in self.ActionType:
+            action = self.ActionType(action)
+        else:
+            return {"success": False, "error": "Invalid action"}
+        
+        for account_id in accounts:
+            task = self.execute_action(account_id.id_type, account_id.id, action, **kwargs)
             tasks.append(task)
         
         results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -123,13 +130,15 @@ class AccountManager:
         for i, result in enumerate(results):
             if isinstance(result, Exception):
                 processed_results.append({
-                    "account_id": account_ids[i],
+                    "account_id_type": accounts[i].id_type,
+                    "account_id": accounts[i].id,
                     "success": False,
                     "error": str(result)
                 })
             else:
                 processed_results.append({
-                    "account_id": account_ids[i],
+                    "account_id_type": accounts[i].id_type,
+                    "account_id": accounts[i].id,
                     **result
                 })
         

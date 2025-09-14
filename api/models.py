@@ -120,8 +120,8 @@ class AccountMetadata(BaseModel):
     turns: int
     next_turn: datetime
     gold: int
-    last_hit: str
-    last_sabbed: str
+    last_hit: datetime
+    last_sabbed: datetime
     mail: str
     credits: int
     username: str
@@ -201,14 +201,23 @@ class PurchaseUpgradeRequest(SelfActionRequest):
 class ActionResponse(BaseModel):
     """Response for action execution"""
     success: bool
-    message: str
+    message: Optional[str] = None
     data: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
     timestamp: datetime
+    
+    class Config:
+        exclude_none = True
+
+class BulkActionSubresponse(ActionResponse):
+    account: AccountIdentifier
+    
+    class Config:
+        exclude_none = True
 
 class BulkActionRequest(BaseModel):
     """Request for bulk actions across multiple accounts"""
-    account_ids: List[int]
+    accounts: List[AccountIdentifier]
     action_type: str
     parameters: Optional[Dict[str, Any]] = None
     target_id: Optional[str] = None
@@ -218,5 +227,5 @@ class BulkActionResponse(BaseModel):
     total_accounts: int
     successful: int
     failed: int
-    results: List[ActionResponse]
+    results: List[BulkActionSubresponse]
     timestamp: datetime

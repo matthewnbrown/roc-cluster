@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 
 from api import models
 from api.models import (
-    AttackRequest, SabotageRequest, SpyRequest, BecomeOfficerRequest, SendCreditsRequest,
+    AccountIdentifier, AttackRequest, BulkActionSubresponse, SabotageRequest, SpyRequest, BecomeOfficerRequest, SendCreditsRequest,
     RecruitRequest, ArmoryPurchaseRequest, TrainingPurchaseRequest, 
     EnableCreditSavingRequest, PurchaseUpgradeRequest, ActionResponse,
     BulkActionRequest, BulkActionResponse
@@ -43,7 +43,7 @@ async def attack_user(
         
         return ActionResponse(
             success=result["success"],
-            message=result.get("message", ""),
+            message=result.get("message"),
             error=result.get("error"),
             timestamp=datetime.now(timezone.utc)
         )
@@ -67,7 +67,7 @@ async def sabotage_user(
         
         return ActionResponse(
             success=result["success"],
-            message=result.get("message", ""),
+            message=result.get("message"),
             error=result.get("error"),
             timestamp=datetime.now(timezone.utc)
         )
@@ -91,7 +91,7 @@ async def spy_user(
         
         return ActionResponse(
             success=result["success"],
-            message=result.get("message", ""),
+            message=result.get("message"),
             error=result.get("error"),
             timestamp=datetime.now(timezone.utc)
         )
@@ -115,7 +115,7 @@ async def become_officer(
         
         return ActionResponse(
             success=result["success"],
-            message=result.get("message", ""),
+            message=result.get("message"),
             error=result.get("error"),
             timestamp=datetime.now(timezone.utc)
         )
@@ -140,7 +140,7 @@ async def send_credits(
         
         return ActionResponse(
             success=result["success"],
-            message=result.get("message", ""),
+            message=result.get("message"),
             error=result.get("error"),
             timestamp=datetime.now(timezone.utc)
         )
@@ -166,7 +166,7 @@ async def recruit_soldiers(
         
         return ActionResponse(
             success=result["success"],
-            message=result.get("message", ""),
+            message=result.get("message"),
             error=result.get("error"),
             timestamp=datetime.now(timezone.utc)
         )
@@ -190,7 +190,7 @@ async def purchase_armory(
         
         return ActionResponse(
             success=result["success"],
-            message=result.get("message", ""),
+            message=result.get("message"),
             error=result.get("error"),
             timestamp=datetime.now(timezone.utc)
         )
@@ -215,7 +215,7 @@ async def purchase_training(
         
         return ActionResponse(
             success=result["success"],
-            message=result.get("message", ""),
+            message=result.get("message"),
             error=result.get("error"),
             timestamp=datetime.now(timezone.utc)
         )
@@ -238,7 +238,7 @@ async def enable_credit_saving(
         
         return ActionResponse(
             success=result["success"],
-            message=result.get("message", ""),
+            message=result.get("message"),
             error=result.get("error"),
             timestamp=datetime.now(timezone.utc)
         )
@@ -262,7 +262,7 @@ async def purchase_upgrade(
         
         return ActionResponse(
             success=result["success"],
-            message=result.get("message", ""),
+            message=result.get("message"),
             error=result.get("error"),
             timestamp=datetime.now(timezone.utc)
         )
@@ -286,7 +286,7 @@ async def execute_bulk_action(
             kwargs["target_id"] = request.target_id
         
         results = await manager.execute_bulk_action(
-            request.account_ids,
+            request.accounts,
             request.action_type,
             **kwargs
         )
@@ -296,15 +296,20 @@ async def execute_bulk_action(
         failed = len(results) - successful
         
         return BulkActionResponse(
-            total_accounts=len(request.account_ids),
+            total_accounts=len(request.accounts),
             successful=successful,
             failed=failed,
             results=[
-                ActionResponse(
+                BulkActionSubresponse(
                     success=r.get("success", False),
-                    message=r.get("message", ""),
+                    message=r.get("message"),
+                    data=r.get("data"),
                     error=r.get("error"),
-                    timestamp=datetime.now(timezone.utc)
+                    timestamp=datetime.now(timezone.utc),
+                    account=AccountIdentifier(
+                        id_type=r.get("account_id_type"),
+                        id=r.get("account_id")
+                    )
                 ) for r in results
             ],
             timestamp=datetime.now(timezone.utc)

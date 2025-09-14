@@ -116,14 +116,14 @@ class GameAccountManager:
             logger.error(f"Failed to initialize account {self.account.username}: {e}")
             return False
 
-    async def __save_error(self, filename: str, error: str):
+    def __save_error(self, filename: str, error: str):
         error_folder = "errors"
         if not os.path.exists(error_folder):
             os.makedirs(error_folder)
-        with open(os.path.join(error_folder, filename), "w") as f:
+        with open(os.path.join(error_folder, filename), "w", encoding="utf-8") as f:
             f.write(error)
 
-    async def __check_logged_in(self, page_text: str) -> bool:
+    def __check_logged_in(self, page_text: str) -> bool:
         """Check if the account is logged in"""
         return page_text.find('placeholder="email@address.com') == -1
     
@@ -132,12 +132,12 @@ class GameAccountManager:
         if current_page is None:
             async with self.session.get(self.url_generator.home()) as response:
                 page = response.text()
-                if not await self.__check_logged_in(page):
+                if not self.__check_logged_in(page):
                     return await self.login()
                 self._is_logged_in = True
                 return True
         else:
-            if not await self.__check_logged_in(current_page):
+            if not self.__check_logged_in(current_page):
                 return await self.login()
             self._is_logged_in = True
             return True
@@ -148,7 +148,8 @@ class GameAccountManager:
             'email': self.account.email,
             'password': self.account.password
         }) as response:
-            is_logged_in = await self.__check_logged_in(response)
+            page_text = await response.text()
+            is_logged_in = self.__check_logged_in(page_text)
 
             if is_logged_in:
                 # Save cookies to database
@@ -200,8 +201,8 @@ class GameAccountManager:
                     return {"success": False, "error": "Failed to load metadata"}
                 page_text = await response.text()
             
-            if not await self.__check_logged_in(page_text):
-                self.login();
+            if not self.__check_logged_in(page_text):
+                await self.login();
             
             async with self.session.get(metadata_url) as response:
                 if response.status != 200:
@@ -215,13 +216,35 @@ class GameAccountManager:
             turns = soup.find('new', {'id': 's_turns'}).text
             next_turn = soup.find('new', {'id': 's_next'}).text
             gold = soup.find('new', {'id': 's_gold'}).text
-            last_hit = soup.find('new', {'id': 's_hit'}).text
-            last_sabbed = soup.find('new', {'id': 's_sabbed'}).text
+            last_hit = soup.find('new', {'id': 's_hit'})
+
+            if last_hit:
+                last_hit = last_hit.find('span').get('data-timestamp')
+            else:
+                last_hit = 'unknown'
+            
+            last_sabbed = soup.find('new', {'id': 's_sabbed'})
+
+            if last_sabbed:
+
+                last_sabbed = last_sabbed.find('span').get('data-timestamp')
+            else:
+                last_sabbed = 'unknown'
+            
             mail = soup.find('new', {'id': 's_mail'}).text
             credits = soup.find('new', {'id': 's_credits'}).text
             username = soup.find('new', {'id': 's_username'}).text
             lastclicked = soup.find('new', {'id': 's_lastclicked'}).text
-            saving = soup.find('saving', {'status': '1'}).text
+            
+            saving = soup.find('saving')
+            if saving:
+                if saving.get('status') == '0':
+                    saving = 'disabled'
+                else:
+                    saving = 'enabled'
+            else:
+                saving = 'unknown'
+            
             credits = soup.find('new', {'id': 'credits'}).text
             gets = soup.find('new', {'id': 'gets'}).text
             credits_given = soup.find('new', {'id': 't_gives'}).text
@@ -236,8 +259,8 @@ class GameAccountManager:
                 turns=self.parse_roc_number(turns),
                 # Using UTC time for consistency
                 next_turn=datetime.now(timezone.utc) + timedelta(minutes=int(next_turn.split(':')[0]), seconds=int(next_turn.split(':')[1])),
-                last_hit=last_hit, # TODO: Pull form data-timestamp
-                last_sabbed=last_sabbed, # TODO: Pull form data-timestamp
+                last_hit=datetime.fromtimestamp(int(last_hit), timezone.utc),
+                last_sabbed=datetime.fromtimestamp(int(last_sabbed), timezone.utc),
                 mail=mail,
                 credits=self.parse_roc_number(credits),
                 username=username,
@@ -325,7 +348,7 @@ class GameAccountManager:
                     return {"success": False, "error": "Failed to load credits page"}
                 page_text = await response.text()
                 
-            login_was_needed = not await self.__check_logged_in(page_text=page_text)
+            login_was_needed = not self.__check_logged_in(page_text=page_text)
             logger.info(f"Login was needed: {login_was_needed}")
             
             if not await self.login_if_needed(page_text):
@@ -366,7 +389,7 @@ class GameAccountManager:
                 return {"success": False, "error": "Captcha was incorrect"}
             else:
                 filename = f"{self.account.username}_{request_id}_send_credits.html"
-                self.__save_error(filename=filename, text=text)
+                self.__save_error(filename=filename, error=text)
                 return {"success": False, "error": "Unknown error... please check the error file " + filename}
 
         except Exception as e:
@@ -383,7 +406,7 @@ class GameAccountManager:
         if credits == 0:
             return {"success": False, "error": "No credits to send"}
         
-        return await self.send_credits(target_id, credits)
+        return await self.send_credits(target_id, str(credits))
     
     async def recruit(self, soldier_type: str, count: int) -> Dict[str, Any]:
         """Recruit soldiers"""
