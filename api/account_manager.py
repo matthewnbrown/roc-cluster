@@ -423,104 +423,84 @@ class ROCAccountManager:
             await self.session.close()
             self.session = None
 
+async def create_account_manager(account: Account) -> ROCAccountManager:
+    """Factory function to create a ROCAccountManager instance"""
+    roc_account = ROCAccountManager(account)
+    success = await roc_account.initialize()
+    if not success:
+        raise Exception(f"Failed to initialize account {account.username}")
+    return roc_account
+
 class AccountManager:
-    """Manages multiple ROC accounts"""
+    """Manages multiple ROC accounts using on-demand creation"""
     
     def __init__(self):
-        self.accounts: Dict[int, ROCAccountManager] = {}
-        self._lock = asyncio.Lock()
+        # No longer storing persistent instances
+        pass
     
-    async def load_existing_accounts(self) -> int:
-        """Load all existing accounts from the database"""
+    async def get_account_from_db(self, account_id: int) -> Optional[Account]:
+        """Get account from database by ID"""
         from api.database import SessionLocal
         
         db = SessionLocal()
         try:
-            existing_accounts = db.query(Account).all()
-            loaded_count = 0
-            
-            for account in existing_accounts:
-                success = await self.add_account(account)
-                if success:
-                    loaded_count += 1
-                    logger.info(f"Loaded existing account: {account.username} (ID: {account.id})")
-                else:
-                    logger.warning(f"Failed to load account: {account.username} (ID: {account.id})")
-            
-            logger.info(f"Loaded {loaded_count} existing accounts from database")
-            return loaded_count
-            
-        except Exception as e:
-            logger.error(f"Error loading existing accounts: {e}")
-            return 0
+            return db.query(Account).filter(Account.id == account_id).first()
         finally:
             db.close()
     
-    async def add_account(self, account: Account) -> bool:
-        """Add a new account to the manager"""
-        async with self._lock:
-            if account.id in self.accounts:
-                return False
-            
-            # Create account manager (password is already stored unencrypted in account)
-            roc_account = ROCAccountManager(account)
-            success = await roc_account.initialize()
-            
-            if success:
-                self.accounts[account.id] = roc_account
-                return True
-            return False
-    
-    async def remove_account(self, account_id: int) -> bool:
-        """Remove an account from the manager"""
-        async with self._lock:
-            if account_id in self.accounts:
-                await self.accounts[account_id].cleanup()
-                del self.accounts[account_id]
-                return True
-            return False
-    
-    async def get_account(self, account_id: int) -> Optional[ROCAccountManager]:
-        """Get account manager by ID"""
-        return self.accounts.get(account_id)
-    
-    async def get_all_accounts(self) -> List[ROCAccountManager]:
-        """Get all account managers"""
-        return list(self.accounts.values())
+    async def get_all_accounts_from_db(self) -> List[Account]:
+        """Get all accounts from database"""
+        from api.database import SessionLocal
+        
+        db = SessionLocal()
+        try:
+            return db.query(Account).all()
+        finally:
+            db.close()
     
     async def execute_action(self, account_id: int, action: str, **kwargs) -> Dict[str, Any]:
-        """Execute an action on a specific account"""
-        account = await self.get_account(account_id)
+        """Execute an action on a specific account using on-demand creation"""
+        # Get account from database
+        account = await self.get_account_from_db(account_id)
         if not account:
             return {"success": False, "error": "Account not found"}
         
-        # Map action names to methods
-        action_map = {
-            "attack": account.attack,
-            "sabotage": account.sabotage,
-            "spy": account.spy,
-            "become_officer": account.become_officer,
-            "send_credits": account.send_credits,
-            "recruit": account.recruit,
-            "purchase_armory": account.purchase_armory,
-            "purchase_training": account.purchase_training,
-            "enable_credit_saving": account.enable_credit_saving,
-            "purchase_upgrade": account.purchase_upgrade,
-            "get_metadata": account.get_metadata,
-        }
-        
-        if action not in action_map:
-            return {"success": False, "error": f"Unknown action: {action}"}
-        
+        # Create ROCAccountManager instance on-demand
+        roc_account = None
         try:
+            roc_account = await create_account_manager(account)
+            
+            # Map action names to methods
+            action_map = {
+                "attack": roc_account.attack,
+                "sabotage": roc_account.sabotage,
+                "spy": roc_account.spy,
+                "become_officer": roc_account.become_officer,
+                "send_credits": roc_account.send_credits,
+                "recruit": roc_account.recruit,
+                "purchase_armory": roc_account.purchase_armory,
+                "purchase_training": roc_account.purchase_training,
+                "enable_credit_saving": roc_account.enable_credit_saving,
+                "purchase_upgrade": roc_account.purchase_upgrade,
+                "get_metadata": roc_account.get_metadata,
+            }
+            
+            if action not in action_map:
+                return {"success": False, "error": f"Unknown action: {action}"}
+            
             result = await action_map[action](**kwargs)
             return result
+            
         except Exception as e:
             logger.error(f"Error executing action {action} on account {account_id}: {e}")
             return {"success": False, "error": str(e)}
+        finally:
+            # Always cleanup the ROCAccountManager instance
+            if roc_account:
+                await roc_account.cleanup()
     
     async def execute_bulk_action(self, account_ids: List[int], action: str, **kwargs) -> List[Dict[str, Any]]:
-        """Execute an action on multiple accounts"""
+        """Execute an action on multiple accounts using on-demand creation"""
         tasks = []
         for account_id in account_ids:
             task = self.execute_action(account_id, action, **kwargs)
@@ -546,8 +526,5 @@ class AccountManager:
         return processed_results
     
     async def cleanup(self):
-        """Cleanup all accounts"""
-        async with self._lock:
-            for account in self.accounts.values():
-                await account.cleanup()
-            self.accounts.clear()
+        """Cleanup method - no longer needed since we don't store persistent instances"""
+        pass

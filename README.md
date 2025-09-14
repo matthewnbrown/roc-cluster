@@ -47,7 +47,7 @@ pip install -r requirements.txt
 
 3. Set up environment variables (optional):
 ```bash
-export DATABASE_URL="sqlite:///./roc_cluster.db"
+export DATABASE_URL="sqlite:///./data/roc_cluster.db"
 export SECRET_KEY="your-secret-key"
 export ROC_BASE_URL="https://rocgame.com"
 ```
@@ -130,7 +130,7 @@ The API can be configured through environment variables:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `DATABASE_URL` | `sqlite:///./roc_cluster.db` | Database connection string |
+| `DATABASE_URL` | `sqlite:///./data/roc_cluster.db` | Database connection string |
 | `SECRET_KEY` | `your-secret-key-change-in-production` | JWT secret key |
 | `ROC_BASE_URL` | `https://rocgame.com` | ROC website base URL |
 | `HOST` | `0.0.0.0` | API server host |

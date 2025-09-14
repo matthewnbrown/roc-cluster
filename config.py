@@ -19,7 +19,8 @@ class Settings:
     DEBUG: bool = os.getenv("DEBUG", "False").lower() == "true"
     
     # Database Settings
-    DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./roc_cluster.db")
+
+    DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./data/roc_cluster.db")
     
     # Security Settings
     SECRET_KEY: str = os.getenv("SECRET_KEY", "your-secret-key-change-in-production")

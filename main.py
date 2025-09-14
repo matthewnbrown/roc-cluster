@@ -33,19 +33,11 @@ async def lifespan(app: FastAPI):
     init_db()
     logger.info("Database initialized")
     
-    # Initialize account manager
     account_manager = AccountManager()
     logger.info("Account manager initialized")
     
-    # Load existing accounts from database
-    loaded_count = await account_manager.load_existing_accounts()
-    logger.info(f"Startup complete - {loaded_count} accounts loaded")
-    
     yield
     
-    # Cleanup
-    if account_manager:
-        await account_manager.cleanup()
     logger.info("Application shutdown complete")
 
 # Create FastAPI app

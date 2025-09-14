@@ -10,7 +10,7 @@ import os
 from typing import Generator
 
 # Database configuration
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./roc_cluster.db")
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./data/roc_cluster.db")
 
 # Create engine
 engine = create_engine(

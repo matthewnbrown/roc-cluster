@@ -53,16 +53,6 @@ async def create_account(
         db.commit()
         db.refresh(db_account)
         
-        # Add to account manager
-        success = await manager.add_account(db_account)
-        if not success:
-            # Rollback database changes
-            db.delete(db_account)
-            db.commit()
-            raise HTTPException(
-                status_code=400,
-                detail="Failed to initialize account"
-            )
         
         return AccountResponse.from_orm(db_account)
         
@@ -84,29 +74,6 @@ async def list_accounts(
         return [AccountResponse.from_orm(account) for account in accounts]
     except Exception as e:
         logger.error(f"Error listing accounts: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
-
-@router.get("/loaded")
-async def list_loaded_accounts(
-    manager: AccountManager = Depends(get_account_manager)
-):
-    """List accounts currently loaded in the account manager"""
-    try:
-        loaded_accounts = await manager.get_all_accounts()
-        return {
-            "loaded_count": len(loaded_accounts),
-            "accounts": [
-                {
-                    "id": account.account.id,
-                    "username": account.account.username,
-                    "email": account.account.email,
-                    "is_logged_in": account.is_logged_in
-                }
-                for account in loaded_accounts
-            ]
-        }
-    except Exception as e:
-        logger.error(f"Error listing loaded accounts: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @router.get("/{account_id}", response_model=AccountResponse)
@@ -166,11 +133,7 @@ async def delete_account(
         account = db.query(Account).filter(Account.id == account_id).first()
         if not account:
             raise HTTPException(status_code=404, detail="Account not found")
-        
-        # Remove from account manager
-        await manager.remove_account(account_id)
-        
-        # Delete from database
+
         db.delete(account)
         db.commit()
         

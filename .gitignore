@@ -214,4 +214,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# roc-cluster unique
 errors/*
+data/*
