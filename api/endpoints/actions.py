@@ -2,11 +2,12 @@
 Action endpoints for ROC account operations
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException
 from typing import List
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
+from api import models
 from api.models import (
     AttackRequest, SabotageRequest, SpyRequest, BecomeOfficerRequest, SendCreditsRequest,
     RecruitRequest, ArmoryPurchaseRequest, TrainingPurchaseRequest, 
@@ -34,8 +35,9 @@ async def attack_user(
     """Attack another user"""
     try:
         result = await manager.execute_action(
-            request.account_id,
-            "attack",
+            id_type=request.acting_user.id_type,
+            id=request.acting_user.id,
+            action=AccountManager.ActionType.ATTACK,
             target_id=request.target_id
         )
         
@@ -43,7 +45,7 @@ async def attack_user(
             success=result["success"],
             message=result.get("message", ""),
             error=result.get("error"),
-            timestamp=datetime.now()
+            timestamp=datetime.now(timezone.utc)
         )
     except Exception as e:
         logger.error(f"Error in attack action: {e}")
@@ -57,8 +59,9 @@ async def sabotage_user(
     """Sabotage another user"""
     try:
         result = await manager.execute_action(
-            request.account_id,
-            "sabotage",
+            id_type=request.acting_user.id_type,
+            id=request.acting_user.id,
+            action=AccountManager.ActionType.SABOTAGE,
             target_id=request.target_id
         )
         
@@ -66,7 +69,7 @@ async def sabotage_user(
             success=result["success"],
             message=result.get("message", ""),
             error=result.get("error"),
-            timestamp=datetime.now()
+            timestamp=datetime.now(timezone.utc)
         )
     except Exception as e:
         logger.error(f"Error in sabotage action: {e}")
@@ -80,8 +83,9 @@ async def spy_user(
     """Spy on another user"""
     try:
         result = await manager.execute_action(
-            request.account_id,
-            "spy",
+            id_type=request.acting_user.id_type,
+            id=request.acting_user.id,
+            action=AccountManager.ActionType.SPY,
             target_id=request.target_id
         )
         
@@ -89,7 +93,7 @@ async def spy_user(
             success=result["success"],
             message=result.get("message", ""),
             error=result.get("error"),
-            timestamp=datetime.now()
+            timestamp=datetime.now(timezone.utc)
         )
     except Exception as e:
         logger.error(f"Error in spy action: {e}")
@@ -103,8 +107,9 @@ async def become_officer(
     """Become an officer of another user"""
     try:
         result = await manager.execute_action(
-            request.account_id,
-            "become_officer",
+            id_type=request.acting_user.id_type,
+            id=request.acting_user.id,
+            action=AccountManager.ActionType.BECOME_OFFICER,
             target_id=request.target_id
         )
         
@@ -112,7 +117,7 @@ async def become_officer(
             success=result["success"],
             message=result.get("message", ""),
             error=result.get("error"),
-            timestamp=datetime.now()
+            timestamp=datetime.now(timezone.utc)
         )
     except Exception as e:
         logger.error(f"Error in become officer action: {e}")
@@ -126,8 +131,9 @@ async def send_credits(
     """Send credits to another user"""
     try:
         result = await manager.execute_action(
-            request.account_id,
-            "send_credits",
+            id_type=request.acting_user.id_type,
+            id=request.acting_user.id,
+            action=AccountManager.ActionType.SEND_CREDITS,
             target_id=request.target_id,
             amount=request.amount
         )
@@ -136,7 +142,7 @@ async def send_credits(
             success=result["success"],
             message=result.get("message", ""),
             error=result.get("error"),
-            timestamp=datetime.now()
+            timestamp=datetime.now(timezone.utc)
         )
     except Exception as e:
         logger.error(f"Error in send credits action: {e}")
@@ -151,8 +157,9 @@ async def recruit_soldiers(
     """Recruit soldiers"""
     try:
         result = await manager.execute_action(
-            request.account_id,
-            "recruit",
+            id_type=request.acting_user.id_type,
+            id=request.acting_user.id,
+            action=AccountManager.ActionType.RECRUIT,
             soldier_type=request.soldier_type,
             count=request.count
         )
@@ -161,7 +168,7 @@ async def recruit_soldiers(
             success=result["success"],
             message=result.get("message", ""),
             error=result.get("error"),
-            timestamp=datetime.now()
+            timestamp=datetime.now(timezone.utc)
         )
     except Exception as e:
         logger.error(f"Error in recruit action: {e}")
@@ -175,8 +182,9 @@ async def purchase_armory(
     """Purchase items from armory"""
     try:
         result = await manager.execute_action(
-            request.account_id,
-            "purchase_armory",
+            id_type=request.acting_user.id_type,
+            id=request.acting_user.id,
+            action=AccountManager.ActionType.PURCHASE_ARMORY,
             items=request.items
         )
         
@@ -184,7 +192,7 @@ async def purchase_armory(
             success=result["success"],
             message=result.get("message", ""),
             error=result.get("error"),
-            timestamp=datetime.now()
+            timestamp=datetime.now(timezone.utc)
         )
     except Exception as e:
         logger.error(f"Error in armory purchase action: {e}")
@@ -198,8 +206,9 @@ async def purchase_training(
     """Purchase training"""
     try:
         result = await manager.execute_action(
-            request.account_id,
-            "purchase_training",
+            id_type=request.acting_user.id_type,
+            id=request.acting_user.id,
+            action=AccountManager.ActionType.PURCHASE_TRAINING,
             training_type=request.training_type,
             count=request.count
         )
@@ -208,7 +217,7 @@ async def purchase_training(
             success=result["success"],
             message=result.get("message", ""),
             error=result.get("error"),
-            timestamp=datetime.now()
+            timestamp=datetime.now(timezone.utc)
         )
     except Exception as e:
         logger.error(f"Error in training purchase action: {e}")
@@ -222,15 +231,16 @@ async def enable_credit_saving(
     """Enable credit saving"""
     try:
         result = await manager.execute_action(
-            request.account_id,
-            "enable_credit_saving"
+            id_type=request.acting_user.id_type,
+            id=request.acting_user.id,
+            action=AccountManager.ActionType.ENABLE_CREDIT_SAVING,
         )
         
         return ActionResponse(
             success=result["success"],
             message=result.get("message", ""),
             error=result.get("error"),
-            timestamp=datetime.now()
+            timestamp=datetime.now(timezone.utc)
         )
     except Exception as e:
         logger.error(f"Error in enable credit saving action: {e}")
@@ -244,8 +254,9 @@ async def purchase_upgrade(
     """Purchase upgrade"""
     try:
         result = await manager.execute_action(
-            request.account_id,
-            "purchase_upgrade",
+            id_type=request.acting_user.id_type,
+            id=request.acting_user.id,
+            action=AccountManager.ActionType.PURCHASE_UPGRADE,
             upgrade_type=request.upgrade_type
         )
         
@@ -253,7 +264,7 @@ async def purchase_upgrade(
             success=result["success"],
             message=result.get("message", ""),
             error=result.get("error"),
-            timestamp=datetime.now()
+            timestamp=datetime.now(timezone.utc)
         )
     except Exception as e:
         logger.error(f"Error in purchase upgrade action: {e}")
@@ -293,10 +304,10 @@ async def execute_bulk_action(
                     success=r.get("success", False),
                     message=r.get("message", ""),
                     error=r.get("error"),
-                    timestamp=datetime.now()
+                    timestamp=datetime.now(timezone.utc)
                 ) for r in results
             ],
-            timestamp=datetime.now()
+            timestamp=datetime.now(timezone.utc)
         )
         
     except Exception as e:
@@ -311,7 +322,10 @@ async def get_account_metadata(
 ):
     """Get account metadata from ROC website"""
     try:
-        result = await manager.execute_action(account_id, "get_metadata")
+        result = await manager.execute_action(
+            id_type=models.AccountIdentifierType.ID,
+            id=account_id,
+            action=AccountManager.ActionType.GET_METADATA)
         
         if not result.get("success", False):
             raise HTTPException(

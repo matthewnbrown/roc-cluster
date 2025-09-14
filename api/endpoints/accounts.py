@@ -143,29 +143,6 @@ async def delete_account(
         logger.error(f"Error deleting account {account_id}: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
-@router.get("/{account_id}/metadata")
-async def get_account_metadata(
-    account_id: int,
-    manager: AccountManager = Depends(get_account_manager)
-):
-    """Get account metadata from ROC website"""
-    try:
-        account = await manager.get_account(account_id)
-        if not account:
-            raise HTTPException(status_code=404, detail="Account not found")
-        
-        metadata = await account.get_metadata()
-        if not metadata:
-            raise HTTPException(status_code=503, detail="Failed to retrieve metadata")
-        
-        return metadata
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error getting metadata for account {account_id}: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
-
 @router.post("/{account_id}/cookies", response_model=UserCookiesResponse, status_code=status.HTTP_201_CREATED)
 async def create_user_cookies(
     account_id: int,

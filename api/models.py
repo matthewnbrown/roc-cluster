@@ -2,6 +2,7 @@
 Database models and Pydantic schemas for the ROC Cluster API
 """
 
+from enum import Enum
 from sqlalchemy import Column, Integer, String, DateTime, Text, Boolean, ForeignKey
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -115,28 +116,36 @@ class AccountResponse(AccountBase):
             
 class AccountMetadata(BaseModel):
     """Account metadata from ROC website"""
-    rank: str
-    turns: str
-    next_turn: str
-    gold: str
+    rank: int
+    turns: int
+    next_turn: datetime
+    gold: int
     last_hit: str
     last_sabbed: str
     mail: str
-    credits: str
+    credits: int
     username: str
-    lastclicked: str
+    lastclicked: datetime
     saving: str
-    credits: str
-    gets: str
-    credits_given: str
-    credits_received: str
+    gets: int
+    credits_given: int
+    credits_received: int
     userid: str
     allianceid: str
     servertime: str
 
+class AccountIdentifierType(Enum):
+    USERNAME = "username"
+    ID = "id"
+    ROC_ID = "roc_id"
+
+class AccountIdentifier(BaseModel):
+    id_type: AccountIdentifierType
+    id: str
+
 class ActionRequest(BaseModel):
     """Base class for action requests"""
-    account_id: int
+    acting_user: AccountIdentifier
     parameters: Optional[Dict[str, Any]] = None
 
 class UserActionRequest(ActionRequest):
@@ -161,7 +170,7 @@ class BecomeOfficerRequest(UserActionRequest):
 
 class SendCreditsRequest(UserActionRequest):
     """Send credits to another user"""
-    amount: int
+    amount: str
 
 class SelfActionRequest(ActionRequest):
     """Request for self-directed actions"""
