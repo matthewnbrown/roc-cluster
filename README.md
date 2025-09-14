@@ -154,11 +154,6 @@ roc-cluster/
 │       ├── __init__.py
 │       ├── accounts.py    # Account management endpoints
 │       └── actions.py     # Action execution endpoints
-└── examples/              # Original ROC interaction examples
-    ├── rocwebhandler.py
-    ├── trainer.py
-    ├── buyer.py
-    └── models.py
 ```
 
 ### Adding New Actions

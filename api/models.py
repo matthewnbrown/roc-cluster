@@ -4,6 +4,7 @@ Database models and Pydantic schemas for the ROC Cluster API
 
 from sqlalchemy import Column, Integer, String, DateTime, Text, Boolean, ForeignKey
 from sqlalchemy.orm import relationship
+from sqlalchemy.sql import func
 from pydantic import BaseModel, EmailStr
 from typing import Optional, Dict, Any, List
 from datetime import datetime
@@ -17,8 +18,7 @@ class Account(Base):
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String(100), unique=True, index=True, nullable=False)
     email = Column(String(255), unique=True, index=True, nullable=False)
-    password_hash = Column(String(255), nullable=False)  # Store hashed password
-    cookies = Column(Text, nullable=True)  # JSON string of cookies
+    password = Column(String(255), nullable=False)  # Store unencrypted password
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
@@ -27,6 +27,7 @@ class Account(Base):
     # Relationships
     logs = relationship("AccountLog", back_populates="account", cascade="all, delete-orphan")
     actions = relationship("AccountAction", back_populates="account", cascade="all, delete-orphan")
+    cookies = relationship("UserCookies", back_populates="account", cascade="all, delete-orphan")
 
 class AccountLog(Base):
     """Log entries for account activities"""
@@ -58,6 +59,19 @@ class AccountAction(Base):
     # Relationships
     account = relationship("Account", back_populates="actions")
 
+class UserCookies(Base):
+    """Store cookies for each user"""
+    __tablename__ = "user_cookies"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    account_id = Column(Integer, ForeignKey("accounts.id"), nullable=False)
+    cookies = Column(Text, nullable=False)  # JSON string of cookies
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    
+    # Relationships
+    account = relationship("Account", back_populates="cookies")
+
 # Pydantic Schemas
 class AccountBase(BaseModel):
     username: str
@@ -72,6 +86,23 @@ class AccountUpdate(BaseModel):
     password: Optional[str] = None
     is_active: Optional[bool] = None
 
+class UserCookiesCreate(BaseModel):
+    account_id: int
+    cookies: str  # JSON string of cookies
+
+class UserCookiesUpdate(BaseModel):
+    cookies: str  # JSON string of cookies
+
+class UserCookiesResponse(BaseModel):
+    id: int
+    account_id: int
+    cookies: str
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    
+    class Config:
+        orm_mode = True
+
 class AccountResponse(AccountBase):
     id: int
     is_active: bool
@@ -81,14 +112,27 @@ class AccountResponse(AccountBase):
     
     class Config:
         orm_mode = True
-
+            
 class AccountMetadata(BaseModel):
     """Account metadata from ROC website"""
-    gold: int
     rank: str
-    army_info: Dict[str, Any]
-    turn_based_gold: int
-    last_updated: datetime
+    turns: str
+    next_turn: str
+    gold: str
+    last_hit: str
+    last_sabbed: str
+    mail: str
+    credits: str
+    username: str
+    lastclicked: str
+    saving: str
+    credits: str
+    gets: str
+    credits_given: str
+    credits_received: str
+    userid: str
+    allianceid: str
+    servertime: str
 
 class ActionRequest(BaseModel):
     """Base class for action requests"""
