@@ -16,6 +16,8 @@ from api.database import init_db, get_db
 from api.models import Account, AccountCreate, AccountResponse
 from api.account_manager import AccountManager
 from api.endpoints import accounts, actions
+from api.async_logger import async_logger
+from api.captcha_feedback_service import captcha_feedback_service
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -33,10 +35,26 @@ async def lifespan(app: FastAPI):
     init_db()
     logger.info("Database initialized")
     
+    # Start async logger
+    await async_logger.start()
+    logger.info("Async logger started")
+    
+    # Start captcha feedback service
+    await captcha_feedback_service.start()
+    logger.info("Captcha feedback service started")
+    
     account_manager = AccountManager()
     logger.info("Account manager initialized")
     
     yield
+    
+    # Stop captcha feedback service
+    await captcha_feedback_service.stop()
+    logger.info("Captcha feedback service stopped")
+    
+    # Stop async logger
+    await async_logger.stop()
+    logger.info("Async logger stopped")
     
     logger.info("Application shutdown complete")
 

@@ -8,7 +8,7 @@ from typing import List
 import logging
 
 from api.database import get_db
-from api.models import Account, AccountCreate, AccountUpdate, AccountResponse, UserCookies, UserCookiesCreate, UserCookiesUpdate, UserCookiesResponse
+from api.models import Account, AccountCreate, AccountUpdate, AccountResponse, UserCookies, UserCookiesCreate, UserCookiesUpdate, UserCookiesResponse, SentCreditLog, SentCreditLogResponse
 from api.account_manager import AccountManager
 
 logger = logging.getLogger(__name__)
@@ -267,3 +267,49 @@ async def delete_user_cookies(
     except Exception as e:
         logger.error(f"Error deleting cookies for account {account_id}: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
+
+@router.get("/{account_id}/credit-logs", response_model=List[SentCreditLogResponse])
+async def get_credit_logs(
+    account_id: int,
+    limit: int = 100,
+    offset: int = 0,
+    db: Session = Depends(get_db)
+):
+    """Get credit sending logs for a specific account"""
+    try:
+        # Verify account exists
+        account = db.query(Account).filter(Account.id == account_id).first()
+        if not account:
+            raise HTTPException(status_code=404, detail="Account not found")
+        
+        # Get credit logs
+        credit_logs = db.query(SentCreditLog).filter(
+            SentCreditLog.sender_account_id == account_id
+        ).order_by(SentCreditLog.timestamp.desc()).offset(offset).limit(limit).all()
+        
+        return credit_logs
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting credit logs for account {account_id}: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@router.get("/credit-logs", response_model=List[SentCreditLogResponse])
+async def get_all_credit_logs(
+    limit: int = 100,
+    offset: int = 0,
+    db: Session = Depends(get_db)
+):
+    """Get all credit sending logs across all accounts"""
+    try:
+        credit_logs = db.query(SentCreditLog).order_by(
+            SentCreditLog.timestamp.desc()
+        ).offset(offset).limit(limit).all()
+        
+        return credit_logs
+        
+    except Exception as e:
+        logger.error(f"Error getting all credit logs: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+

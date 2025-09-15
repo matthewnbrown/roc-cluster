@@ -6,6 +6,7 @@ Manages a single ROC account session
 import logging
 import os
 import random
+
 from typing import Optional, Tuple
 from urllib.parse import urljoin
 import json
@@ -22,6 +23,8 @@ from api.captcha import Captcha, CaptchaSolver, CaptchaKeypadSelector
 from api.database import SessionLocal
 from api.models import Account, AccountMetadata, UserCookies
 from api.rocurlgenerator import ROCDecryptUrlGenerator
+from api.credit_logger import credit_logger
+from api.captcha_feedback_service import captcha_feedback_service
 
 
 logger = logging.getLogger(__name__)
@@ -117,11 +120,13 @@ class GameAccountManager:
             url (str): url to submit the captcha to
             data (Dict[str, Any]): data to submit the captcha with
             captcha (Captcha): captcha to solve
+            page_name (str): name of the page
 
         Returns:
             aiohttp.Response: response from the captcha submission
         """
         keypad_selector = CaptchaKeypadSelector()
+        
         try:
             coords = keypad_selector.get_xy_static(captcha.ans, page_name)
             ans, _, request_id = await self.captcha_solver.solve(captcha)
@@ -130,6 +135,7 @@ class GameAccountManager:
             data["coordinates[y]"] = coords[1]
             data["captcha"] = captcha.hash
             captcha.ans = ans
+            
             return await self.session.post(url, data=data), request_id
         except Exception as e:
             logger.error(f"Failed to submit captcha: {e}")
@@ -376,7 +382,7 @@ class GameAccountManager:
         except Exception as e:
             return {"success": False, "error": str(e)}
     
-    async def send_credits(self, target_id: str, amount: int, dry_run = True) -> Dict[str, Any]:
+    async def send_credits(self, target_id: str, amount: int, dry_run = False) -> Dict[str, Any]:
         """Send credits to another user"""            
         try:
             # check if amount is 'all' or an int
@@ -414,11 +420,38 @@ class GameAccountManager:
                 correct = self.__was_captcha_correct(page_text, send_url)
 
                 if correct:
-                    await self.captcha_solver.report(captcha, request_id, True)
+                    # Report successful captcha asynchronously
+                    await captcha_feedback_service.report_feedback(
+                        account_id=self.account.id,
+                        captcha=captcha,
+                        request_id=request_id,
+                        was_correct=True
+                    )
+                    # Log successful credit send
+                    await credit_logger.log_credit_attempt(
+                        sender_account_id=self.account.id,
+                        target_user_id=target_id,
+                        amount=amount,
+                        success=True
+                    )
                     return {"success": True, "message": f"Sent {amount} credits to user {target_id}"}
                 else:
                     logger.info(f"Captcha was incorrect for {self.account.username} sending {amount} credits to {target_id}")
-                    await self.captcha_solver.report(captcha, request_id, False)
+                    # Report failed captcha asynchronously
+                    await captcha_feedback_service.report_feedback(
+                        account_id=self.account.id,
+                        captcha=captcha,
+                        request_id=request_id,
+                        was_correct=False
+                    )
+                    # Log failed credit send
+                    await credit_logger.log_credit_attempt(
+                        sender_account_id=self.account.id,
+                        target_user_id=target_id,
+                        amount=amount,
+                        success=False,
+                        error_message="Captcha was incorrect"
+                    )
                     return {"success": False, "error": "Captcha was incorrect"}
 
             for i in range(self.max_retries+1):

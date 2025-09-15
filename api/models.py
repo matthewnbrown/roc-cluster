@@ -73,6 +73,22 @@ class UserCookies(Base):
     # Relationships
     account = relationship("Account", back_populates="cookies", uselist=False)
 
+class SentCreditLog(Base):
+    """Log entries for credit sending attempts"""
+    __tablename__ = "sent_credit_logs"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    sender_account_id = Column(Integer, ForeignKey("accounts.id"), nullable=False)
+    target_user_id = Column(String(100), nullable=False)  # ROC user ID of the target
+    amount = Column(Integer, nullable=False)  # Amount of credits attempted to send
+    success = Column(Boolean, nullable=False)  # Whether the credit send was successful
+    error_message = Column(Text, nullable=True)  # Error message if failed
+    timestamp = Column(DateTime(timezone=True), server_default=func.now())
+    
+    # Relationships
+    sender_account = relationship("Account", foreign_keys=[sender_account_id])
+
+
 # Pydantic Schemas
 class AccountBase(BaseModel):
     username: str
@@ -113,6 +129,20 @@ class AccountResponse(AccountBase):
     
     class Config:
         orm_mode = True
+
+class SentCreditLogResponse(BaseModel):
+    """Response schema for sent credit logs"""
+    id: int
+    sender_account_id: int
+    target_user_id: str
+    amount: int
+    success: bool
+    error_message: Optional[str] = None
+    timestamp: datetime
+    
+    class Config:
+        orm_mode = True
+
             
 class AccountMetadata(BaseModel):
     """Account metadata from ROC website"""
@@ -239,3 +269,5 @@ class RetryConfig(BaseModel):
     backoff_factor: float = 2.0  # exponential backoff multiplier
     retry_on_status_codes: List[int] = [500, 502, 503, 504, 429]  # HTTP status codes to retry on
     retry_on_exceptions: List[str] = ["aiohttp.ClientError", "asyncio.TimeoutError"]  # Exception types to retry on
+    
+    
