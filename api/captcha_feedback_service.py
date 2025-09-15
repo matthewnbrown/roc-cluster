@@ -30,8 +30,8 @@ class AsyncCaptchaFeedbackService:
         self._running = False
         # Single captcha solver instance for all feedback
         self._captcha_solver = CaptchaSolver(
-            solver_url="http://localhost:8000/api/v1/solve", 
-            report_url="http://localhost:8000/api/v1/feedback"
+            solver_url=settings.CAPTCHA_SOLVER_URL, 
+            report_url=settings.CAPTCHA_REPORT_URL
         )
     
     async def start(self):

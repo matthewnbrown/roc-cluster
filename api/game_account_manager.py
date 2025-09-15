@@ -40,7 +40,7 @@ class GameAccountManager:
         self._connector: Optional[aiohttp.TCPConnector] = None
         self.url_generator = ROCDecryptUrlGenerator()
         self._is_logged_in = False
-        self.captcha_solver = CaptchaSolver(solver_url="http://localhost:8000/api/v1/solve", report_url="http://localhost:8000/api/v1/feedback", max_retries=max_retries)
+        self.captcha_solver = CaptchaSolver(solver_url=settings.CAPTCHA_SOLVER_URL, report_url=settings.CAPTCHA_REPORT_URL, max_retries=max_retries)
         self.max_retries = max_retries
 
     @property
@@ -431,15 +431,16 @@ class GameAccountManager:
                 page_text = await captcha_response.text()
                 correct = self.__was_captcha_correct(page_text, send_url)
 
+                if correct and captcha_response.url != self.url_generator.base():
+                    return {"success": False, "error": "Unknown error. No captcha error, but not on base url"}
+                
                 if correct:
-                    # Report successful captcha asynchronously
                     await captcha_feedback_service.report_feedback(
                         account_id=self.account.id,
                         captcha=captcha,
                         request_id=request_id,
                         was_correct=True
                     )
-                    # Log successful credit send
                     await credit_logger.log_credit_attempt(
                         sender_account_id=self.account.id,
                         target_user_id=target_id,
