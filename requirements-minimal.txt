@@ -7,10 +7,9 @@ uvicorn[standard]==0.22.0
 
 # Database
 sqlalchemy==1.4.48
-alembic==1.8.1
 
 # HTTP requests
-requests==2.28.2
+aiohttp==3.8.6
 beautifulsoup4==4.11.2
 urllib3==1.26.16
 
@@ -26,6 +25,3 @@ python-multipart==0.0.6
 
 # Environment configuration
 python-dotenv==1.0.0
-
-# Tools
-numpy>=1.26.4

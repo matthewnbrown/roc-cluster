@@ -5,7 +5,7 @@ import datetime
 import aiohttp
 import logging
 from typing import Tuple
-from numpy import random
+import random
 from config import settings
 
 logger = logging.getLogger(__name__)
@@ -171,9 +171,9 @@ class CaptchaKeypadSelector():
 
         x_click = -x_btn
         while x_click < x_btn or x_click > x_btn + self.__btn_dimensions[0]:
-            x_click = x_btn + random.normal(0, self.__btn_dimensions[0]/3)
+            x_click = x_btn + random.gauss(0, self.__btn_dimensions[0]/3)
         y_click = -y_btn
         while y_click < y_btn or y_click > y_btn + self.__btn_dimensions[1]:
-            y_click = y_btn + random.normal(0, self.__btn_dimensions[1]/3)
+            y_click = y_btn + random.gauss(0, self.__btn_dimensions[1]/3)
 
         return (int(x_click), int(y_click))

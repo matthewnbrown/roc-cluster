@@ -21,7 +21,7 @@ def main():
     env_vars = {
         "DATABASE_URL": "sqlite:///./data/roc_cluster.db",
         "HOST": "0.0.0.0",
-        "PORT": "8001",
+        "PORT": "8000",
         "DEBUG": "True",
         "LOG_LEVEL": "INFO"
     }

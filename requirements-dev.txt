@@ -1,0 +1,17 @@
+# Development and Testing Dependencies for ROC Cluster Management API
+# Install with: pip install -r requirements-dev.txt
+
+# Include production requirements
+-r requirements.txt
+
+# Testing
+pytest>=7.0.0,<7.5.0
+pytest-asyncio>=0.21.0,<0.22.0
+
+# Database migrations (if needed)
+alembic>=1.8.0,<1.13.0
+
+# Development tools
+black>=22.0.0,<24.0.0  # Code formatting
+flake8>=5.0.0,<7.0.0   # Linting
+mypy>=1.0.0,<2.0.0     # Type checking

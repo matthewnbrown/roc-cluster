@@ -45,8 +45,8 @@ class Settings:
     HTTP_TIMEOUT: int = int(os.getenv("HTTP_TIMEOUT", "30"))  # seconds
     
     # Captcha Solver Settings
-    CAPTCHA_SOLVER_URL: str = os.getenv("CAPTCHA_SOLVER_URL", "http://localhost:8000/api/v1/solve")
-    CAPTCHA_REPORT_URL: str = os.getenv("CAPTCHA_REPORT_URL", "http://localhost:8000/api/v1/feedback")
+    CAPTCHA_SOLVER_URL: str = os.getenv("CAPTCHA_SOLVER_URL", "http://localhost:8001/api/v1/solve")
+    CAPTCHA_REPORT_URL: str = os.getenv("CAPTCHA_REPORT_URL", "http://localhost:8001/api/v1/feedback")
     
     # Captcha Solver Connection Limits
     CAPTCHA_CONNECTION_LIMIT: int = int(os.getenv("CAPTCHA_CONNECTION_LIMIT", "50"))
