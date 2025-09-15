@@ -393,9 +393,6 @@ class GameAccountManager:
             
             send_url = self.url_generator.send_credits()
 
-            if dry_run:
-                return {"success": True, "message": f"Would have sent {amount} credits to user {target_id}"}
-
             async def _submit_credits():
                 captcha = await self._get_captcha()
                 if not captcha:
@@ -408,6 +405,9 @@ class GameAccountManager:
                     "amount": amount,
                     "comment": "",
                 }
+                
+                if dry_run:
+                    return {"success": True, "message": f"Would have sent {amount} credits to user {target_id}"}
                 
                 captcha_response, request_id = await self.submit_captca(send_url, payload, captcha)
                 page_text = await captcha_response.text()
