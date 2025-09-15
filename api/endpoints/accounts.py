@@ -8,8 +8,9 @@ from typing import List
 import logging
 
 from api.database import get_db
-from api.models import Account, AccountCreate, AccountUpdate, AccountResponse, UserCookies, UserCookiesCreate, UserCookiesUpdate, UserCookiesResponse, SentCreditLog, SentCreditLogResponse
+from api.models import Account, AccountCreate, AccountUpdate, AccountResponse, UserCookies, UserCookiesCreate, UserCookiesUpdate, UserCookiesResponse, SentCreditLog, SentCreditLogResponse, PaginatedResponse
 from api.account_manager import AccountManager
+from api.pagination import paginate_query
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -62,16 +63,23 @@ async def create_account(
         logger.error(f"Error creating account: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
-@router.get("/", response_model=List[AccountResponse])
+@router.get("/", response_model=PaginatedResponse[AccountResponse])
 async def list_accounts(
-    skip: int = 0,
-    limit: int = 100,
+    page: int = 1,
+    per_page: int = 100,
     db: Session = Depends(get_db)
 ):
-    """List all accounts"""
+    """List all accounts with pagination"""
     try:
-        accounts = db.query(Account).offset(skip).limit(limit).all()
-        return [AccountResponse.from_orm(account) for account in accounts]
+        if page < 1:
+            raise HTTPException(status_code=400, detail="Page must be greater than 0")
+        if per_page < 1 or per_page > 1000:
+            raise HTTPException(status_code=400, detail="Per page must be between 1 and 1000")
+        
+        query = db.query(Account).order_by(Account.id)
+        return paginate_query(query, page, per_page, AccountResponse)
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error listing accounts: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -268,26 +276,31 @@ async def delete_user_cookies(
         logger.error(f"Error deleting cookies for account {account_id}: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
-@router.get("/{account_id}/credit-logs", response_model=List[SentCreditLogResponse])
+@router.get("/{account_id}/credit-logs", response_model=PaginatedResponse[SentCreditLogResponse])
 async def get_credit_logs(
     account_id: int,
-    limit: int = 100,
-    offset: int = 0,
+    page: int = 1,
+    per_page: int = 100,
     db: Session = Depends(get_db)
 ):
-    """Get credit sending logs for a specific account"""
+    """Get credit sending logs for a specific account with pagination"""
     try:
+        if page < 1:
+            raise HTTPException(status_code=400, detail="Page must be greater than 0")
+        if per_page < 1 or per_page > 1000:
+            raise HTTPException(status_code=400, detail="Per page must be between 1 and 1000")
+        
         # Verify account exists
         account = db.query(Account).filter(Account.id == account_id).first()
         if not account:
             raise HTTPException(status_code=404, detail="Account not found")
         
-        # Get credit logs
-        credit_logs = db.query(SentCreditLog).filter(
+        # Get credit logs query
+        query = db.query(SentCreditLog).filter(
             SentCreditLog.sender_account_id == account_id
-        ).order_by(SentCreditLog.timestamp.desc()).offset(offset).limit(limit).all()
+        ).order_by(SentCreditLog.timestamp.desc())
         
-        return credit_logs
+        return paginate_query(query, page, per_page, SentCreditLogResponse)
         
     except HTTPException:
         raise
@@ -295,20 +308,24 @@ async def get_credit_logs(
         logger.error(f"Error getting credit logs for account {account_id}: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
-@router.get("/credit-logs", response_model=List[SentCreditLogResponse])
+@router.get("/credit-logs", response_model=PaginatedResponse[SentCreditLogResponse])
 async def get_all_credit_logs(
-    limit: int = 100,
-    offset: int = 0,
+    page: int = 1,
+    per_page: int = 100,
     db: Session = Depends(get_db)
 ):
-    """Get all credit sending logs across all accounts"""
+    """Get all credit sending logs across all accounts with pagination"""
     try:
-        credit_logs = db.query(SentCreditLog).order_by(
-            SentCreditLog.timestamp.desc()
-        ).offset(offset).limit(limit).all()
+        if page < 1:
+            raise HTTPException(status_code=400, detail="Page must be greater than 0")
+        if per_page < 1 or per_page > 1000:
+            raise HTTPException(status_code=400, detail="Per page must be between 1 and 1000")
         
-        return credit_logs
+        query = db.query(SentCreditLog).order_by(SentCreditLog.timestamp.desc())
+        return paginate_query(query, page, per_page, SentCreditLogResponse)
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error getting all credit logs: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")

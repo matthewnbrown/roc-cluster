@@ -9,13 +9,16 @@ from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 from sqlalchemy.ext.declarative import DeclarativeMeta
 from api.database import SessionLocal
+from config import settings
 
 logger = logging.getLogger(__name__)
 
 class AsyncLogger:
     """Generic async logger that uses background tasks to avoid blocking the main flow"""
     
-    def __init__(self, max_queue_size: int = 1000):
+    def __init__(self, max_queue_size: int = None):
+        if max_queue_size is None:
+            max_queue_size = settings.ASYNC_LOGGER_QUEUE_SIZE
         self._log_queue = asyncio.Queue(maxsize=max_queue_size)
         self._background_task = None
         self._running = False

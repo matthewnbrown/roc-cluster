@@ -3,8 +3,12 @@
 from ast import Tuple
 import datetime
 import aiohttp
+import logging
 from typing import Tuple
 from numpy import random
+from config import settings
+
+logger = logging.getLogger(__name__)
 
 class CooldownException(Exception):
     def __init__(self, message: str) -> None:
@@ -34,6 +38,25 @@ class CaptchaSolver:
     def __init__(self, solver_url: str, report_url: str, max_retries: int = 0) -> None:
         self.solverurl = solver_url
         self.report_url = report_url
+        self._session = None
+        self._connector = None
+
+    async def _get_session(self):
+        """Get or create aiohttp session with connection limits"""
+        if self._session is None or self._session.closed:
+            # Create connector with connection limits
+            self._connector = aiohttp.TCPConnector(
+                limit=settings.CAPTCHA_CONNECTION_LIMIT,
+                limit_per_host=settings.CAPTCHA_CONNECTION_LIMIT_PER_HOST,  
+                ttl_dns_cache=settings.HTTP_DNS_CACHE_TTL,
+                use_dns_cache=True,
+            )
+            timeout = aiohttp.ClientTimeout(total=settings.CAPTCHA_TIMEOUT)
+            self._session = aiohttp.ClientSession(
+                connector=self._connector,
+                timeout=timeout
+            )
+        return self._session
 
     async def solve(self, captcha: Captcha) -> Tuple[str, float, str]:
         """Gets a solution to a captcha
@@ -49,23 +72,22 @@ class CaptchaSolver:
             data.add_field('captcha_hash', captcha.hash)
             data.add_field('image', captcha.img, filename='captcha.png', content_type='image/png')
             
-            # Make API call to solver URL
-            timeout = aiohttp.ClientTimeout(total=30)
-            async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.post(self.solverurl, data=data) as response:
-                    response.raise_for_status()
-                    
-                    # Parse response (assuming JSON format)
-                    result = await response.json()
-                    
-                    # Extract solution, confidence, and request_id
-                    solution = result.get('predicted_answer', '')
-                    confidence = float(result.get('confidence', 0.0))
-                    request_id = result.get('request_id', '')
-                    
-                    captcha.ans = solution
-                    
-                    return solution, confidence, request_id
+            # Use shared session
+            session = await self._get_session()
+            async with session.post(self.solverurl, data=data) as response:
+                response.raise_for_status()
+                
+                # Parse response (assuming JSON format)
+                result = await response.json()
+                
+                # Extract solution, confidence, and request_id
+                solution = result.get('predicted_answer', '')
+                confidence = float(result.get('confidence', 0.0))
+                request_id = result.get('request_id', '')
+                
+                captcha.ans = solution
+                
+                return solution, confidence, request_id
             
         except aiohttp.ClientError as e:
             raise Exception(f"Failed to solve captcha: {e}")
@@ -88,17 +110,37 @@ class CaptchaSolver:
                 'actual_answer': str(actual_answer) if actual_answer is not None else ''
             }
             
-            timeout = aiohttp.ClientTimeout(total=10)
-            async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.post(
-                    self.report_url, 
-                    data=data, 
-                    headers={'Content-Type': 'application/x-www-form-urlencoded'}
-                ) as response:
-                    response.raise_for_status()
+            # Use shared session
+            session = await self._get_session()
+            async with session.post(
+                self.report_url, 
+                data=data, 
+                headers={'Content-Type': 'application/x-www-form-urlencoded'}
+            ) as response:
+                response.raise_for_status()
             
         except aiohttp.ClientError as e:
             raise Exception(f"Failed to report captcha: {e}")
+
+    async def close(self):
+        """Close the HTTP session and connector"""
+        # Close session
+        if self._session and not self._session.closed:
+            try:
+                await self._session.close()
+            except Exception as e:
+                logger.warning(f"Error closing captcha solver session: {e}")
+            finally:
+                self._session = None
+        
+        # Close connector
+        if self._connector and not self._connector.closed:
+            try:
+                await self._connector.close()
+            except Exception as e:
+                logger.warning(f"Error closing captcha solver connector: {e}")
+            finally:
+                self._connector = None
 
 
 class CaptchaKeypadSelector():

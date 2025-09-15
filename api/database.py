@@ -8,14 +8,19 @@ from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.sql import func
 import os
 from typing import Generator
+from config import settings
 
 # Database configuration
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./data/roc_cluster.db")
+DATABASE_URL = settings.DATABASE_URL
 
-# Create engine
+# Create engine with connection pooling
 engine = create_engine(
     DATABASE_URL,
-    connect_args={"check_same_thread": False} if "sqlite" in DATABASE_URL else {}
+    connect_args={"check_same_thread": False} if "sqlite" in DATABASE_URL else {},
+    pool_size=settings.DB_POOL_SIZE,  # Number of connections to maintain in the pool
+    max_overflow=settings.DB_MAX_OVERFLOW,  # Additional connections that can be created on demand
+    pool_pre_ping=True,  # Verify connections before use
+    pool_recycle=settings.DB_POOL_RECYCLE,  # Recycle connections after specified time
 )
 
 # Create session factory

@@ -8,6 +8,7 @@ import logging
 from typing import Dict, List, Optional, Any
 from api.models import Account, AccountIdentifier, AccountIdentifierType
 from api.game_account_manager import GameAccountManager
+from config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +40,8 @@ class AccountManager:
 
     def __init__(self):
         # No longer storing persistent instances
-        pass
+        # Limit concurrent operations to prevent resource exhaustion
+        self._semaphore = asyncio.Semaphore(settings.MAX_CONCURRENT_OPERATIONS)
     
     async def get_account_from_db(self, id_type: AccountIdentifierType, id: str) -> Optional[Account]:
         """Get account from database by ID"""
@@ -68,46 +70,47 @@ class AccountManager:
     
     async def execute_action(self, id_type: AccountIdentifierType, id: str, action: ActionType = None, max_retries: int = 0, **kwargs) -> Dict[str, Any]:
         """Execute an action on a specific account using on-demand creation"""
-        # Get account from database
-        
-        account = await self.get_account_from_db(id_type, id)
-        
-        if not account:
-            return {"success": False, "error": "Account not found"}
-        
-        # Create ROCAccountManager instance on-demand
-        roc_account = None
-        try:
-            roc_account = await create_account_manager(account, max_retries=max_retries)
+        # Limit concurrent operations
+        async with self._semaphore:
+            # Get account from database
+            account = await self.get_account_from_db(id_type, id)
             
-            # Map action names to methods
-            action_map = {
-                "attack": roc_account.attack,
-                "sabotage": roc_account.sabotage,
-                "spy": roc_account.spy,
-                "become_officer": roc_account.become_officer,
-                "send_credits": roc_account.send_credits,
-                "recruit": roc_account.recruit,
-                "purchase_armory": roc_account.purchase_armory,
-                "purchase_training": roc_account.purchase_training,
-                "enable_credit_saving": roc_account.enable_credit_saving,
-                "purchase_upgrade": roc_account.purchase_upgrade,
-                "get_metadata": roc_account.get_metadata,
-            }
+            if not account:
+                return {"success": False, "error": "Account not found"}
             
-            if action.value not in action_map:
-                return {"success": False, "error": f"Unknown action: {action}"}
-            
-            result = await action_map[action.value](**kwargs)
-            return result
-            
-        except Exception as e:
-            logger.error(f"Error executing action {action} on account {id_type} {id}: {e}")
-            return {"success": False, "error": str(e)}
-        finally:
-            # Always cleanup the ROCAccountManager instance
-            if roc_account:
-                await roc_account.cleanup()
+            # Create ROCAccountManager instance on-demand
+            roc_account = None
+            try:
+                roc_account = await create_account_manager(account, max_retries=max_retries)
+                
+                # Map action names to methods
+                action_map = {
+                    "attack": roc_account.attack,
+                    "sabotage": roc_account.sabotage,
+                    "spy": roc_account.spy,
+                    "become_officer": roc_account.become_officer,
+                    "send_credits": roc_account.send_credits,
+                    "recruit": roc_account.recruit,
+                    "purchase_armory": roc_account.purchase_armory,
+                    "purchase_training": roc_account.purchase_training,
+                    "enable_credit_saving": roc_account.enable_credit_saving,
+                    "purchase_upgrade": roc_account.purchase_upgrade,
+                    "get_metadata": roc_account.get_metadata,
+                }
+                
+                if action.value not in action_map:
+                    return {"success": False, "error": f"Unknown action: {action}"}
+                
+                result = await action_map[action.value](**kwargs)
+                return result
+                
+            except Exception as e:
+                logger.error(f"Error executing action {action} on account {id_type} {id}: {e}")
+                return {"success": False, "error": str(e)}
+            finally:
+                # Always cleanup the ROCAccountManager instance
+                if roc_account:
+                    await roc_account.cleanup()
     
     async def execute_bulk_action(self, accounts: List[AccountIdentifier], action: str, max_retries: int = 0, **kwargs) -> List[Dict[str, Any]]:
         """Execute an action on multiple accounts using on-demand creation"""

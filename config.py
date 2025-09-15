@@ -19,8 +19,12 @@ class Settings:
     DEBUG: bool = os.getenv("DEBUG", "False").lower() == "true"
     
     # Database Settings
-
     DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./data/roc_cluster.db")
+    
+    # Database Connection Pooling
+    DB_POOL_SIZE: int = int(os.getenv("DB_POOL_SIZE", "20"))
+    DB_MAX_OVERFLOW: int = int(os.getenv("DB_MAX_OVERFLOW", "30"))
+    DB_POOL_RECYCLE: int = int(os.getenv("DB_POOL_RECYCLE", "3600"))  # 1 hour
     
     # Security Settings
     SECRET_KEY: str = os.getenv("SECRET_KEY", "your-secret-key-change-in-production")
@@ -41,6 +45,24 @@ class Settings:
     # Account Management
     MAX_ACCOUNTS_PER_USER: int = int(os.getenv("MAX_ACCOUNTS_PER_USER", "100"))
     SESSION_TIMEOUT_MINUTES: int = int(os.getenv("SESSION_TIMEOUT_MINUTES", "30"))
+    
+    # Concurrency Control
+    MAX_CONCURRENT_OPERATIONS: int = int(os.getenv("MAX_CONCURRENT_OPERATIONS", "20"))
+    
+    # HTTP Connection Limits
+    HTTP_CONNECTION_LIMIT: int = int(os.getenv("HTTP_CONNECTION_LIMIT", "30"))
+    HTTP_CONNECTION_LIMIT_PER_HOST: int = int(os.getenv("HTTP_CONNECTION_LIMIT_PER_HOST", "20"))
+    HTTP_DNS_CACHE_TTL: int = int(os.getenv("HTTP_DNS_CACHE_TTL", "300"))  # 5 minutes
+    HTTP_TIMEOUT: int = int(os.getenv("HTTP_TIMEOUT", "30"))  # seconds
+    
+    # Captcha Solver Connection Limits
+    CAPTCHA_CONNECTION_LIMIT: int = int(os.getenv("CAPTCHA_CONNECTION_LIMIT", "50"))
+    CAPTCHA_CONNECTION_LIMIT_PER_HOST: int = int(os.getenv("CAPTCHA_CONNECTION_LIMIT_PER_HOST", "50"))
+    CAPTCHA_TIMEOUT: int = int(os.getenv("CAPTCHA_TIMEOUT", "30"))  # seconds
+    
+    # Async Service Queue Limits
+    ASYNC_LOGGER_QUEUE_SIZE: int = int(os.getenv("ASYNC_LOGGER_QUEUE_SIZE", "1000"))
+    CAPTCHA_FEEDBACK_QUEUE_SIZE: int = int(os.getenv("CAPTCHA_FEEDBACK_QUEUE_SIZE", "1000"))
     
     # CORS Settings
     CORS_ORIGINS: list = os.getenv("CORS_ORIGINS", "*").split(",")

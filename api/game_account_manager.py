@@ -25,6 +25,7 @@ from api.models import Account, AccountMetadata, UserCookies
 from api.rocurlgenerator import ROCDecryptUrlGenerator
 from api.credit_logger import credit_logger
 from api.captcha_feedback_service import captcha_feedback_service
+from config import settings
 
 
 logger = logging.getLogger(__name__)
@@ -36,6 +37,7 @@ class GameAccountManager:
         self.last_metadata_update = None
         self._metadata_cache: Optional[AccountMetadata] = None
         self.session: Optional[aiohttp.ClientSession] = None
+        self._connector: Optional[aiohttp.TCPConnector] = None
         self.url_generator = ROCDecryptUrlGenerator()
         self._is_logged_in = False
         self.captcha_solver = CaptchaSolver(solver_url="http://localhost:8000/api/v1/solve", report_url="http://localhost:8000/api/v1/feedback", max_retries=max_retries)
@@ -144,8 +146,18 @@ class GameAccountManager:
     async def initialize(self) -> bool:
         """Initialize the account login"""
         try:
-            # Create aiohttp session
-            self.session = aiohttp.ClientSession()
+            # Create aiohttp session with connection limits
+            self._connector = aiohttp.TCPConnector(
+                limit=settings.HTTP_CONNECTION_LIMIT,  # Total connection pool size
+                limit_per_host=settings.HTTP_CONNECTION_LIMIT_PER_HOST,  # Max connections per host
+                ttl_dns_cache=settings.HTTP_DNS_CACHE_TTL,  # DNS cache TTL
+                use_dns_cache=True,
+            )
+            timeout = aiohttp.ClientTimeout(total=settings.HTTP_TIMEOUT)
+            self.session = aiohttp.ClientSession(
+                connector=self._connector,
+                timeout=timeout
+            )
             
             # Load cookies from UserCookies table
             db = SessionLocal()
@@ -386,7 +398,7 @@ class GameAccountManager:
         """Send credits to another user"""            
         try:
             # check if amount is 'all' or an int
-            if amount.lower() == 'all':
+            if str(amount).lower() == 'all':
                 return await self.send_all_credits(target_id)
             else:
                 try:
@@ -537,6 +549,27 @@ class GameAccountManager:
     async def cleanup(self):
         """Cleanup resources"""
         self._is_logged_in = False
+        
+        # Close session
         if self.session:
-            await self.session.close()
-            self.session = None
+            try:
+                await self.session.close()
+            except Exception as e:
+                logger.warning(f"Error closing session for {self.account.username}: {e}")
+            finally:
+                self.session = None
+        
+        # Close connector
+        if self._connector:
+            try:
+                await self._connector.close()
+            except Exception as e:
+                logger.warning(f"Error closing connector for {self.account.username}: {e}")
+            finally:
+                self._connector = None
+        
+        # Also cleanup the captcha solver
+        try:
+            await self.captcha_solver.close()
+        except Exception as e:
+            logger.warning(f"Error closing captcha solver for {self.account.username}: {e}")

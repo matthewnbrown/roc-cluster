@@ -7,9 +7,12 @@ from sqlalchemy import Column, Integer, String, DateTime, Text, Boolean, Foreign
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from pydantic import BaseModel, EmailStr
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Generic, TypeVar
 from datetime import datetime
 from api.database import Base
+
+# Generic type for paginated responses
+T = TypeVar('T')
 
 # Database Models
 class Account(Base):
@@ -269,5 +272,24 @@ class RetryConfig(BaseModel):
     backoff_factor: float = 2.0  # exponential backoff multiplier
     retry_on_status_codes: List[int] = [500, 502, 503, 504, 429]  # HTTP status codes to retry on
     retry_on_exceptions: List[str] = ["aiohttp.ClientError", "asyncio.TimeoutError"]  # Exception types to retry on
+
+# Pagination Models
+class PaginationMeta(BaseModel):
+    """Pagination metadata"""
+    page: int
+    per_page: int
+    total: int
+    total_pages: int
+    has_next: bool
+    has_prev: bool
+    next_page: Optional[int] = None
+    prev_page: Optional[int] = None
+
+class PaginatedResponse(BaseModel, Generic[T]):
+    """Generic paginated response wrapper"""
+    data: List[T]
+    pagination: PaginationMeta
     
+    class Config:
+        orm_mode = True
     

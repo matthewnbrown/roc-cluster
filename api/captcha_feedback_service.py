@@ -7,6 +7,7 @@ import logging
 from typing import Optional, Dict, Any
 from dataclasses import dataclass
 from api.captcha import Captcha, CaptchaSolver
+from config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +22,9 @@ class CaptchaFeedback:
 class AsyncCaptchaFeedbackService:
     """Async service for reporting captcha feedback without blocking the main flow"""
     
-    def __init__(self, max_queue_size: int = 1000):
+    def __init__(self, max_queue_size: int = None):
+        if max_queue_size is None:
+            max_queue_size = settings.CAPTCHA_FEEDBACK_QUEUE_SIZE
         self._feedback_queue = asyncio.Queue(maxsize=max_queue_size)
         self._background_task = None
         self._running = False
@@ -45,7 +48,9 @@ class AsyncCaptchaFeedbackService:
             if self._background_task:
                 await self._feedback_queue.put(None)  # Signal to stop
                 await self._background_task
-                logger.info("Async captcha feedback service stopped")
+            # Close the captcha solver session
+            await self._captcha_solver.close()
+            logger.info("Async captcha feedback service stopped")
     
     async def report_feedback(
         self, 

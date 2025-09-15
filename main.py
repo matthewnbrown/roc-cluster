@@ -56,6 +56,16 @@ async def lifespan(app: FastAPI):
     await async_logger.stop()
     logger.info("Async logger stopped")
     
+    # Cleanup account manager
+    if account_manager:
+        await account_manager.cleanup()
+        logger.info("Account manager cleaned up")
+    
+    # Close database engine
+    from api.database import engine
+    engine.dispose()
+    logger.info("Database engine disposed")
+    
     logger.info("Application shutdown complete")
 
 # Create FastAPI app
