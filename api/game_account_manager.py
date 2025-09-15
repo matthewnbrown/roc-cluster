@@ -5,7 +5,8 @@ Manages a single ROC account session
 
 import logging
 import os
-from typing import Optional
+import random
+from typing import Optional, Tuple
 from urllib.parse import urljoin
 import json
 import aiohttp
@@ -13,8 +14,11 @@ from datetime import datetime, timedelta, timezone
 from bs4 import BeautifulSoup
 from typing import Dict, Any
 
+from bs4 import BeautifulSoup
+from sqlalchemy import false
+
 from api.models import Account, AccountMetadata
-from api.captcha import Captcha, CaptchaSolver
+from api.captcha import Captcha, CaptchaSolver, CaptchaKeypadSelector
 from api.database import SessionLocal
 from api.models import Account, AccountMetadata, UserCookies
 from api.rocurlgenerator import ROCDecryptUrlGenerator
@@ -24,14 +28,15 @@ logger = logging.getLogger(__name__)
 
 class GameAccountManager:
     """Manages a single ROC account session"""
-    def __init__(self, account: Account):
+    def __init__(self, account: Account, max_retries: int = 0):
         self.account = account
         self.last_metadata_update = None
         self._metadata_cache: Optional[AccountMetadata] = None
         self.session: Optional[aiohttp.ClientSession] = None
         self.url_generator = ROCDecryptUrlGenerator()
         self._is_logged_in = False
-        self.captcha_solver = CaptchaSolver(solver_url="http://localhost:8000/api/v1/solve", report_url="http://localhost:8000/api/v1/feedback")
+        self.captcha_solver = CaptchaSolver(solver_url="http://localhost:8000/api/v1/solve", report_url="http://localhost:8000/api/v1/feedback", max_retries=max_retries)
+        self.max_retries = max_retries
 
     @property
     def is_logged_in(self) -> bool:
@@ -42,17 +47,36 @@ class GameAccountManager:
         """Parse a ROC number"""
         return int(number.replace(',', ''))
 
-    async def __was_captcha_correct(self, responsetext: str) -> bool:
+    def __was_captcha_correct(self, page_text: str, submit_url: str) -> bool:
         """Check if the captcha was correct"""
-        return responsetext.find('<td colspan="2" class="error">Wrong number</td>') == -1
+        
+        if submit_url == self.url_generator.send_credits():
+            return page_text.find('<td colspan="2" class="error">Wrong number</td>') == -1
+        else:
+            raise Exception("Unknown submit url")
+        
     
-    async def _get_captcha(self, page_text: str) -> Captcha:
+    async def _get_captcha(self, page_text: str = None) -> Captcha:
         """Extract captcha from response"""
         try:
-            from bs4 import BeautifulSoup
-            import re
             
-            page_text
+            if page_text is None:
+                async def _get_captcha_page(post_login = False):
+                    async with self.session.get(self.url_generator.armory()) as response:
+                        text = await response.text()
+                       
+                        if not self.__check_logged_in(text) and not post_login:
+                            logger.info(f"{self.account.username} session expired, logging in")
+                            await self.login()
+                            return await _get_captcha_page(post_login=True)
+                        return text
+                    
+                page_text = await _get_captcha_page()
+                
+                if page_text is None:
+                    logger.warning("Failed to get home page")
+                    raise Exception("Failed to get home page")
+                
             soup = BeautifulSoup(page_text, 'html.parser')
 
             # Find captcha image
@@ -74,7 +98,6 @@ class GameAccountManager:
                 logger.warning("Could not extract captcha hash from URL")
                 return None
             
-            # make request to download the captcha image
             async with self.session.get(captcha_url) as img_response:
                 if img_response.status == 200:
                     img_data = await img_response.read()
@@ -86,6 +109,31 @@ class GameAccountManager:
         except Exception as e:
             logger.error(f"Failed to get captcha: {e}")
             return None
+    
+    async def submit_captca(self, url: str, data: Dict[str, Any], captcha: Captcha, page_name = 'roc_recruit') -> Tuple[aiohttp.ClientResponse, str]:
+        """solves and submits a captcha
+
+        Args:
+            url (str): url to submit the captcha to
+            data (Dict[str, Any]): data to submit the captcha with
+            captcha (Captcha): captcha to solve
+
+        Returns:
+            aiohttp.Response: response from the captcha submission
+        """
+        keypad_selector = CaptchaKeypadSelector()
+        try:
+            coords = keypad_selector.get_xy_static(captcha.ans, page_name)
+            ans, _, request_id = await self.captcha_solver.solve(captcha)
+            data["num"] = ans
+            data["coordinates[x]"] = coords[0]
+            data["coordinates[y]"] = coords[1]
+            data["captcha"] = captcha.hash
+            captcha.ans = ans
+            return await self.session.post(url, data=data), request_id
+        except Exception as e:
+            logger.error(f"Failed to submit captcha: {e}")
+            raise e
     
     async def initialize(self) -> bool:
         """Initialize the account login"""
@@ -102,7 +150,7 @@ class GameAccountManager:
                 
                 if user_cookies:
                     cookies = json.loads(user_cookies.cookies)
-                    # Set cookies in the session
+
                     self.session.cookie_jar.update_cookies(cookies)
                     logger.info(f"Loaded {len(cookies)} cookies for account {self.account.username}: {list(cookies.keys())}")
                 else:
@@ -125,7 +173,7 @@ class GameAccountManager:
 
     def __check_logged_in(self, page_text: str) -> bool:
         """Check if the account is logged in"""
-        return page_text.find('placeholder="email@address.com') == -1
+        return page_text.find('<form action="login.php" method="post">') == -1
     
     async def login_if_needed(self, current_page: str | None = None) -> bool:
         """Login if the account is not logged in"""
@@ -162,7 +210,7 @@ class GameAccountManager:
                     for key, morsel in cookies.items():
                         cookie_data[key] = morsel.value
                     
-                    # Check if cookies already exist for this account
+                    # Upsert cookies - update existing or create new
                     existing_cookies = db.query(UserCookies).filter(
                         UserCookies.account_id == self.account.id
                     ).first()
@@ -328,7 +376,7 @@ class GameAccountManager:
         except Exception as e:
             return {"success": False, "error": str(e)}
     
-    async def send_credits(self, target_id: str, amount: int) -> Dict[str, Any]:
+    async def send_credits(self, target_id: str, amount: int, dry_run = True) -> Dict[str, Any]:
         """Send credits to another user"""            
         try:
             # check if amount is 'all' or an int
@@ -340,57 +388,47 @@ class GameAccountManager:
                 except ValueError:
                     return {"success": False, "error": "Invalid amount. Must be an integer or 'all'"}
             
-            credits_url = self.url_generator.send_credits(target_id)
+            if amount < 100:
+                return {"success": False, "error": "Amount must be at least 100"}
+            
             send_url = self.url_generator.send_credits()
-            
-            async with self.session.get(credits_url) as response:
-                if response.status != 200:
-                    return {"success": False, "error": "Failed to load credits page"}
-                page_text = await response.text()
+
+            if dry_run:
+                return {"success": True, "message": f"Would have sent {amount} credits to user {target_id}"}
+
+            async def _submit_credits():
+                captcha = await self._get_captcha()
+                if not captcha:
+                    return {"success": False, "error": "Failed to get captcha"}
                 
-            login_was_needed = not self.__check_logged_in(page_text=page_text)
-            logger.info(f"Login was needed: {login_was_needed}")
-            
-            if not await self.login_if_needed(page_text):
-                return {"success": False, "error": "Login failed"}
-            
-            # If login was needed, we need to make a fresh request to the credits page
-            # because the current response is from the login page
-            if login_was_needed:
-                async with self.session.get(credits_url) as fresh_response:
-                    if fresh_response.status != 200:
-                        return {"success": False, "error": "Failed to load credits page after login"}
+                logger.info(f"Got captcha {captcha.hash}")
+                
+                payload = {
+                    "to": target_id,
+                    "amount": amount,
+                    "comment": "",
+                }
+                
+                captcha_response, request_id = await self.submit_captca(send_url, payload, captcha)
+                page_text = await captcha_response.text()
+                correct = self.__was_captcha_correct(page_text, send_url)
+
+                if correct:
+                    await self.captcha_solver.report(captcha, request_id, True)
+                    return {"success": True, "message": f"Sent {amount} credits to user {target_id}"}
+                else:
+                    logger.info(f"Captcha was incorrect for {self.account.username} sending {amount} credits to {target_id}")
+                    await self.captcha_solver.report(captcha, request_id, False)
+                    return {"success": False, "error": "Captcha was incorrect"}
+
+            for i in range(self.max_retries+1):
+                result = await _submit_credits()
+                if result["success"]:
+                    return result
+
                     
-                    page_text = await fresh_response.text()
 
-            captcha = await self._get_captcha(page_text)
-            if not captcha:
-                return {"success": False, "error": "Failed to get captcha"}
-            
-            # Solve captcha
-            ans, _, request_id = await self.captcha_solver.solve(captcha)
-
-            async with self.session.post(send_url, data={
-                "to": target_id,
-                "amount": amount,
-                "comment": "",
-                "captcha": captcha.hash,
-                "num": ans,
-                "coordinates[x]": getattr(captcha, 'x', 123),
-                "coordinates[y]": getattr(captcha, 'y', 422)
-            }) as submit_response:
-                text = await submit_response.text()
-                url = submit_response.url
-
-            if "base.php" in url.path:
-                return {"success": True, "message": f"Sent {amount} credits to user {target_id}"}
-            elif not await self.__was_captcha_correct(text):
-                await self.captcha_solver.report(captcha, request_id, True, ans)
-                return {"success": False, "error": "Captcha was incorrect"}
-            else:
-                filename = f"{self.account.username}_{request_id}_send_credits.html"
-                self.__save_error(filename=filename, error=text)
-                return {"success": False, "error": "Unknown error... please check the error file " + filename}
+            return {"success": False, "error": "Failed to send credits"}
 
         except Exception as e:
             return {"success": False, "error": str(e)}

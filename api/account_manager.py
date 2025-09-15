@@ -11,9 +11,9 @@ from api.game_account_manager import GameAccountManager
 
 logger = logging.getLogger(__name__)
 
-async def create_account_manager(account: Account) -> GameAccountManager:
+async def create_account_manager(account: Account, max_retries: int = 0) -> GameAccountManager:
     """Factory function to create a ROCAccountManager instance"""
-    roc_account = GameAccountManager(account)
+    roc_account = GameAccountManager(account, max_retries=max_retries)
     success = await roc_account.initialize()
     if not success:
         raise Exception(f"Failed to initialize account {account.username}")
@@ -66,7 +66,7 @@ class AccountManager:
         finally:
             db.close()
     
-    async def execute_action(self, id_type: AccountIdentifierType, id: str, action: ActionType = None, **kwargs) -> Dict[str, Any]:
+    async def execute_action(self, id_type: AccountIdentifierType, id: str, action: ActionType = None, max_retries: int = 0, **kwargs) -> Dict[str, Any]:
         """Execute an action on a specific account using on-demand creation"""
         # Get account from database
         
@@ -78,7 +78,7 @@ class AccountManager:
         # Create ROCAccountManager instance on-demand
         roc_account = None
         try:
-            roc_account = await create_account_manager(account)
+            roc_account = await create_account_manager(account, max_retries=max_retries)
             
             # Map action names to methods
             action_map = {
@@ -109,7 +109,7 @@ class AccountManager:
             if roc_account:
                 await roc_account.cleanup()
     
-    async def execute_bulk_action(self, accounts: List[AccountIdentifier], action: str, **kwargs) -> List[Dict[str, Any]]:
+    async def execute_bulk_action(self, accounts: List[AccountIdentifier], action: str, max_retries: int = 0, **kwargs) -> List[Dict[str, Any]]:
         """Execute an action on multiple accounts using on-demand creation"""
         tasks = []
         
@@ -120,7 +120,7 @@ class AccountManager:
             return {"success": False, "error": "Invalid action"}
         
         for account_id in accounts:
-            task = self.execute_action(account_id.id_type, account_id.id, action, **kwargs)
+            task = self.execute_action(account_id.id_type, account_id.id, action, max_retries=max_retries, **kwargs)
             tasks.append(task)
         
         results = await asyncio.gather(*tasks, return_exceptions=True)

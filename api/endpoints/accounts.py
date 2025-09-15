@@ -144,19 +144,19 @@ async def delete_account(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @router.post("/{account_id}/cookies", response_model=UserCookiesResponse, status_code=status.HTTP_201_CREATED)
-async def create_user_cookies(
+async def upsert_user_cookies(
     account_id: int,
     cookies_data: UserCookiesCreate,
     db: Session = Depends(get_db)
 ):
-    """Create or update cookies for a user"""
+    """Create or update cookies for a user (upsert operation)"""
     try:
         # Verify account exists
         account = db.query(Account).filter(Account.id == account_id).first()
         if not account:
             raise HTTPException(status_code=404, detail="Account not found")
         
-        # Check if cookies already exist for this account
+        # Use upsert logic - get existing cookies or create new
         existing_cookies = db.query(UserCookies).filter(
             UserCookies.account_id == account_id
         ).first()
@@ -181,7 +181,7 @@ async def create_user_cookies(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error creating/updating cookies for account {account_id}: {e}")
+        logger.error(f"Error upserting cookies for account {account_id}: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @router.get("/{account_id}/cookies", response_model=UserCookiesResponse)
@@ -212,16 +212,28 @@ async def update_user_cookies(
     cookies_data: UserCookiesUpdate,
     db: Session = Depends(get_db)
 ):
-    """Update cookies for a user"""
+    """Update cookies for a user (creates if not exists)"""
     try:
+        # Verify account exists
+        account = db.query(Account).filter(Account.id == account_id).first()
+        if not account:
+            raise HTTPException(status_code=404, detail="Account not found")
+        
         user_cookies = db.query(UserCookies).filter(
             UserCookies.account_id == account_id
         ).first()
         
         if not user_cookies:
-            raise HTTPException(status_code=404, detail="No cookies found for this account")
+            # Create new cookies if they don't exist
+            user_cookies = UserCookies(
+                account_id=account_id,
+                cookies=cookies_data.cookies
+            )
+            db.add(user_cookies)
+        else:
+            # Update existing cookies
+            user_cookies.cookies = cookies_data.cookies
         
-        user_cookies.cookies = cookies_data.cookies
         db.commit()
         db.refresh(user_cookies)
         

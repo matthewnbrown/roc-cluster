@@ -26,3 +26,6 @@ python-multipart==0.0.6
 
 # Environment configuration
 python-dotenv==1.0.0
+
+# Tools
+numpy>=1.26.4

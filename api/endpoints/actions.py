@@ -38,6 +38,7 @@ async def attack_user(
             id_type=request.acting_user.id_type,
             id=request.acting_user.id,
             action=AccountManager.ActionType.ATTACK,
+            max_retries=request.max_retries,
             target_id=request.target_id
         )
         
@@ -62,6 +63,7 @@ async def sabotage_user(
             id_type=request.acting_user.id_type,
             id=request.acting_user.id,
             action=AccountManager.ActionType.SABOTAGE,
+            max_retries=request.max_retries,
             target_id=request.target_id
         )
         
@@ -86,6 +88,7 @@ async def spy_user(
             id_type=request.acting_user.id_type,
             id=request.acting_user.id,
             action=AccountManager.ActionType.SPY,
+            max_retries=request.max_retries,
             target_id=request.target_id
         )
         
@@ -110,6 +113,7 @@ async def become_officer(
             id_type=request.acting_user.id_type,
             id=request.acting_user.id,
             action=AccountManager.ActionType.BECOME_OFFICER,
+            max_retries=request.max_retries,
             target_id=request.target_id
         )
         
@@ -134,6 +138,7 @@ async def send_credits(
             id_type=request.acting_user.id_type,
             id=request.acting_user.id,
             action=AccountManager.ActionType.SEND_CREDITS,
+            max_retries=request.max_retries,
             target_id=request.target_id,
             amount=request.amount
         )
@@ -160,6 +165,7 @@ async def recruit_soldiers(
             id_type=request.acting_user.id_type,
             id=request.acting_user.id,
             action=AccountManager.ActionType.RECRUIT,
+            max_retries=request.max_retries,
             soldier_type=request.soldier_type,
             count=request.count
         )
@@ -185,6 +191,7 @@ async def purchase_armory(
             id_type=request.acting_user.id_type,
             id=request.acting_user.id,
             action=AccountManager.ActionType.PURCHASE_ARMORY,
+            max_retries=request.max_retries,
             items=request.items
         )
         
@@ -209,6 +216,7 @@ async def purchase_training(
             id_type=request.acting_user.id_type,
             id=request.acting_user.id,
             action=AccountManager.ActionType.PURCHASE_TRAINING,
+            max_retries=request.max_retries,
             training_type=request.training_type,
             count=request.count
         )
@@ -234,6 +242,7 @@ async def enable_credit_saving(
             id_type=request.acting_user.id_type,
             id=request.acting_user.id,
             action=AccountManager.ActionType.ENABLE_CREDIT_SAVING,
+            max_retries=request.max_retries
         )
         
         return ActionResponse(
@@ -257,6 +266,7 @@ async def purchase_upgrade(
             id_type=request.acting_user.id_type,
             id=request.acting_user.id,
             action=AccountManager.ActionType.PURCHASE_UPGRADE,
+            max_retries=request.max_retries,
             upgrade_type=request.upgrade_type
         )
         
@@ -288,6 +298,7 @@ async def execute_bulk_action(
         results = await manager.execute_bulk_action(
             request.accounts,
             request.action_type,
+            max_retries=request.max_retries,
             **kwargs
         )
         
@@ -323,6 +334,7 @@ async def execute_bulk_action(
 @router.get("/account/{account_id}/metadata")
 async def get_account_metadata(
     account_id: int,
+    max_retries: int = 0,
     manager: AccountManager = Depends(get_account_manager)
 ):
     """Get account metadata from ROC website"""
@@ -330,7 +342,8 @@ async def get_account_metadata(
         result = await manager.execute_action(
             id_type=models.AccountIdentifierType.ID,
             id=account_id,
-            action=AccountManager.ActionType.GET_METADATA)
+            action=AccountManager.ActionType.GET_METADATA,
+            max_retries=max_retries)
         
         if not result.get("success", False):
             raise HTTPException(

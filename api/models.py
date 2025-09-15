@@ -3,7 +3,7 @@ Database models and Pydantic schemas for the ROC Cluster API
 """
 
 from enum import Enum
-from sqlalchemy import Column, Integer, String, DateTime, Text, Boolean, ForeignKey
+from sqlalchemy import Column, Integer, String, DateTime, Text, Boolean, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from pydantic import BaseModel, EmailStr
@@ -65,13 +65,13 @@ class UserCookies(Base):
     __tablename__ = "user_cookies"
     
     id = Column(Integer, primary_key=True, index=True)
-    account_id = Column(Integer, ForeignKey("accounts.id"), nullable=False)
+    account_id = Column(Integer, ForeignKey("accounts.id"), nullable=False, unique=True)
     cookies = Column(Text, nullable=False)  # JSON string of cookies
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
     # Relationships
-    account = relationship("Account", back_populates="cookies")
+    account = relationship("Account", back_populates="cookies", uselist=False)
 
 # Pydantic Schemas
 class AccountBase(BaseModel):
@@ -147,6 +147,7 @@ class ActionRequest(BaseModel):
     """Base class for action requests"""
     acting_user: AccountIdentifier
     parameters: Optional[Dict[str, Any]] = None
+    max_retries: Optional[int] = 0
 
 class UserActionRequest(ActionRequest):
     """Request for actions targeting other users"""
@@ -221,6 +222,7 @@ class BulkActionRequest(BaseModel):
     action_type: str
     parameters: Optional[Dict[str, Any]] = None
     target_id: Optional[str] = None
+    max_retries: Optional[int] = 0
 
 class BulkActionResponse(BaseModel):
     """Response for bulk actions"""
@@ -229,3 +231,11 @@ class BulkActionResponse(BaseModel):
     failed: int
     results: List[BulkActionSubresponse]
     timestamp: datetime
+
+class RetryConfig(BaseModel):
+    """Configuration for request retries"""
+    max_retries: int = 0
+    retry_delay: float = 1.0  # seconds
+    backoff_factor: float = 2.0  # exponential backoff multiplier
+    retry_on_status_codes: List[int] = [500, 502, 503, 504, 429]  # HTTP status codes to retry on
+    retry_on_exceptions: List[str] = ["aiohttp.ClientError", "asyncio.TimeoutError"]  # Exception types to retry on
