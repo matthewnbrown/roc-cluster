@@ -2,7 +2,7 @@
 SQLAlchemy database models for the ROC Cluster API
 """
 
-from sqlalchemy import Column, Integer, String, DateTime, Text, Boolean, ForeignKey, UniqueConstraint
+from sqlalchemy import Column, Integer, String, DateTime, Text, Boolean, ForeignKey, UniqueConstraint, Table
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from api.database import Base
@@ -25,6 +25,7 @@ class Account(Base):
     logs = relationship("AccountLog", back_populates="account", cascade="all, delete-orphan")
     actions = relationship("AccountAction", back_populates="account", cascade="all, delete-orphan")
     cookies = relationship("UserCookies", back_populates="account", cascade="all, delete-orphan")
+    clusters = relationship("ClusterUser", back_populates="account", cascade="all, delete-orphan")
 
 
 class AccountLog(Base):
@@ -87,3 +88,36 @@ class SentCreditLog(Base):
     
     # Relationships
     sender_account = relationship("Account", foreign_keys=[sender_account_id])
+
+
+class Cluster(Base):
+    """Cluster model for grouping users"""
+    __tablename__ = "clusters"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(100), unique=True, index=True, nullable=False)
+    description = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    
+    # Relationships
+    users = relationship("ClusterUser", back_populates="cluster", cascade="all, delete-orphan")
+
+
+class ClusterUser(Base):
+    """Many-to-many relationship between clusters and users"""
+    __tablename__ = "cluster_users"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    cluster_id = Column(Integer, ForeignKey("clusters.id"), nullable=False)
+    account_id = Column(Integer, ForeignKey("accounts.id"), nullable=False)
+    added_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    # Relationships
+    cluster = relationship("Cluster", back_populates="users")
+    account = relationship("Account", back_populates="clusters")
+    
+    # Ensure unique cluster-user pairs
+    __table_args__ = (
+        UniqueConstraint('cluster_id', 'account_id', name='unique_cluster_user'),
+    )

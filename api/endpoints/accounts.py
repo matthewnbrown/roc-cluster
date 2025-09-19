@@ -8,7 +8,7 @@ from typing import List
 import logging
 
 from api.database import get_db
-from api.db_models import Account, UserCookies, SentCreditLog
+from api.db_models import Account, UserCookies, SentCreditLog, Cluster, ClusterUser
 from api.schemas import AccountCreate, AccountUpdate, AccountResponse, UserCookiesCreate, UserCookiesUpdate, UserCookiesResponse, SentCreditLogResponse, PaginatedResponse
 from api.account_manager import AccountManager
 from api.pagination import paginate_query
@@ -55,6 +55,16 @@ async def create_account(
         db.commit()
         db.refresh(db_account)
         
+        # Add new account to all_users cluster
+        all_users_cluster = db.query(Cluster).filter(Cluster.name == "all_users").first()
+        if all_users_cluster:
+            cluster_user = ClusterUser(
+                cluster_id=all_users_cluster.id,
+                account_id=db_account.id
+            )
+            db.add(cluster_user)
+            db.commit()
+            logger.info(f"Added new account {db_account.id} to all_users cluster")
         
         return AccountResponse.from_orm(db_account)
         

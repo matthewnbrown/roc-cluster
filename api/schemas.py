@@ -257,3 +257,67 @@ class CaptchaSolutionItem(BaseModel):
     x: int
     y: int
     timestamp: datetime
+
+
+# Cluster Schemas
+class ClusterBase(BaseModel):
+    name: str
+    description: Optional[str] = None
+
+
+class ClusterCreate(ClusterBase):
+    pass
+
+
+class ClusterUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+
+
+class ClusterUserResponse(BaseModel):
+    id: int
+    account_id: int
+    username: str
+    email: str
+    added_at: datetime
+    
+    class Config:
+        orm_mode = True
+
+
+class ClusterResponse(ClusterBase):
+    id: int
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    user_count: int = 0
+    users: List[ClusterUserResponse] = []
+    
+    class Config:
+        orm_mode = True
+
+
+class ClusterListResponse(ClusterBase):
+    id: int
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    user_count: int = 0
+    
+    class Config:
+        orm_mode = True
+
+
+class ClusterUserAdd(BaseModel):
+    account_ids: List[int]
+
+
+class ClusterClone(BaseModel):
+    name: str
+    description: Optional[str] = None
+    include_users: bool = True
+
+
+class ClusterSearch(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    user_count_min: Optional[int] = None
+    user_count_max: Optional[int] = None

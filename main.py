@@ -13,10 +13,10 @@ from typing import List, Dict, Any, Optional
 import logging
 
 from api.database import init_db, get_db
-from api.db_models import Account
+from api.db_models import Account, Cluster, ClusterUser
 from api.schemas import AccountCreate, AccountResponse
 from api.account_manager import AccountManager
-from api.endpoints import accounts, actions
+from api.endpoints import accounts, actions, clusters
 from api.async_logger import async_logger
 from api.captcha_feedback_service import captcha_feedback_service
 
@@ -27,6 +27,56 @@ logger = logging.getLogger(__name__)
 # Global account manager instance
 account_manager: Optional[AccountManager] = None
 
+async def create_initial_all_users_cluster():
+    """Create the initial all_users cluster and add all existing users to it"""
+    from api.database import SessionLocal
+    
+    db = SessionLocal()
+    try:
+        # Check if all_users cluster already exists
+        all_users_cluster = db.query(Cluster).filter(Cluster.name == "all_users").first()
+        
+        if not all_users_cluster:
+            # Create the all_users cluster
+            all_users_cluster = Cluster(
+                name="all_users",
+                description="Default cluster containing all users"
+            )
+            db.add(all_users_cluster)
+            db.commit()
+            db.refresh(all_users_cluster)
+            logger.info("Created all_users cluster")
+        
+        # Get all existing accounts
+        all_accounts = db.query(Account).all()
+        
+        # Add all accounts to the all_users cluster if they're not already there
+        added_count = 0
+        for account in all_accounts:
+            existing_cluster_user = db.query(ClusterUser).filter(
+                ClusterUser.cluster_id == all_users_cluster.id,
+                ClusterUser.account_id == account.id
+            ).first()
+            
+            if not existing_cluster_user:
+                cluster_user = ClusterUser(
+                    cluster_id=all_users_cluster.id,
+                    account_id=account.id
+                )
+                db.add(cluster_user)
+                added_count += 1
+        
+        if added_count > 0:
+            db.commit()
+            logger.info(f"Added {added_count} existing users to all_users cluster")
+        
+    except Exception as e:
+        logger.error(f"Error creating initial all_users cluster: {e}")
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize and cleanup resources"""
@@ -35,6 +85,10 @@ async def lifespan(app: FastAPI):
     # Initialize database
     init_db()
     logger.info("Database initialized")
+    
+    # Create initial all_users cluster
+    await create_initial_all_users_cluster()
+    logger.info("Initial all_users cluster created/verified")
     
     # Start async logger
     await async_logger.start()
@@ -89,6 +143,7 @@ app.add_middleware(
 # Include routers
 app.include_router(accounts.router, prefix="/api/v1/accounts", tags=["accounts"])
 app.include_router(actions.router, prefix="/api/v1/actions", tags=["actions"])
+app.include_router(clusters.router, prefix="/api/v1/clusters", tags=["clusters"])
 
 @app.get("/")
 async def root():
