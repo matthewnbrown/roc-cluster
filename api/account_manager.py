@@ -6,7 +6,8 @@ import asyncio
 from enum import Enum
 import logging
 from typing import Dict, List, Optional, Any
-from api.models import Account, AccountIdentifier, AccountIdentifierType
+from api.db_models import Account
+from api.schemas import AccountIdentifier, AccountIdentifierType
 from api.game_account_manager import GameAccountManager
 from config import settings
 
@@ -36,6 +37,7 @@ class AccountManager:
         ENABLE_CREDIT_SAVING = "enable_credit_saving"
         PURCHASE_UPGRADE = "purchase_upgrade"
         GET_METADATA = "get_metadata"
+        GET_SOLVED_CAPTCHAS = "get_solved_captchas"
 
 
     def __init__(self):
@@ -96,6 +98,7 @@ class AccountManager:
                     "enable_credit_saving": roc_account.enable_credit_saving,
                     "purchase_upgrade": roc_account.purchase_upgrade,
                     "get_metadata": roc_account.get_metadata,
+                    "get_solved_captchas": roc_account.get_solved_captchas,
                 }
                 
                 if action.value not in action_map:

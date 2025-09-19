@@ -5,7 +5,7 @@ Action logging wrapper for the generic async logger
 import logging
 from typing import Optional, Dict, Any
 from api.async_logger import async_logger
-from api.models import AccountAction
+from api.db_models import AccountAction
 
 logger = logging.getLogger(__name__)
 

@@ -4,7 +4,7 @@ Pagination utilities for API responses
 
 from typing import List, TypeVar, Type
 from sqlalchemy.orm import Query
-from api.models import PaginationMeta, PaginatedResponse
+from api.schemas import PaginationMeta, PaginatedResponse
 
 T = TypeVar('T')
 

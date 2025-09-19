@@ -7,9 +7,8 @@ from typing import List
 import logging
 from datetime import datetime, timezone
 
-from api import models
-from api.models import (
-    AccountIdentifier, AttackRequest, BulkActionSubresponse, SabotageRequest, SpyRequest, BecomeOfficerRequest, SendCreditsRequest,
+from api.schemas import (
+    AccountIdentifier, AccountIdentifierType, AttackRequest, BulkActionSubresponse, CaptchaSolutionItem, SabotageRequest, SpyRequest, BecomeOfficerRequest, SendCreditsRequest,
     RecruitRequest, ArmoryPurchaseRequest, TrainingPurchaseRequest, 
     EnableCreditSavingRequest, PurchaseUpgradeRequest, ActionResponse,
     BulkActionRequest, BulkActionResponse
@@ -39,7 +38,8 @@ async def attack_user(
             id=request.acting_user.id,
             action=AccountManager.ActionType.ATTACK,
             max_retries=request.max_retries,
-            target_id=request.target_id
+            target_id=request.target_id,
+            turns=request.turns
         )
         
         return ActionResponse(
@@ -64,7 +64,9 @@ async def sabotage_user(
             id=request.acting_user.id,
             action=AccountManager.ActionType.SABOTAGE,
             max_retries=request.max_retries,
-            target_id=request.target_id
+            target_id=request.target_id,
+            spies=request.spies,
+            enemy_weapon=request.enemy_weapon
         )
         
         return ActionResponse(
@@ -89,7 +91,8 @@ async def spy_user(
             id=request.acting_user.id,
             action=AccountManager.ActionType.SPY,
             max_retries=request.max_retries,
-            target_id=request.target_id
+            target_id=request.target_id,
+            spy_count=request.spy_count
         )
         
         return ActionResponse(
@@ -280,6 +283,30 @@ async def purchase_upgrade(
         logger.error(f"Error in purchase upgrade action: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
+@router.get("/{account_id}/solved-captchas", response_model=List[CaptchaSolutionItem])
+async def get_solved_captchas(
+    account_id: int,
+    count: int = 1,
+    min_confidence: float = 0,
+    manager: AccountManager = Depends(get_account_manager)
+):
+    """Get solved captchas"""
+    try:    
+        result = await manager.execute_action(
+            id_type=AccountIdentifierType.ID,
+            id=account_id,
+            action=AccountManager.ActionType.GET_SOLVED_CAPTCHAS,
+            count=count,
+            min_confidence=min_confidence
+        )
+        
+        return result
+    
+    except Exception as e:
+        logger.error(f"Error getting solved captchas: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
 # Bulk Actions
 @router.post("/bulk", response_model=BulkActionResponse)
 async def execute_bulk_action(
@@ -340,7 +367,7 @@ async def get_account_metadata(
     """Get account metadata from ROC website"""
     try:
         result = await manager.execute_action(
-            id_type=models.AccountIdentifierType.ID,
+            id_type=AccountIdentifierType.ID,
             id=account_id,
             action=AccountManager.ActionType.GET_METADATA,
             max_retries=max_retries)

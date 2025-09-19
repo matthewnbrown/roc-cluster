@@ -3,11 +3,12 @@ Manages a single ROC account session
 """
 
 
+from enum import Enum
 import logging
 import os
 import random
 
-from typing import Optional, Tuple
+from typing import Awaitable, Callable, List, Optional, Tuple
 from urllib.parse import urljoin
 import json
 import aiohttp
@@ -18,10 +19,11 @@ from typing import Dict, Any
 from bs4 import BeautifulSoup
 from sqlalchemy import false
 
-from api.models import Account, AccountMetadata
+from api.db_models import Account, UserCookies
+from api.page_parsers.spy_parser import parse_recon_data
+from api.schemas import AccountMetadata, CaptchaSolutionItem
 from api.captcha import Captcha, CaptchaSolver, CaptchaKeypadSelector
 from api.database import SessionLocal
-from api.models import Account, AccountMetadata, UserCookies
 from api.rocurlgenerator import ROCDecryptUrlGenerator
 from api.credit_logger import credit_logger
 from api.captcha_feedback_service import captcha_feedback_service
@@ -30,8 +32,21 @@ from config import settings
 
 logger = logging.getLogger(__name__)
 
+class PageSubmit(Enum):
+    TRAINING = "Train+Soldiers"
+    RECRUIT = "Recruit"
+    ARMORY = "Sell/Buy+Weapons"
+    ATTACK = "Attack"
+    PROBE = "Probe"
+    SPY = "Recon"
+    SABOTAGE = "Sabotage"
+
+
 class GameAccountManager:
     """Manages a single ROC account session"""
+
+
+    
     def __init__(self, account: Account, max_retries: int = 0):
         self.account = account
         self.last_metadata_update = None
@@ -42,6 +57,7 @@ class GameAccountManager:
         self._is_logged_in = False
         self.captcha_solver = CaptchaSolver(solver_url=settings.CAPTCHA_SOLVER_URL, report_url=settings.CAPTCHA_REPORT_URL, max_retries=max_retries)
         self.max_retries = max_retries
+        self.use_captcha = False
 
     @property
     def is_logged_in(self) -> bool:
@@ -57,12 +73,41 @@ class GameAccountManager:
         
         if submit_url == self.url_generator.send_credits():
             return page_text.find('<td colspan="2" class="error">Wrong number</td>') == -1
+        elif self.url_generator.spy() in submit_url \
+             or self.url_generator.attack() in submit_url \
+             or self.url_generator.sabotage() in submit_url:
+            return page_text.find('>Wrong number<') == -1
         else:
             raise Exception("Unknown submit url")
         
+    async def get_solved_captchas(self, count: int = 1, min_confidence: float = 0, page_name = 'roc_armory') -> List[CaptchaSolutionItem]:
+        """Get solved captchas"""
+        try:
+            results = []
+            keypad_selector = CaptchaKeypadSelector()
+            
+            while len(results) < count:
+                captcha = await self._get_captcha()
+                _, confidence, _ = await self.captcha_solver.solve(captcha)
+                if confidence >= min_confidence:
+                    coords = keypad_selector.get_xy_static(captcha.ans, page_name)
+                    results.append({
+                        "account_id": self.account.id,
+                        "hash": captcha.hash,
+                        "answer": captcha.ans,
+                        "x": coords[0],
+                        "y": coords[1],
+                        "timestamp": datetime.now(timezone.utc)
+                    })
+                else:
+                    logger.info(f"Ignoring captcha {captcha.hash} because it was incorrect with confidence {confidence}")
+            
+            return results
+        except Exception as e:
+            logger.error(f"Failed to get solved captchas: {e}")
+            return []
     
     async def _get_captcha(self, page_text: str = None) -> Captcha:
-        """Extract captcha from response"""
         try:
             
             if page_text is None:
@@ -130,14 +175,14 @@ class GameAccountManager:
         keypad_selector = CaptchaKeypadSelector()
         
         try:
-            coords = keypad_selector.get_xy_static(captcha.ans, page_name)
-            ans, _, request_id = await self.captcha_solver.solve(captcha)
-            data["num"] = ans
-            data["coordinates[x]"] = coords[0]
-            data["coordinates[y]"] = coords[1]
-            data["captcha"] = captcha.hash
-            captcha.ans = ans
-            
+            # coords = keypad_selector.get_xy_static(captcha.ans, page_name)
+            # ans, _, request_id = await self.captcha_solver.solve(captcha)
+            # data["num"] = ans
+            # data["coordinates[x]"] = coords[0]
+            # data["coordinates[y]"] = coords[1]
+            # data["captcha"] = captcha.hash
+            # captcha.ans = ans
+            request_id = ""
             return await self.session.post(url, data=data), request_id
         except Exception as e:
             logger.error(f"Failed to submit captcha: {e}")
@@ -192,6 +237,15 @@ class GameAccountManager:
     def __check_logged_in(self, page_text: str) -> bool:
         """Check if the account is logged in"""
         return page_text.find('<form action="login.php" method="post">') == -1
+
+    
+    async def __submit_with_captcha(self, url: str, data: Dict[str, Any], page_name: PageSubmit) -> aiohttp.ClientResponse:
+        """[Untested]Submits a form with a captcha"""
+        captcha = await self._get_captcha()
+        if not captcha:
+            return None
+        
+        return await self.submit_captca(url, data, captcha, page_name)
     
     async def login_if_needed(self, current_page: str | None = None) -> bool:
         """Login if the account is not logged in"""
@@ -349,20 +403,65 @@ class GameAccountManager:
             logger.error(f"Failed to get metadata for {self.account.username}: {e}")
             return None
     
-    async def attack(self, target_id: str) -> Dict[str, Any]:
+    async def attack(self, target_id: str, turns: int = -1) -> Dict[str, Any]:
         """Attack another user"""
-        if not self.is_logged_in:
-            return {"success": False, "error": "Not logged in"}
-            
+
+        if turns < 1 or turns > 12:
+            return {"success": False, "error": "Turn count must be between 1 and 12"}
+
         try:
-            # Implement attack logic
-            # This is a placeholder
-            return {"success": True, "message": f"Attacked user {target_id}"}
+            spy_url = self.url_generator.attack(target_id)
+            
+            payload = {
+                "defender_id": target_id,
+                "mission_type": "attack",
+                "turns": turns
+            }
+            
+            results = []
+            
+            async def _submit():                
+                return await self.__submit_page(spy_url, payload, PageSubmit.ATTACK)
+
+            for i in range(self.max_retries+1):
+                result = await self.__retry_login_wrapper(_submit)
+            
+                if 'detail.php' not in result.url.path:
+                    return {"success": False, "error": "Unknown error. No captcha error, but not on attack detail url"}
+                
+                page_text = await result.text()
+                if 'You Get Nothing' in page_text:
+                    return {"success": False, "error": "Enemy defended"}
+                elif 'ribbon won' in page_text:
+                    soup = BeautifulSoup(page_text, 'html.parser')
+                    won_ribbon = soup.find('div', class_='ribbon won')
+                    if won_ribbon:
+                        gold_span = won_ribbon.find('span', class_='gold')
+                        gold = gold_span.text
+                        return {"success": True, "message": f"Defeated {target_id} for {gold} gold"}
+                    else:
+                        return {"success": False, "error": "Unknown error. No gold found"}
+                
+                return {"success": False, "message": "Unknown error. Could not determine result"}
+
+            
+            results_str = "\n".join([f"{i+1}. {result.get('error', 'Unknown error')}" for i, result in enumerate(results)])
+            return {"success": False, "error": "Failed to spy on user:\n" + results_str}
+
         except Exception as e:
             return {"success": False, "error": str(e)}
     
-    async def sabotage(self, target_id: str) -> Dict[str, Any]:
-        """Sabotage another user"""
+    async def sabotage(self, target_id: str, spy_count: int = 1, enemy_weapon: int = 1) -> Dict[str, Any]:
+        """Sabotage another user
+        
+        Args:
+            target_id: The ID of the user to sabotage
+            spy_count: Number of spies to send (default: 1)
+            enemy_weapon: Weapon ID to sabotage (default: 1)
+            
+        Returns:
+            Dict containing success status and sabotage result or error message
+        """
         if not self.is_logged_in:
             return {"success": False, "error": "Not logged in"}
             
@@ -372,14 +471,79 @@ class GameAccountManager:
         except Exception as e:
             return {"success": False, "error": str(e)}
     
-    async def spy(self, target_id: str) -> Dict[str, Any]:
-        """Spy on another user"""
-        if not self.is_logged_in:
-            return {"success": False, "error": "Not logged in"}
+    async def __retry_login_wrapper(self, func: Callable[[], Awaitable[aiohttp.ClientResponse]]) -> bool:
+        """ Attempts a ROC action, if it fails due to login, it will retry the action after logging in"""
+
+        result = await func()
+        
+        text = await result.text()
+        if not self.__check_logged_in(text):
+            await self.login()
+            result = await func()
+            text = await result.text()
+            if not self.__check_logged_in(text):
+                raise Exception("Failed to login")
+        
+        return result
+    
+    async def __submit_page(self, url: str, data: Dict[str, Any], page_submit: PageSubmit) -> aiohttp.ClientResponse:
+        """Submits a page"""
+        data["submit"] = page_submit.value
+        
+        if self.use_captcha: # [Untested]
+            return await self.__submit_with_captcha(url, data, page_submit)
+        
+        async with self.session.post(url, data=data) as response:
+            _ = await response.read()
+            return response
             
+    
+    async def spy(self, target_id: str, spy_count: int = 1) -> Dict[str, Any]:
+        """Spy on another user
+        
+        Args:
+            target_id: The ID of the user to spy on
+            spy_count: Number of spies to send (1-25, default: 1)
+            
+        Returns:
+            Dict containing success status and spy data or error message
+        """
+
+        if spy_count < 1 or spy_count > 25:
+            return {"success": False, "error": "Spy count must be between 1 and 25"}
+
         try:
-            # Implement spy logic
-            return {"success": True, "message": f"Spied on user {target_id}"}
+            spy_url = self.url_generator.spy(target_id)
+            
+            payload = {
+                "defender_id": target_id,
+                "mission_type": "recon",
+                "reconspies": spy_count
+            }
+            
+            results = []
+            
+            async def _submit_spy():                
+                return await self.__submit_page(spy_url, payload, PageSubmit.SPY)
+
+            for i in range(self.max_retries+1):
+                result = await self.__retry_login_wrapper(_submit_spy)
+            
+                if 'inteldetail' not in result.url.path:
+                    return {"success": False, "error": "Unknown error. No captcha error, but not on intel url"}
+                
+                page_text = await result.text()
+                if 'As they approach, an alarm is cried out by enemy sentries' in page_text:
+                    return {"success": False, "error": "Enemy sentries detected"}
+                data = parse_recon_data(page_text)
+                if data["success"]:
+                    return {"success": True, "data": data}
+                else:
+                    return {"success": False, "error": data["error"]}
+            
+            results_str = "\n".join([f"{i+1}. {result.get('error', 'Unknown error')}" for i, result in enumerate(results)])
+            return {"success": False, "error": "Failed to spy on user:\n" + results_str}
+
         except Exception as e:
             return {"success": False, "error": str(e)}
     
@@ -412,16 +576,17 @@ class GameAccountManager:
             send_url = self.url_generator.send_credits()
 
             async def _submit_credits():
-                captcha = await self._get_captcha()
-                if not captcha:
-                    return {"success": False, "error": "Failed to get captcha"}
+                # captcha = await self._get_captcha()
+                # if not captcha:
+                #     return {"success": False, "error": "Failed to get captcha"}
                 
-                logger.info(f"Got captcha {captcha.hash}")
-                
+                # logger.info(f"Got captcha {captcha.hash}")
+                captcha = Captcha(hash="", img=None, ans="")
                 payload = {
                     "to": target_id,
                     "amount": amount,
                     "comment": "",
+                    "submit": "Send+Credits"
                 }
                 
                 if dry_run:
@@ -429,18 +594,20 @@ class GameAccountManager:
                 
                 captcha_response, request_id = await self.submit_captca(send_url, payload, captcha)
                 page_text = await captcha_response.text()
-                correct = self.__was_captcha_correct(page_text, send_url)
-
-                if correct and captcha_response.url != self.url_generator.base():
-                    return {"success": False, "error": "Unknown error. No captcha error, but not on base url"}
+                # correct = self.__was_captcha_correct(page_text, send_url)
+                correct = True
+                path = captcha_response.url.path
+                if correct and path not in self.url_generator.base():
+                    
+                    return {"success": False, "error": "Unknown error. No captcha error, but not on base url. " + captcha_response.url}
                 
                 if correct:
-                    await captcha_feedback_service.report_feedback(
-                        account_id=self.account.id,
-                        captcha=captcha,
-                        request_id=request_id,
-                        was_correct=True
-                    )
+                    # await captcha_feedback_service.report_feedback(
+                    #     account_id=self.account.id,
+                    #     captcha=captcha,
+                    #     request_id=request_id,
+                    #     was_correct=True
+                    # )
                     await credit_logger.log_credit_attempt(
                         sender_account_id=self.account.id,
                         target_user_id=target_id,

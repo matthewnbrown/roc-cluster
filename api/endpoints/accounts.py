@@ -8,7 +8,8 @@ from typing import List
 import logging
 
 from api.database import get_db
-from api.models import Account, AccountCreate, AccountUpdate, AccountResponse, UserCookies, UserCookiesCreate, UserCookiesUpdate, UserCookiesResponse, SentCreditLog, SentCreditLogResponse, PaginatedResponse
+from api.db_models import Account, UserCookies, SentCreditLog
+from api.schemas import AccountCreate, AccountUpdate, AccountResponse, UserCookiesCreate, UserCookiesUpdate, UserCookiesResponse, SentCreditLogResponse, PaginatedResponse
 from api.account_manager import AccountManager
 from api.pagination import paginate_query
 

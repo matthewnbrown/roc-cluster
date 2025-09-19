@@ -13,7 +13,8 @@ from typing import List, Dict, Any, Optional
 import logging
 
 from api.database import init_db, get_db
-from api.models import Account, AccountCreate, AccountResponse
+from api.db_models import Account
+from api.schemas import AccountCreate, AccountResponse
 from api.account_manager import AccountManager
 from api.endpoints import accounts, actions
 from api.async_logger import async_logger

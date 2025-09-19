@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 
 # Import our models and database
 from api.database import SessionLocal, init_db
-from api.models import Account
+from api.db_models import Account
 
 # Configure logging
 logging.basicConfig(

@@ -5,7 +5,7 @@ Credit logging wrapper for the generic async logger
 import logging
 from typing import Optional
 from api.async_logger import async_logger
-from api.models import SentCreditLog
+from api.db_models import SentCreditLog
 
 logger = logging.getLogger(__name__)
 

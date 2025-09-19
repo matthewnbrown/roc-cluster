@@ -21,7 +21,8 @@ class ROCDecryptUrlGenerator():
             "roc_keep": self._rocburl + "keep.php",
             "roc_upgrade": self._rocburl + "upgrades.php",
             "roc_commander_change": self._rocburl + "commander_change.php",
-            "roc_send_credits": self._rocburl + "sendcredits.php"
+            "roc_send_credits": self._rocburl + "sendcredits.php",
+            "roc_intel_detail": self._rocburl + "intel_detail.php"
         }
 
     def get_page_url(self, page: str) -> str:
@@ -61,33 +62,18 @@ class ROCDecryptUrlGenerator():
  
     def offensive_action(self, id: str) -> str:
         # MetaData page with the offensive action options
-        return self.get_home() + f"attack.php?id={id}"
+        return self.home() + f"attack.php?id={id}"
     
     def attack(self, id: str) -> str:
-        # extra form data
-        # defender_id = <target id>
-        # missiontype = "attack"
-        # attacks = <numattacks>
-        return self.get_home() + f"attack.php"
+        return self.home() + f"attack.php"
+
     def spy(self, id: str) -> str:
-        # Extra Form Data
-        # missiontype = "Recon"
-        # reconspies = <numspies>
-        return self.get_attack(id)
+        return self.attack(id)
     
     def sabotage(self, id: str) -> str:
-        # Extra Form Data
-        # missiontype = "sabotage"
-        # sabspies = <numspies>
-        # enemy_weapon = <weaponid>
-        return self.get_attack(id)
-    
-    # new commander ID is used when you want to load the page with a new commander ID
-    # for the actual POST request to change, do not use new_commander_id, include it in the form data
+        return self.attack(id)
+
     def commander_change(self, id: str, new_commander_id: Optional[str]) -> str:
-        # Extra Form Data
-        # new_commander_id = <target id>
-        
         if new_commander_id:
             new_commander_id = html.escape(new_commander_id)
             return self.get_page_url("roc_commander_change") + f"?new_commander_id={new_commander_id}"
@@ -95,13 +81,15 @@ class ROCDecryptUrlGenerator():
             return self.get_page_url("roc_commander_change")
     
     def send_credits(self, target_id: str | None = None) -> str:
-        # Extra Form Data
-        # to = <target id>
-        # comment = <comment>
-        # amount = <amount>
-        # targetid is optional, its just used for the gui page
         if target_id:
             target_id = html.escape(target_id)
             return self.get_page_url("roc_send_credits") + f"?to={target_id}"
         else:
             return self.get_page_url("roc_send_credits")
+        
+    def intel_detail(self, report_id: str | None = None) -> str:
+        if report_id:
+            report_id = html.escape(report_id)
+            return self.get_page_url("roc_intel_detail") + f"?report_id={report_id}"
+        else:
+            return self.get_page_url("roc_intel_detail")
