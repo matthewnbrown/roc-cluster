@@ -34,9 +34,260 @@ class JobManager:
         except ValueError:
             return False
     
-    def _get_valid_action_types(self) -> List[str]:
-        """Get list of valid action type strings"""
-        return [action_type.value for action_type in self.account_manager.ActionType]
+    def _get_valid_action_types(self) -> List[Dict[str, Any]]:
+        """Get detailed information about valid action types"""
+        action_metadata = {
+            "attack": {
+                "description": "Attack another user with specified number of turns",
+                "category": "user_action",
+                "required_parameters": ["target_id", "turns"],
+                "optional_parameters": [],
+                "parameter_details": {
+                    "target_id": {
+                        "type": "string",
+                        "description": "ROC ID of the target user to attack"
+                    },
+                    "turns": {
+                        "type": "integer",
+                        "description": "Number of turns to use for the attack (default: 12)",
+                        "default": 12
+                    }
+                },
+                "output": {
+                    "success": "boolean",
+                    "message": "string (optional)",
+                    "data": "object (optional) - contains attack results",
+                    "error": "string (optional)"
+                }
+            },
+            "sabotage": {
+                "description": "Sabotage another user's operations",
+                "category": "user_action",
+                "required_parameters": ["target_id"],
+                "optional_parameters": ["spy_count", "enemy_weapon"],
+                "parameter_details": {
+                    "target_id": {
+                        "type": "string",
+                        "description": "ROC ID of the target user to sabotage"
+                    },
+                    "spy_count": {
+                        "type": "integer",
+                        "description": "Number of spies to use (default: 1)",
+                        "default": 1
+                    },
+                    "enemy_weapon": {
+                        "type": "integer",
+                        "description": "Enemy weapon type to use (default: 1)",
+                        "default": 1
+                    }
+                },
+                "output": {
+                    "success": "boolean",
+                    "message": "string (optional)",
+                    "data": "object (optional) - contains sabotage results",
+                    "error": "string (optional)"
+                }
+            },
+            "spy": {
+                "description": "Spy on another user to gather intelligence",
+                "category": "user_action",
+                "required_parameters": ["target_id"],
+                "optional_parameters": ["spy_count"],
+                "parameter_details": {
+                    "target_id": {
+                        "type": "string",
+                        "description": "ROC ID of the target user to spy on"
+                    },
+                    "spy_count": {
+                        "type": "integer",
+                        "description": "Number of spies to use (default: 1)",
+                        "default": 1
+                    }
+                },
+                "output": {
+                    "success": "boolean",
+                    "message": "string (optional)",
+                    "data": "object (optional) - contains spy intelligence data",
+                    "error": "string (optional)"
+                }
+            },
+            "become_officer": {
+                "description": "Attempt to become an officer of another user",
+                "category": "user_action",
+                "required_parameters": ["target_id"],
+                "optional_parameters": [],
+                "parameter_details": {
+                    "target_id": {
+                        "type": "string",
+                        "description": "ROC ID of the target user to become officer for"
+                    }
+                },
+                "output": {
+                    "success": "boolean",
+                    "message": "string (optional)",
+                    "data": "object (optional) - contains officer status",
+                    "error": "string (optional)"
+                }
+            },
+            "send_credits": {
+                "description": "Send credits to another user",
+                "category": "user_action",
+                "required_parameters": ["target_id", "amount"],
+                "optional_parameters": [],
+                "parameter_details": {
+                    "target_id": {
+                        "type": "string",
+                        "description": "ROC ID of the target user to send credits to"
+                    },
+                    "amount": {
+                        "type": "string",
+                        "description": "Amount of credits to send"
+                    }
+                },
+                "output": {
+                    "success": "boolean",
+                    "message": "string (optional)",
+                    "data": "object (optional) - contains transaction details",
+                    "error": "string (optional)"
+                }
+            },
+            "recruit": {
+                "description": "Recruit soldiers for the account",
+                "category": "self_action",
+                "required_parameters": [],
+                "optional_parameters": [],
+                "parameter_details": {},
+                "output": {
+                    "success": "boolean",
+                    "message": "string (optional)",
+                    "data": "object (optional) - contains recruitment results",
+                    "error": "string (optional)"
+                }
+            },
+            "purchase_armory": {
+                "description": "Purchase items from the armory",
+                "category": "self_action",
+                "required_parameters": ["items"],
+                "optional_parameters": [],
+                "parameter_details": {
+                    "items": {
+                        "type": "object",
+                        "description": "Dictionary of item_name: quantity pairs to purchase"
+                    }
+                },
+                "output": {
+                    "success": "boolean",
+                    "message": "string (optional)",
+                    "data": "object (optional) - contains purchase details",
+                    "error": "string (optional)"
+                }
+            },
+            "purchase_training": {
+                "description": "Purchase training for the account",
+                "category": "self_action",
+                "required_parameters": ["training_type", "count"],
+                "optional_parameters": [],
+                "parameter_details": {
+                    "training_type": {
+                        "type": "string",
+                        "description": "Type of training to purchase"
+                    },
+                    "count": {
+                        "type": "integer",
+                        "description": "Number of training sessions to purchase"
+                    }
+                },
+                "output": {
+                    "success": "boolean",
+                    "message": "string (optional)",
+                    "data": "object (optional) - contains training purchase details",
+                    "error": "string (optional)"
+                }
+            },
+            "enable_credit_saving": {
+                "description": "Enable credit saving feature for the account",
+                "category": "self_action",
+                "required_parameters": [],
+                "optional_parameters": [],
+                "parameter_details": {},
+                "output": {
+                    "success": "boolean",
+                    "message": "string (optional)",
+                    "data": "object (optional) - contains saving status",
+                    "error": "string (optional)"
+                }
+            },
+            "purchase_upgrade": {
+                "description": "Purchase an upgrade for the account",
+                "category": "self_action",
+                "required_parameters": ["upgrade_type"],
+                "optional_parameters": [],
+                "parameter_details": {
+                    "upgrade_type": {
+                        "type": "string",
+                        "description": "Type of upgrade to purchase"
+                    }
+                },
+                "output": {
+                    "success": "boolean",
+                    "message": "string (optional)",
+                    "data": "object (optional) - contains upgrade details",
+                    "error": "string (optional)"
+                }
+            },
+            "get_metadata": {
+                "description": "Retrieve account metadata and current status",
+                "category": "info_action",
+                "required_parameters": [],
+                "optional_parameters": [],
+                "parameter_details": {},
+                "output": {
+                    "success": "boolean",
+                    "message": "string (optional)",
+                    "data": "object (optional) - contains account metadata",
+                    "error": "string (optional)"
+                }
+            },
+            "get_solved_captchas": {
+                "description": "Retrieve solved captcha data for the account",
+                "category": "info_action",
+                "required_parameters": [],
+                "optional_parameters": ["count", "min_confidence"],
+                "parameter_details": {
+                    "count": {
+                        "type": "integer",
+                        "description": "Number of captchas to retrieve (default: 1)",
+                        "default": 1
+                    },
+                    "min_confidence": {
+                        "type": "float",
+                        "description": "Minimum confidence threshold (default: 0)",
+                        "default": 0
+                    }
+                },
+                "output": {
+                    "success": "boolean",
+                    "message": "string (optional)",
+                    "data": "array (optional) - contains captcha solution items",
+                    "error": "string (optional)"
+                }
+            }
+        }
+        
+        result = []
+        for action_type in self.account_manager.ActionType:
+            action_info = action_metadata.get(action_type.value, {})
+            result.append({
+                "action_type": action_type.value,
+                "description": action_info.get("description", "No description available"),
+                "category": action_info.get("category", "unknown"),
+                "required_parameters": action_info.get("required_parameters", []),
+                "optional_parameters": action_info.get("optional_parameters", []),
+                "parameter_details": action_info.get("parameter_details", {}),
+                "output": action_info.get("output", {})
+            })
+        
+        return result
     
     def _expand_clusters_to_accounts(self, cluster_ids: List[int], db: Session) -> List[int]:
         """Expand cluster IDs to individual account IDs"""

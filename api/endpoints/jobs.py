@@ -100,12 +100,28 @@ async def list_jobs(
 async def get_valid_action_types(
     manager: JobManager = Depends(get_job_manager)
 ):
-    """Get list of valid action types for job steps"""
+    """Get detailed information about valid action types for job steps"""
     try:
-        valid_types = manager._get_valid_action_types()
+        action_types = manager._get_valid_action_types()
+        
+        # Group by category for better organization
+        categories = {}
+        for action_type in action_types:
+            category = action_type.get("category", "unknown")
+            if category not in categories:
+                categories[category] = []
+            categories[category].append(action_type)
+        
         return {
-            "valid_action_types": valid_types,
-            "count": len(valid_types)
+            "action_types": action_types,
+            "categories": categories,
+            "summary": {
+                "total_action_types": len(action_types),
+                "categories": list(categories.keys()),
+                "user_actions": len([a for a in action_types if a.get("category") == "user_action"]),
+                "self_actions": len([a for a in action_types if a.get("category") == "self_action"]),
+                "info_actions": len([a for a in action_types if a.get("category") == "info_action"])
+            }
         }
     except Exception as e:
         logger.error(f"Error getting valid action types: {e}")
