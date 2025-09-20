@@ -96,6 +96,22 @@ async def list_jobs(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
+@router.get("/valid-action-types")
+async def get_valid_action_types(
+    manager: JobManager = Depends(get_job_manager)
+):
+    """Get list of valid action types for job steps"""
+    try:
+        valid_types = manager._get_valid_action_types()
+        return {
+            "valid_action_types": valid_types,
+            "count": len(valid_types)
+        }
+    except Exception as e:
+        logger.error(f"Error getting valid action types: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
 @router.get("/{job_id}", response_model=JobResponse)
 async def get_job(
     job_id: int,
@@ -166,20 +182,4 @@ async def get_job_status(
         raise
     except Exception as e:
         logger.error(f"Error getting job status {job_id}: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
-
-
-@router.get("/valid-action-types")
-async def get_valid_action_types(
-    manager: JobManager = Depends(get_job_manager)
-):
-    """Get list of valid action types for job steps"""
-    try:
-        valid_types = manager._get_valid_action_types()
-        return {
-            "valid_action_types": valid_types,
-            "count": len(valid_types)
-        }
-    except Exception as e:
-        logger.error(f"Error getting valid action types: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
