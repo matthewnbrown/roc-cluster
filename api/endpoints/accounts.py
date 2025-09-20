@@ -341,3 +341,37 @@ async def get_all_credit_logs(
         logger.error(f"Error getting all credit logs: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
+@router.get("/{account_id}/clusters", response_model=List[dict])
+async def get_account_clusters(
+    account_id: int,
+    db: Session = Depends(get_db)
+):
+    """Get all clusters that an account belongs to"""
+    try:
+        # Verify account exists
+        account = db.query(Account).filter(Account.id == account_id).first()
+        if not account:
+            raise HTTPException(status_code=404, detail="Account not found")
+        
+        # Get clusters for this account
+        cluster_users = db.query(ClusterUser, Cluster).join(
+            Cluster, ClusterUser.cluster_id == Cluster.id
+        ).filter(ClusterUser.account_id == account_id).all()
+        
+        clusters = []
+        for cluster_user, cluster in cluster_users:
+            clusters.append({
+                "id": cluster.id,
+                "name": cluster.name,
+                "description": cluster.description,
+                "added_at": cluster_user.added_at.isoformat() if cluster_user.added_at else None
+            })
+        
+        return clusters
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting clusters for account {account_id}: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
