@@ -4,7 +4,7 @@ import { ClusterListResponse } from '../types/api';
 import { Table, TableHeader, TableBody, TableRow, TableCell } from './ui/Table';
 import Button from './ui/Button';
 import Pagination from './ui/Pagination';
-import { Plus, Edit, Trash2, Eye, Search, Users, Copy } from 'lucide-react';
+import { Plus, Edit, Trash2, Eye, Search, Users, Copy, Shield } from 'lucide-react';
 import Input from './ui/Input';
 import ClusterTag from './ui/ClusterTag';
 
@@ -124,6 +124,11 @@ const ClusterList: React.FC<ClusterListProps> = ({
                     <TableCell>
                       <div className="flex items-center gap-2">
                         <ClusterTag name={cluster.name} size="sm" />
+                        {cluster.name === "all_users" && (
+                          <div title="System cluster - cannot be deleted">
+                            <Shield className="h-4 w-4 text-blue-500" />
+                          </div>
+                        )}
                       </div>
                     </TableCell>
                     <TableCell className="truncate max-w-xs">
@@ -167,16 +172,18 @@ const ClusterList: React.FC<ClusterListProps> = ({
                         >
                           <Copy className="h-5 w-5" />
                         </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleDeleteCluster(cluster)}
-                          className="p-2 h-10 w-10 text-red-600 hover:text-red-700"
-                          loading={deleteClusterMutation.isLoading}
-                          title="Delete cluster"
-                        >
-                          <Trash2 className="h-5 w-5" />
-                        </Button>
+                        {cluster.name !== "all_users" && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleDeleteCluster(cluster)}
+                            className="p-2 h-10 w-10 text-red-600 hover:text-red-700"
+                            loading={deleteClusterMutation.isLoading}
+                            title="Delete cluster"
+                          >
+                            <Trash2 className="h-5 w-5" />
+                          </Button>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>

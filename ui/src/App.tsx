@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { QueryClient, QueryClientProvider } from 'react-query';
-import { Account, ClusterListResponse, ClusterResponse } from './types/api';
+import { Account, ClusterListResponse, ClusterResponse, JobResponse } from './types/api';
 import AccountList from './components/AccountList';
 import AccountForm from './components/AccountForm';
 import AccountDetails from './components/AccountDetails';
@@ -8,6 +8,9 @@ import ClusterList from './components/ClusterList';
 import ClusterForm from './components/ClusterForm';
 import ClusterDetails from './components/ClusterDetails';
 import ClusterCloneForm from './components/ClusterCloneForm';
+import JobList from './components/JobList';
+import JobForm from './components/JobForm';
+import JobDetails from './components/JobDetails';
 
 // Create a client
 const queryClient = new QueryClient({
@@ -19,12 +22,13 @@ const queryClient = new QueryClient({
   },
 });
 
-type ViewState = 'accounts' | 'account-details' | 'account-create' | 'account-edit' | 'clusters' | 'cluster-details' | 'cluster-create' | 'cluster-edit' | 'cluster-clone';
+type ViewState = 'accounts' | 'account-details' | 'account-create' | 'account-edit' | 'clusters' | 'cluster-details' | 'cluster-create' | 'cluster-edit' | 'cluster-clone' | 'jobs' | 'job-details' | 'job-create';
 
 interface AppState {
   view: ViewState;
   selectedAccount?: Account;
   selectedCluster?: ClusterListResponse | ClusterResponse;
+  selectedJob?: JobResponse;
 }
 
 const App: React.FC = () => {
@@ -32,6 +36,8 @@ const App: React.FC = () => {
   const [accountFormModalOpen, setAccountFormModalOpen] = useState(false);
   const [clusterFormModalOpen, setClusterFormModalOpen] = useState(false);
   const [clusterCloneModalOpen, setClusterCloneModalOpen] = useState(false);
+  const [jobFormModalOpen, setJobFormModalOpen] = useState(false);
+  const [jobToClone, setJobToClone] = useState<JobResponse | null>(null);
 
   // Account handlers
   const handleViewAccount = (account: Account) => {
@@ -68,6 +74,23 @@ const App: React.FC = () => {
     setClusterCloneModalOpen(true);
   };
 
+  // Job handlers
+  const handleViewJob = (job: JobResponse) => {
+    setAppState({ view: 'job-details', selectedJob: job });
+  };
+
+  const handleCreateJob = () => {
+    setAppState({ view: 'job-create' });
+    setJobFormModalOpen(true);
+    setJobToClone(null);
+  };
+
+  const handleCloneJob = (job: JobResponse) => {
+    setAppState({ view: 'job-create' });
+    setJobFormModalOpen(true);
+    setJobToClone(job);
+  };
+
   // Navigation handlers
   const handleBackToAccounts = () => {
     setAppState({ view: 'accounts' });
@@ -77,12 +100,20 @@ const App: React.FC = () => {
     setAppState({ view: 'clusters' });
   };
 
+  const handleBackToJobs = () => {
+    setAppState({ view: 'jobs' });
+  };
+
   const handleShowClusters = () => {
     setAppState({ view: 'clusters' });
   };
 
   const handleShowAccounts = () => {
     setAppState({ view: 'accounts' });
+  };
+
+  const handleShowJobs = () => {
+    setAppState({ view: 'jobs' });
   };
 
   // Form close handlers
@@ -99,6 +130,12 @@ const App: React.FC = () => {
   const handleClusterCloneClose = () => {
     setClusterCloneModalOpen(false);
     setAppState({ view: 'clusters' });
+  };
+
+  const handleJobFormClose = () => {
+    setJobFormModalOpen(false);
+    setJobToClone(null);
+    setAppState({ view: 'jobs' });
   };
 
   const renderContent = () => {
@@ -137,6 +174,21 @@ const App: React.FC = () => {
             onCloneCluster={handleCloneCluster}
           />
         ) : null;
+      case 'jobs':
+        return (
+          <JobList
+            onViewJob={handleViewJob}
+            onCreateJob={handleCreateJob}
+            onCloneJob={handleCloneJob}
+          />
+        );
+      case 'job-details':
+        return appState.selectedJob ? (
+          <JobDetails
+            jobId={appState.selectedJob.id}
+            onBack={handleBackToJobs}
+          />
+        ) : null;
       default:
         return null;
     }
@@ -152,30 +204,40 @@ const App: React.FC = () => {
               <div className="flex items-center">
                 <h1 className="text-3xl font-bold text-gray-900">ROC Cluster Management</h1>
               </div>
-              <div className="flex items-center space-x-4">
-                <nav className="flex space-x-4">
-                  <button
-                    onClick={handleShowAccounts}
-                    className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                      appState.view.startsWith('account')
-                        ? 'bg-primary-100 text-primary-700'
-                        : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
-                    }`}
-                  >
-                    Accounts
-                  </button>
-                  <button
-                    onClick={handleShowClusters}
-                    className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                      appState.view.startsWith('cluster')
-                        ? 'bg-primary-100 text-primary-700'
-                        : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
-                    }`}
-                  >
-                    Clusters
-                  </button>
-                </nav>
-              </div>
+                  <div className="flex items-center space-x-4">
+                    <nav className="flex space-x-4">
+                      <button
+                        onClick={handleShowAccounts}
+                        className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                          appState.view.startsWith('account')
+                            ? 'bg-primary-100 text-primary-700'
+                            : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+                        }`}
+                      >
+                        Accounts
+                      </button>
+                      <button
+                        onClick={handleShowClusters}
+                        className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                          appState.view.startsWith('cluster')
+                            ? 'bg-primary-100 text-primary-700'
+                            : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+                        }`}
+                      >
+                        Clusters
+                      </button>
+                      <button
+                        onClick={handleShowJobs}
+                        className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                          appState.view.startsWith('job')
+                            ? 'bg-primary-100 text-primary-700'
+                            : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+                        }`}
+                      >
+                        Jobs
+                      </button>
+                    </nav>
+                  </div>
             </div>
           </div>
         </header>
@@ -209,6 +271,13 @@ const App: React.FC = () => {
             sourceCluster={appState.selectedCluster}
           />
         )}
+
+        {/* Job Form Modal */}
+        <JobForm
+          isOpen={jobFormModalOpen}
+          onClose={handleJobFormClose}
+          jobToClone={jobToClone}
+        />
       </div>
     </QueryClientProvider>
   );

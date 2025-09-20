@@ -1,0 +1,1186 @@
+import React, { useState, useEffect } from 'react';
+import { useForm, useFieldArray } from 'react-hook-form';
+import { useCreateJob, useValidActionTypes, useJob } from '../hooks/useJobs';
+import { useClusters } from '../hooks/useClusters';
+import { useAccounts } from '../hooks/useAccounts';
+import { JobCreateRequest, JobStepRequest, ActionType, JobResponse } from '../types/api';
+import Button from './ui/Button';
+import Input from './ui/Input';
+import Modal from './ui/Modal';
+import { Plus, Trash2, Users, User, ChevronDown, ChevronRight, EyeOff, Search, X } from 'lucide-react';
+
+interface JobFormProps {
+  isOpen: boolean;
+  onClose: () => void;
+  jobToClone?: JobResponse | null;
+}
+
+interface FormData {
+  name: string;
+  description: string;
+  parallel_execution: boolean;
+  steps: Array<{
+    action_type: string;
+    account_ids: number[];
+    cluster_ids: number[];
+    max_retries: number;
+    parameters: Record<string, any>;
+  }>;
+}
+
+const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
+  const createJobMutation = useCreateJob();
+  const { data: actionTypesData } = useValidActionTypes();
+  const { data: clustersData } = useClusters(1, 1000);
+  const { data: accountsData } = useAccounts(1, 1000);
+  const [editingStepIndex, setEditingStepIndex] = useState<number | null>(null);
+  const [searchTerms, setSearchTerms] = useState<{ [stepIndex: number]: string }>({});
+  const [showSuggestions, setShowSuggestions] = useState<{ [stepIndex: number]: boolean }>({});
+  const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState<{ [stepIndex: number]: number }>({});
+  const [clusterSearchTerms, setClusterSearchTerms] = useState<{ [stepIndex: number]: string }>({});
+  const [showClusterSuggestions, setShowClusterSuggestions] = useState<{ [stepIndex: number]: boolean }>({});
+  const [selectedClusterSuggestionIndex, setSelectedClusterSuggestionIndex] = useState<{ [stepIndex: number]: number }>({});
+
+  const {
+    register,
+    handleSubmit,
+    control,
+    formState: { errors },
+    reset,
+    watch,
+    setValue,
+  } = useForm<FormData>({
+    defaultValues: {
+      name: '',
+      description: '',
+      parallel_execution: false,
+      steps: [
+        {
+          action_type: '',
+          account_ids: [],
+          cluster_ids: [],
+          max_retries: 0,
+          parameters: {},
+        },
+      ],
+    },
+  });
+
+  const { fields, append, remove, replace } = useFieldArray({
+    control,
+    name: 'steps',
+  });
+
+  const watchedSteps = watch('steps');
+
+  useEffect(() => {
+    if (!isOpen) {
+      reset();
+    }
+  }, [isOpen, reset]);
+
+  // Fetch full job details if needed for cloning
+  const shouldFetchJob = !!(isOpen && jobToClone && (!jobToClone.steps || jobToClone.steps.length === 0));
+  const { data: fullJobData } = useJob(
+    shouldFetchJob ? (jobToClone?.id || 0) : 0, 
+    true // include steps
+  );
+
+  // Prefill form when cloning a job
+  useEffect(() => {
+    if (isOpen && jobToClone) {
+      // Use full job data if available, otherwise use the passed job data
+      const jobData = fullJobData || jobToClone;
+      
+      // Smart step consolidation - combine steps with identical action_type, parameters, and max_retries
+      const originalStepCount = jobData.steps?.length || 0;
+      const consolidatedSteps = jobData.steps?.reduce((acc: any[], step) => {
+        const stepKey = `${step.action_type}-${JSON.stringify(step.parameters || {})}-${step.max_retries || 0}`;
+        
+        // Find existing step with same key
+        const existingStepIndex = acc.findIndex(existingStep => {
+          const existingKey = `${existingStep.action_type}-${JSON.stringify(existingStep.parameters || {})}-${existingStep.max_retries || 0}`;
+          return existingKey === stepKey;
+        });
+        
+        if (existingStepIndex >= 0) {
+          // Combine account_ids if they're different
+          const existingAccountIds = acc[existingStepIndex].account_ids || [];
+          const newAccountId = step.account_id;
+          
+          if (newAccountId && !existingAccountIds.includes(newAccountId)) {
+            acc[existingStepIndex].account_ids = [...existingAccountIds, newAccountId];
+          }
+        } else {
+          // Add new step
+          acc.push({
+            action_type: step.action_type,
+            account_ids: step.account_id ? [step.account_id] : [],
+            cluster_ids: [], // JobStepResponse doesn't have cluster_ids, so we'll leave it empty
+            max_retries: step.max_retries || 0,
+            parameters: step.parameters || {},
+          });
+        }
+        
+        return acc;
+      }, []) || [];
+
+      // Log consolidation results
+      const consolidatedStepCount = consolidatedSteps.length;
+      if (originalStepCount > consolidatedStepCount) {
+        console.log(`Step consolidation: ${originalStepCount} steps → ${consolidatedStepCount} steps (${originalStepCount - consolidatedStepCount} steps combined)`);
+      }
+
+      // Reset form with the complete cloned data
+      const formData = {
+        name: `${jobData.name} (Copy)`,
+        description: jobData.description || '',
+        parallel_execution: jobData.parallel_execution || false,
+        steps: consolidatedSteps
+      };
+      
+      reset(formData);
+    }
+  }, [isOpen, jobToClone, fullJobData, reset]);
+
+  // Close suggestions when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (!target.closest('.suggestions-container')) {
+        setShowSuggestions({});
+        setShowClusterSuggestions({});
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  const onSubmit = async (data: FormData) => {
+    try {
+      const jobData: JobCreateRequest = {
+        name: data.name,
+        description: data.description || undefined,
+        parallel_execution: data.parallel_execution,
+        steps: data.steps.map((step) => {
+          // Filter out empty parameters
+          const filteredParameters = step.parameters 
+            ? Object.fromEntries(
+                Object.entries(step.parameters).filter(([_, value]) => 
+                  value !== undefined && value !== null && value !== ''
+                )
+              )
+            : {};
+
+          return {
+            action_type: step.action_type,
+            account_ids: step.account_ids.length > 0 ? step.account_ids : undefined,
+            cluster_ids: step.cluster_ids.length > 0 ? step.cluster_ids : undefined,
+            max_retries: step.max_retries,
+            parameters: Object.keys(filteredParameters).length > 0 ? filteredParameters : undefined,
+          };
+        }),
+      };
+
+      console.log('Submitting job data:', jobData);
+      await createJobMutation.mutateAsync(jobData);
+      onClose();
+    } catch (error) {
+      console.error('Failed to create job:', error);
+    }
+  };
+
+  const addStep = () => {
+    append({
+      action_type: '',
+      account_ids: [],
+      cluster_ids: [],
+      max_retries: 0,
+      parameters: {},
+    });
+  };
+
+  const removeStep = (index: number) => {
+    if (fields.length > 1) {
+      remove(index);
+    }
+  };
+
+  const getActionTypeInfo = (actionType: string): ActionType | undefined => {
+    return actionTypesData?.action_types.find((at) => at.action_type === actionType);
+  };
+
+  // Account search and selection helpers
+  const getFilteredAccounts = (searchTerm: string, stepIndex: number) => {
+    if (!searchTerm || !accountsData?.data) return [];
+    
+    const currentAccountIds = watchedSteps[stepIndex]?.account_ids || [];
+    
+    return accountsData.data.filter((account: any) => {
+      const isAlreadySelected = currentAccountIds.includes(account.id);
+      if (isAlreadySelected) return false;
+      
+      const searchLower = searchTerm.toLowerCase();
+      return (
+        account.username.toLowerCase().includes(searchLower) ||
+        account.email.toLowerCase().includes(searchLower) ||
+        account.id.toString().includes(searchTerm)
+      );
+    }).slice(0, 10); // Limit to 10 suggestions
+  };
+
+  const addAccountToStep = (stepIndex: number, account: any) => {
+    const currentAccountIds = watchedSteps[stepIndex]?.account_ids || [];
+    const newAccountIds = [...currentAccountIds, account.id];
+    setValue(`steps.${stepIndex}.account_ids`, newAccountIds);
+    
+    // Clear search and hide suggestions
+    setSearchTerms(prev => ({ ...prev, [stepIndex]: '' }));
+    setShowSuggestions(prev => ({ ...prev, [stepIndex]: false }));
+    setSelectedSuggestionIndex(prev => ({ ...prev, [stepIndex]: -1 }));
+  };
+
+  const removeAccountFromStep = (stepIndex: number, accountId: number) => {
+    const currentAccountIds = watchedSteps[stepIndex]?.account_ids || [];
+    const newAccountIds = currentAccountIds.filter((id: number) => id !== accountId);
+    setValue(`steps.${stepIndex}.account_ids`, newAccountIds);
+  };
+
+  const getAccountById = (accountId: number) => {
+    return accountsData?.data.find((account: any) => account.id === accountId);
+  };
+
+  // Cluster search and selection helpers
+  const getFilteredClusters = (searchTerm: string, stepIndex: number) => {
+    if (!searchTerm || !clustersData?.data) return [];
+    
+    const currentClusterIds = watchedSteps[stepIndex]?.cluster_ids || [];
+    
+    return clustersData.data.filter((cluster: any) => {
+      const isAlreadySelected = currentClusterIds.includes(cluster.id);
+      if (isAlreadySelected) return false;
+      
+      const searchLower = searchTerm.toLowerCase();
+      return (
+        cluster.name.toLowerCase().includes(searchLower) ||
+        cluster.id.toString().includes(searchTerm)
+      );
+    }).slice(0, 10); // Limit to 10 suggestions
+  };
+
+  const addClusterToStep = (stepIndex: number, cluster: any) => {
+    const currentClusterIds = watchedSteps[stepIndex]?.cluster_ids || [];
+    const newClusterIds = [...currentClusterIds, cluster.id];
+    setValue(`steps.${stepIndex}.cluster_ids`, newClusterIds);
+    
+    // Clear search and hide suggestions
+    setClusterSearchTerms(prev => ({ ...prev, [stepIndex]: '' }));
+    setShowClusterSuggestions(prev => ({ ...prev, [stepIndex]: false }));
+    setSelectedClusterSuggestionIndex(prev => ({ ...prev, [stepIndex]: -1 }));
+  };
+
+  const removeClusterFromStep = (stepIndex: number, clusterId: number) => {
+    const currentClusterIds = watchedSteps[stepIndex]?.cluster_ids || [];
+    const newClusterIds = currentClusterIds.filter((id: number) => id !== clusterId);
+    setValue(`steps.${stepIndex}.cluster_ids`, newClusterIds);
+  };
+
+  const getClusterById = (clusterId: number) => {
+    return clustersData?.data.find((cluster: any) => cluster.id === clusterId);
+  };
+
+  // Keyboard navigation helpers for accounts
+  const handleKeyDown = (stepIndex: number, event: React.KeyboardEvent) => {
+    const filteredAccounts = getFilteredAccounts(searchTerms[stepIndex] || '', stepIndex);
+    const currentIndex = selectedSuggestionIndex[stepIndex] ?? -1;
+
+    // Only handle keyboard navigation if suggestions are visible
+    if (!showSuggestions[stepIndex] || filteredAccounts.length === 0) {
+      return;
+    }
+
+    switch (event.key) {
+      case 'ArrowDown':
+        event.preventDefault();
+        event.stopPropagation();
+        const nextIndex = currentIndex < filteredAccounts.length - 1 ? currentIndex + 1 : 0;
+        setSelectedSuggestionIndex(prev => ({ ...prev, [stepIndex]: nextIndex }));
+        break;
+      case 'ArrowUp':
+        event.preventDefault();
+        event.stopPropagation();
+        const prevIndex = currentIndex <= 0 ? filteredAccounts.length - 1 : currentIndex - 1;
+        setSelectedSuggestionIndex(prev => ({ ...prev, [stepIndex]: prevIndex }));
+        break;
+      case 'Enter':
+        event.preventDefault();
+        event.stopPropagation();
+        if (currentIndex >= 0 && currentIndex < filteredAccounts.length) {
+          const account = filteredAccounts[currentIndex];
+          addAccountToStep(stepIndex, account);
+        }
+        break;
+      case 'Escape':
+        event.preventDefault();
+        event.stopPropagation();
+        setShowSuggestions(prev => ({ ...prev, [stepIndex]: false }));
+        setSelectedSuggestionIndex(prev => ({ ...prev, [stepIndex]: -1 }));
+        break;
+    }
+  };
+
+  // Keyboard navigation helpers for clusters
+  const handleClusterKeyDown = (stepIndex: number, event: React.KeyboardEvent) => {
+    const filteredClusters = getFilteredClusters(clusterSearchTerms[stepIndex] || '', stepIndex);
+    const currentIndex = selectedClusterSuggestionIndex[stepIndex] ?? -1;
+
+    // Only handle keyboard navigation if suggestions are visible
+    if (!showClusterSuggestions[stepIndex] || filteredClusters.length === 0) {
+      return;
+    }
+
+    switch (event.key) {
+      case 'ArrowDown':
+        event.preventDefault();
+        event.stopPropagation();
+        const nextIndex = currentIndex < filteredClusters.length - 1 ? currentIndex + 1 : 0;
+        setSelectedClusterSuggestionIndex(prev => ({ ...prev, [stepIndex]: nextIndex }));
+        break;
+      case 'ArrowUp':
+        event.preventDefault();
+        event.stopPropagation();
+        const prevIndex = currentIndex <= 0 ? filteredClusters.length - 1 : currentIndex - 1;
+        setSelectedClusterSuggestionIndex(prev => ({ ...prev, [stepIndex]: prevIndex }));
+        break;
+      case 'Enter':
+        event.preventDefault();
+        event.stopPropagation();
+        if (currentIndex >= 0 && currentIndex < filteredClusters.length) {
+          const cluster = filteredClusters[currentIndex];
+          addClusterToStep(stepIndex, cluster);
+        }
+        break;
+      case 'Escape':
+        event.preventDefault();
+        event.stopPropagation();
+        setShowClusterSuggestions(prev => ({ ...prev, [stepIndex]: false }));
+        setSelectedClusterSuggestionIndex(prev => ({ ...prev, [stepIndex]: -1 }));
+        break;
+    }
+  };
+
+  const getSelectedAccounts = (stepIndex: number) => {
+    const step = watchedSteps[stepIndex];
+    if (!step) {
+      return {
+        individualAccounts: [],
+        clusterCount: 0,
+        totalIndividual: 0,
+        totalClusters: 0
+      };
+    }
+    
+    // For now, we can only count individual accounts since cluster users
+    // are not available in the cluster list response
+    const individualAccounts = step.account_ids || [];
+    const clusterCount = step.cluster_ids?.length || 0;
+    
+    return {
+      individualAccounts,
+      clusterCount,
+      totalIndividual: individualAccounts.length,
+      totalClusters: clusterCount
+    };
+  };
+
+  const isLoading = createJobMutation.isLoading;
+
+  return (
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title="Create Job"
+      size="lg"
+    >
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+        {/* Basic Job Info */}
+        <div className="space-y-4">
+          <Input
+            label="Job Name"
+            {...register('name', {
+              required: 'Job name is required',
+              minLength: {
+                value: 2,
+                message: 'Job name must be at least 2 characters',
+              },
+            })}
+            error={errors.name?.message}
+            placeholder="Enter job name"
+          />
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Description
+            </label>
+            <textarea
+              {...register('description')}
+              className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
+              placeholder="Enter job description (optional)"
+              rows={3}
+            />
+          </div>
+
+          <div className="flex items-center">
+            <input
+              type="checkbox"
+              id="parallel_execution"
+              {...register('parallel_execution')}
+              className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+            />
+            <label htmlFor="parallel_execution" className="ml-2 block text-sm text-gray-900">
+              Execute steps in parallel
+            </label>
+          </div>
+        </div>
+
+        {/* Job Steps */}
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-medium text-gray-900">Job Steps ({fields.length})</h3>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={addStep}
+              className="flex items-center gap-2"
+            >
+              <Plus className="h-4 w-4" />
+              Add Step
+            </Button>
+          </div>
+
+          {/* Steps Overview */}
+          {fields.length > 0 && (
+            <div className="bg-gray-50 rounded-lg p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="text-sm font-medium text-gray-900">Steps Overview</h4>
+                <div className="text-sm text-gray-500">
+                  Click on any step to edit it
+                </div>
+              </div>
+              <div className="space-y-2">
+                {fields.map((field, index) => {
+                  const step = watchedSteps[index];
+                  const selection = getSelectedAccounts(index);
+                  const actionInfo = getActionTypeInfo(step?.action_type || '');
+                  const isEditing = editingStepIndex === index;
+                  
+                  return (
+                    <div key={field.id} className="space-y-2">
+                      {/* Step Summary - Clickable */}
+                      <div 
+                        className={`flex items-center justify-between bg-white rounded-md p-3 border cursor-pointer transition-colors ${
+                          isEditing ? 'border-primary-500 bg-primary-50' : 'border-gray-200 hover:border-gray-300'
+                        }`}
+                        onClick={() => setEditingStepIndex(isEditing ? null : index)}
+                      >
+                        <div className="flex items-center space-x-3">
+                          <div className="flex-shrink-0 w-8 h-8 bg-primary-100 text-primary-600 rounded-full flex items-center justify-center text-sm font-medium">
+                            {index + 1}
+                          </div>
+                          <div>
+                            <div className="font-medium text-gray-900">
+                              {step?.action_type || 'No action selected'}
+                            </div>
+                            <div className="text-sm text-gray-500">
+                              {actionInfo?.description || 'Select an action type'}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-sm text-gray-900">
+                            {selection.totalIndividual > 0 && (
+                              <span>{selection.totalIndividual} account{selection.totalIndividual !== 1 ? 's' : ''}</span>
+                            )}
+                            {selection.totalIndividual > 0 && selection.totalClusters > 0 && <span>, </span>}
+                            {selection.totalClusters > 0 && (
+                              <span>{selection.totalClusters} cluster{selection.totalClusters !== 1 ? 's' : ''}</span>
+                            )}
+                            {selection.totalIndividual === 0 && selection.totalClusters === 0 && (
+                              <span className="text-gray-400">No targets selected</span>
+                            )}
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            Max retries: {step?.max_retries || 0}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Detailed Step Editor - Only show when editing this step */}
+                      {isEditing && (
+                        <div className="border border-primary-200 rounded-lg p-4 space-y-4 bg-primary-50">
+                          <div className="flex items-center justify-between">
+                            <h4 className="font-medium text-gray-900">Edit Step {index + 1}</h4>
+                            <div className="flex items-center space-x-2">
+                              {fields.length > 1 && (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => removeStep(index)}
+                                  className="text-red-600 hover:text-red-700"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              )}
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setEditingStepIndex(null)}
+                                className="text-gray-500 hover:text-gray-700"
+                              >
+                                <EyeOff className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-1">
+                                Action Type
+                              </label>
+                              <select
+                                {...register(`steps.${index}.action_type`, {
+                                  required: 'Action type is required',
+                                })}
+                                className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
+                              >
+                                <option value="">Select action type</option>
+                                {actionTypesData?.categories && Object.entries(actionTypesData.categories).map(([category, actions]) => (
+                                  <optgroup key={category} label={category.replace('_', ' ').toUpperCase()}>
+                                    {actions.map((action) => (
+                                      <option key={action.action_type} value={action.action_type}>
+                                        {action.action_type} - {action.description}
+                                      </option>
+                                    ))}
+                                  </optgroup>
+                                ))}
+                              </select>
+                              {errors.steps?.[index]?.action_type && (
+                                <p className="mt-1 text-sm text-red-600">
+                                  {errors.steps[index]?.action_type?.message}
+                                </p>
+                              )}
+                            </div>
+
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-1">
+                                Max Retries
+                              </label>
+                              <input
+                                type="number"
+                                min="0"
+                                max="10"
+                                {...register(`steps.${index}.max_retries`, {
+                                  valueAsNumber: true,
+                                  min: { value: 0, message: 'Must be at least 0' },
+                                  max: { value: 10, message: 'Must be at most 10' },
+                                })}
+                                className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
+                              />
+                              {errors.steps?.[index]?.max_retries && (
+                                <p className="mt-1 text-sm text-red-600">
+                                  {errors.steps[index]?.max_retries?.message}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Runners */}
+                          <div className="space-y-4">
+                            <h5 className="font-medium text-gray-900">Runners</h5>
+                            
+                            {/* Individual Accounts */}
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">
+                                Individual Accounts
+                              </label>
+                              
+                              {/* Selected Accounts */}
+                              <div className="mb-3">
+                                {watchedSteps[index]?.account_ids?.map((accountId: number) => {
+                                  const account = getAccountById(accountId);
+                                  if (!account) return null;
+                                  
+                                  return (
+                                    <span
+                                      key={accountId}
+                                      className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-800 text-sm rounded-md mr-2 mb-2"
+                                    >
+                                      {account.username} ({account.email})
+                                      <button
+                                        type="button"
+                                        onClick={() => removeAccountFromStep(index, accountId)}
+                                        className="text-blue-600 hover:text-blue-800"
+                                      >
+                                        <X className="h-3 w-3" />
+                                      </button>
+                                    </span>
+                                  );
+                                })}
+                              </div>
+                              
+                              {/* Search Input */}
+                              <div className="relative">
+                                <div className="relative">
+                                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                                  <input
+                                    type="text"
+                                    placeholder="Search by username, email, or ID..."
+                                    value={searchTerms[index] || ''}
+                                    onChange={(e) => {
+                                      const value = e.target.value;
+                                      setSearchTerms(prev => ({ ...prev, [index]: value }));
+                                      setShowSuggestions(prev => ({ ...prev, [index]: value.length > 0 }));
+                                      // Reset selection when typing
+                                      setSelectedSuggestionIndex(prev => ({ ...prev, [index]: -1 }));
+                                    }}
+                                    onFocus={() => {
+                                      if (searchTerms[index]) {
+                                        setShowSuggestions(prev => ({ ...prev, [index]: true }));
+                                      }
+                                    }}
+                                    onKeyDown={(e) => handleKeyDown(index, e)}
+                                    className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                                  />
+                                </div>
+                                
+                                {/* Suggestions Dropdown */}
+                                {showSuggestions[index] && searchTerms[index] && (
+                                  <div className="suggestions-container absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-48 overflow-y-auto">
+                                    {getFilteredAccounts(searchTerms[index], index).map((account: any, suggestionIndex: number) => {
+                                      const isSelected = selectedSuggestionIndex[index] === suggestionIndex;
+                                      return (
+                                        <button
+                                          key={account.id}
+                                          type="button"
+                                          onClick={() => addAccountToStep(index, account)}
+                                          className={`w-full px-3 py-2 text-left focus:outline-none ${
+                                            isSelected 
+                                              ? 'bg-primary-100 text-primary-900' 
+                                              : 'hover:bg-gray-100 focus:bg-gray-100'
+                                          }`}
+                                        >
+                                          <div className="text-sm text-gray-900">{account.username}</div>
+                                          <div className="text-xs text-gray-500">{account.email} (ID: {account.id})</div>
+                                        </button>
+                                      );
+                                    })}
+                                    {getFilteredAccounts(searchTerms[index], index).length === 0 && (
+                                      <div className="px-3 py-2 text-sm text-gray-500">
+                                        No accounts found
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Clusters */}
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">
+                                Clusters
+                              </label>
+                              
+                              {/* Selected Clusters */}
+                              <div className="mb-3">
+                                {watchedSteps[index]?.cluster_ids?.map((clusterId: number) => {
+                                  const cluster = getClusterById(clusterId);
+                                  if (!cluster) return null;
+                                  
+                                  return (
+                                    <span
+                                      key={clusterId}
+                                      className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-800 text-sm rounded-md mr-2 mb-2"
+                                    >
+                                      {cluster.name} ({cluster.user_count} users)
+                                      <button
+                                        type="button"
+                                        onClick={() => removeClusterFromStep(index, clusterId)}
+                                        className="text-green-600 hover:text-green-800"
+                                      >
+                                        <X className="h-3 w-3" />
+                                      </button>
+                                    </span>
+                                  );
+                                })}
+                              </div>
+                              
+                              {/* Search Input */}
+                              <div className="relative">
+                                <div className="relative">
+                                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                                  <input
+                                    type="text"
+                                    placeholder="Search by cluster name or ID..."
+                                    value={clusterSearchTerms[index] || ''}
+                                    onChange={(e) => {
+                                      const value = e.target.value;
+                                      setClusterSearchTerms(prev => ({ ...prev, [index]: value }));
+                                      setShowClusterSuggestions(prev => ({ ...prev, [index]: value.length > 0 }));
+                                      // Reset selection when typing
+                                      setSelectedClusterSuggestionIndex(prev => ({ ...prev, [index]: -1 }));
+                                    }}
+                                    onFocus={() => {
+                                      if (clusterSearchTerms[index]) {
+                                        setShowClusterSuggestions(prev => ({ ...prev, [index]: true }));
+                                      }
+                                    }}
+                                    onKeyDown={(e) => handleClusterKeyDown(index, e)}
+                                    className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                                  />
+                                </div>
+                                
+                                {/* Suggestions Dropdown */}
+                                {showClusterSuggestions[index] && clusterSearchTerms[index] && (
+                                  <div className="suggestions-container absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-48 overflow-y-auto">
+                                    {getFilteredClusters(clusterSearchTerms[index], index).map((cluster: any, suggestionIndex: number) => {
+                                      const isSelected = selectedClusterSuggestionIndex[index] === suggestionIndex;
+                                      return (
+                                        <button
+                                          key={cluster.id}
+                                          type="button"
+                                          onClick={() => addClusterToStep(index, cluster)}
+                                          className={`w-full px-3 py-2 text-left focus:outline-none ${
+                                            isSelected 
+                                              ? 'bg-primary-100 text-primary-900' 
+                                              : 'hover:bg-gray-100 focus:bg-gray-100'
+                                          }`}
+                                        >
+                                          <div className="text-sm text-gray-900">{cluster.name}</div>
+                                          <div className="text-xs text-gray-500">{cluster.user_count} users (ID: {cluster.id})</div>
+                                        </button>
+                                      );
+                                    })}
+                                    {getFilteredClusters(clusterSearchTerms[index], index).length === 0 && (
+                                      <div className="px-3 py-2 text-sm text-gray-500">
+                                        No clusters found
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Action Parameters */}
+                          {watchedSteps[index]?.action_type && (
+                            <div className="space-y-4">
+                              <h5 className="font-medium text-gray-900">Action Parameters</h5>
+                              <div className="space-y-3">
+                                {(() => {
+                                  const actionInfo = getActionTypeInfo(watchedSteps[index].action_type);
+                                  if (!actionInfo || !actionInfo.parameter_details) {
+                                    return (
+                                      <div className="text-sm text-gray-500 italic">
+                                        No parameters required for this action type.
+                                      </div>
+                                    );
+                                  }
+
+                                  return Object.entries(actionInfo.parameter_details).map(([paramName, paramInfo]: [string, any]) => {
+                                    const isRequired = actionInfo.required_parameters?.includes(paramName) || false;
+                                    
+                                    return (
+                                      <div key={paramName} className="space-y-1">
+                                        <label className="block text-sm font-medium text-gray-700">
+                                          {paramName}
+                                          {isRequired && (
+                                            <span className="text-red-500 ml-1">*</span>
+                                          )}
+                                        </label>
+                                        
+                                        {paramInfo.type === 'string' && (
+                                          <input
+                                            type="text"
+                                            {...register(`steps.${index}.parameters.${paramName}`, {
+                                              required: isRequired ? `${paramName} is required` : false,
+                                            })}
+                                            className={`block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm ${
+                                              errors.steps?.[index]?.parameters?.[paramName] 
+                                                ? 'border-red-300 focus:ring-red-500 focus:border-red-500' 
+                                                : 'border-gray-300'
+                                            }`}
+                                            placeholder={paramInfo.description || `Enter ${paramName}`}
+                                          />
+                                        )}
+                                        
+                                        {(paramInfo.type === 'number' || paramInfo.type === 'integer' || paramInfo.type === 'float') && (
+                                          <input
+                                            type="number"
+                                            {...register(`steps.${index}.parameters.${paramName}`, {
+                                              valueAsNumber: true,
+                                              required: isRequired ? `${paramName} is required` : false,
+                                            })}
+                                            className={`block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm ${
+                                              errors.steps?.[index]?.parameters?.[paramName] 
+                                                ? 'border-red-300 focus:ring-red-500 focus:border-red-500' 
+                                                : 'border-gray-300'
+                                            }`}
+                                            placeholder={paramInfo.description || `Enter ${paramName}`}
+                                          />
+                                        )}
+                                        
+                                        {paramInfo.type === 'boolean' && (
+                                          <div className="flex items-center">
+                                            <input
+                                              type="checkbox"
+                                              {...register(`steps.${index}.parameters.${paramName}`)}
+                                              className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                                            />
+                                            <label className="ml-2 block text-sm text-gray-900">
+                                              {paramInfo.description || paramName}
+                                            </label>
+                                          </div>
+                                        )}
+                                        
+                                        {paramInfo.type === 'select' && paramInfo.options && (
+                                          <select
+                                            {...register(`steps.${index}.parameters.${paramName}`, {
+                                              required: isRequired ? `${paramName} is required` : false,
+                                            })}
+                                            className={`block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm ${
+                                              errors.steps?.[index]?.parameters?.[paramName] 
+                                                ? 'border-red-300 focus:ring-red-500 focus:border-red-500' 
+                                                : 'border-gray-300'
+                                            }`}
+                                          >
+                                            <option value="">Select {paramName}</option>
+                                            {paramInfo.options.map((option: any) => (
+                                              <option key={option.value || option} value={option.value || option}>
+                                                {option.label || option}
+                                              </option>
+                                            ))}
+                                          </select>
+                                        )}
+                                        
+                                        {paramInfo.description && (
+                                          <p className="text-xs text-gray-500">{paramInfo.description}</p>
+                                        )}
+                                        
+                                        {errors.steps?.[index]?.parameters?.[paramName] && (
+                                          <p className="text-xs text-red-600">
+                                            {String(errors.steps[index]?.parameters?.[paramName]?.message || 'Invalid value')}
+                                          </p>
+                                        )}
+                                      </div>
+                                    );
+                                  });
+                                })()}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Old Detailed Step Forms - Removed since we now have inline editing */}
+          {false && fields.map((field, index) => (
+            <div key={field.id} className="border border-gray-200 rounded-lg p-4 space-y-4">
+              <div className="flex items-center justify-between">
+                <h4 className="font-medium text-gray-900">Step {index + 1}</h4>
+                {fields.length > 1 && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => removeStep(index)}
+                    className="text-red-600 hover:text-red-700"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Action Type
+                  </label>
+                  <select
+                    {...register(`steps.${index}.action_type`, {
+                      required: 'Action type is required',
+                    })}
+                    className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
+                  >
+                    <option value="">Select action type</option>
+                    {actionTypesData?.categories && Object.entries(actionTypesData.categories).map(([category, actions]) => (
+                      <optgroup key={category} label={category.replace('_', ' ').toUpperCase()}>
+                        {actions.map((action) => (
+                          <option key={action.action_type} value={action.action_type}>
+                            {action.action_type} - {action.description}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ))}
+                  </select>
+                  {errors.steps?.[index]?.action_type && (
+                    <p className="mt-1 text-sm text-red-600">
+                      {errors.steps[index]?.action_type?.message}
+                    </p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Max Retries
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="10"
+                    {...register(`steps.${index}.max_retries`, {
+                      valueAsNumber: true,
+                      min: { value: 0, message: 'Must be 0 or greater' },
+                      max: { value: 10, message: 'Must be 10 or less' },
+                    })}
+                    className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
+                  />
+                  {errors.steps?.[index]?.max_retries && (
+                    <p className="mt-1 text-sm text-red-600">
+                      {errors.steps[index]?.max_retries?.message}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* Target Selection */}
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Target Accounts
+                  </label>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm text-gray-600 mb-1">
+                        <User className="h-4 w-4 inline mr-1" />
+                        Individual Accounts
+                      </label>
+                      <select
+                        multiple
+                        {...register(`steps.${index}.account_ids`)}
+                        className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
+                        size={4}
+                      >
+                        {accountsData?.data.map((account) => (
+                          <option key={account.id} value={account.id}>
+                            {account.username} ({account.email})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm text-gray-600 mb-1">
+                        <Users className="h-4 w-4 inline mr-1" />
+                        Clusters
+                      </label>
+                      <select
+                        multiple
+                        {...register(`steps.${index}.cluster_ids`)}
+                        className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
+                        size={4}
+                      >
+                        {clustersData?.data.map((cluster) => (
+                          <option key={cluster.id} value={cluster.id}>
+                            {cluster.name} ({cluster.user_count} members)
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  
+                  {(() => {
+                    const selection = getSelectedAccounts(index);
+                    const totalSelected = selection.totalIndividual + selection.totalClusters;
+                    return totalSelected > 0 && (
+                      <div className="mt-2 p-2 bg-blue-50 rounded-md">
+                        <p className="text-sm text-blue-800">
+                          <strong>Targeting:</strong> {selection.totalIndividual} individual account{selection.totalIndividual !== 1 ? 's' : ''}
+                          {selection.totalClusters > 0 && (
+                            <span>, {selection.totalClusters} cluster{selection.totalClusters !== 1 ? 's' : ''}</span>
+                          )}
+                        </p>
+                        <p className="text-xs text-blue-600 mt-1">
+                          Note: Cluster member counts will be resolved when the job executes
+                        </p>
+                      </div>
+                    );
+                  })()}
+                </div>
+              </div>
+
+              {/* Action Type Info */}
+              {watchedSteps[index]?.action_type && (
+                <div className="p-3 bg-gray-50 rounded-md">
+                  <h5 className="font-medium text-gray-900 mb-1">Action Information</h5>
+                  {(() => {
+                    const actionInfo = getActionTypeInfo(watchedSteps[index].action_type);
+                    return actionInfo ? (
+                      <div className="text-sm text-gray-600">
+                        <p><strong>Description:</strong> {actionInfo.description}</p>
+                        <p><strong>Category:</strong> {actionInfo.category}</p>
+                        {actionInfo.required_parameters && actionInfo.required_parameters.length > 0 && (
+                          <p><strong>Required Parameters:</strong> {actionInfo.required_parameters.join(', ')}</p>
+                        )}
+                      </div>
+                    ) : null;
+                  })()}
+                </div>
+              )}
+
+              {/* Action Parameters */}
+              {watchedSteps[index]?.action_type && (
+                <div className="space-y-4">
+                  <h5 className="font-medium text-gray-900">Action Parameters</h5>
+                  <div className="space-y-3">
+                    {(() => {
+                      const actionInfo = getActionTypeInfo(watchedSteps[index].action_type);
+                      if (!actionInfo || !actionInfo.parameter_details) {
+                        return (
+                          <div className="text-sm text-gray-500 italic">
+                            No parameters required for this action type.
+                          </div>
+                        );
+                      }
+
+                      return Object.entries(actionInfo.parameter_details).map(([paramName, paramInfo]: [string, any]) => {
+                        const isRequired = actionInfo.required_parameters?.includes(paramName) || false;
+                        
+                        return (
+                          <div key={paramName} className="space-y-1">
+                            <label className="block text-sm font-medium text-gray-700">
+                              {paramName}
+                              {isRequired && (
+                                <span className="text-red-500 ml-1">*</span>
+                              )}
+                            </label>
+                            
+                            {paramInfo.type === 'string' && (
+                              <input
+                                type="text"
+                                {...register(`steps.${index}.parameters.${paramName}`, {
+                                  required: isRequired ? `${paramName} is required` : false,
+                                })}
+                                className={`block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm ${
+                                  errors.steps?.[index]?.parameters?.[paramName] 
+                                    ? 'border-red-300 focus:ring-red-500 focus:border-red-500' 
+                                    : 'border-gray-300'
+                                }`}
+                                placeholder={paramInfo.description || `Enter ${paramName}`}
+                              />
+                            )}
+                            
+                            {(paramInfo.type === 'number' || paramInfo.type === 'integer' || paramInfo.type === 'float') && (
+                              <input
+                                type="number"
+                                {...register(`steps.${index}.parameters.${paramName}`, {
+                                  valueAsNumber: true,
+                                  required: isRequired ? `${paramName} is required` : false,
+                                })}
+                                className={`block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm ${
+                                  errors.steps?.[index]?.parameters?.[paramName] 
+                                    ? 'border-red-300 focus:ring-red-500 focus:border-red-500' 
+                                    : 'border-gray-300'
+                                }`}
+                                placeholder={paramInfo.description || `Enter ${paramName}`}
+                              />
+                            )}
+                            
+                            {paramInfo.type === 'boolean' && (
+                              <div className="flex items-center">
+                                <input
+                                  type="checkbox"
+                                  {...register(`steps.${index}.parameters.${paramName}`)}
+                                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                                />
+                                <label className="ml-2 block text-sm text-gray-900">
+                                  {paramInfo.description || paramName}
+                                </label>
+                              </div>
+                            )}
+                            
+                            {paramInfo.type === 'select' && paramInfo.options && (
+                              <select
+                                {...register(`steps.${index}.parameters.${paramName}`, {
+                                  required: isRequired ? `${paramName} is required` : false,
+                                })}
+                                className={`block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm ${
+                                  errors.steps?.[index]?.parameters?.[paramName] 
+                                    ? 'border-red-300 focus:ring-red-500 focus:border-red-500' 
+                                    : 'border-gray-300'
+                                }`}
+                              >
+                                <option value="">Select {paramName}</option>
+                                {paramInfo.options.map((option: any) => (
+                                  <option key={option.value || option} value={option.value || option}>
+                                    {option.label || option}
+                                  </option>
+                                ))}
+                              </select>
+                            )}
+                            
+                            {paramInfo.description && (
+                              <p className="text-xs text-gray-500">{paramInfo.description}</p>
+                            )}
+                            
+                            {errors.steps?.[index]?.parameters?.[paramName] && (
+                              <p className="text-xs text-red-600">
+                                {String(errors.steps[index]?.parameters?.[paramName]?.message || 'Invalid value')}
+                              </p>
+                            )}
+                          </div>
+                        );
+                      });
+                    })()}
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+
+        </div>
+
+        {/* Form Actions */}
+        <div className="flex justify-end space-x-3 pt-4 border-t">
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={onClose}
+            disabled={isLoading}
+          >
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            loading={isLoading}
+            disabled={isLoading}
+          >
+            Create Job
+          </Button>
+        </div>
+      </form>
+    </Modal>
+  );
+};
+
+export default JobForm;

@@ -164,7 +164,7 @@ const ClusterCloneForm: React.FC<ClusterCloneFormProps> = ({
         {includeUsers && sourceCluster.user_count > 0 && (
           <div className="bg-green-50 border border-green-200 rounded-md p-3">
             <p className="text-sm text-green-800">
-              <strong>Great!</strong> All {sourceCluster.user_count} member{sourceCluster.user_count !== 1 ? 's' : ''} 
+              <strong>Great!</strong> All {sourceCluster.user_count} member{sourceCluster.user_count !== 1 ? 's ' : ' '} 
               from the original cluster will be automatically added to the new cluster.
             </p>
           </div>

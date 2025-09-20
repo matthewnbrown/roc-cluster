@@ -13,6 +13,11 @@ import {
   ClusterResponse,
   ClusterListResponse,
   AccountCluster,
+  JobListResponse,
+  JobResponse,
+  JobCreateRequest,
+  JobStatus,
+  ActionType,
 } from '../types/api';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000/api/v1';
@@ -190,6 +195,73 @@ export const clusterApi = {
   cloneCluster: async (clusterId: number, cloneData: { name: string; description?: string; include_users: boolean }): Promise<ClusterResponse> => {
     console.log('API cloneCluster called with:', { clusterId, cloneData });
     const response: AxiosResponse<ClusterResponse> = await api.post(`/clusters/${clusterId}/clone`, cloneData);
+    return response.data;
+  },
+};
+
+// Jobs API
+export const jobsApi = {
+  // Get all jobs with pagination and filtering
+  getJobs: async (page: number = 1, perPage: number = 20, status?: string): Promise<JobListResponse> => {
+    const params: any = { page, per_page: perPage };
+    if (status) params.status = status;
+    
+    const response: AxiosResponse<JobListResponse> = await api.get('/jobs', { params });
+    return response.data;
+  },
+
+  // Get job by ID
+  getJob: async (id: number, includeSteps: boolean = false): Promise<JobResponse> => {
+    const response: AxiosResponse<JobResponse> = await api.get(`/jobs/${id}`, {
+      params: { include_steps: includeSteps },
+    });
+    return response.data;
+  },
+
+  // Create new job
+  createJob: async (jobData: JobCreateRequest): Promise<JobResponse> => {
+    const response: AxiosResponse<JobResponse> = await api.post('/jobs', jobData);
+    return response.data;
+  },
+
+  // Cancel job
+  cancelJob: async (id: number, reason?: string): Promise<{ message: string }> => {
+    const response: AxiosResponse<{ message: string }> = await api.post(`/jobs/${id}/cancel`, {
+      reason,
+    });
+    return response.data;
+  },
+
+  // Get job status (lightweight)
+  getJobStatus: async (id: number): Promise<{
+    job_id: number;
+    status: JobStatus;
+    progress: {
+      total_steps: number;
+      completed_steps: number;
+      failed_steps: number;
+    };
+    created_at: string;
+    started_at?: string;
+    completed_at?: string;
+  }> => {
+    const response: AxiosResponse<any> = await api.get(`/jobs/${id}/status`);
+    return response.data;
+  },
+
+  // Get valid action types
+  getValidActionTypes: async (): Promise<{
+    action_types: ActionType[];
+    categories: Record<string, ActionType[]>;
+    summary: {
+      total_action_types: number;
+      categories: string[];
+      user_actions: number;
+      self_actions: number;
+      info_actions: number;
+    };
+  }> => {
+    const response: AxiosResponse<any> = await api.get('/jobs/valid-action-types');
     return response.data;
   },
 };

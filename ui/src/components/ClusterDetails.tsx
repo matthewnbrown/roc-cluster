@@ -6,7 +6,7 @@ import Button from './ui/Button';
 import Modal from './ui/Modal';
 import { Table, TableHeader, TableBody, TableRow, TableCell } from './ui/Table';
 import Pagination from './ui/Pagination';
-import { ArrowLeft, Edit, Trash2, User, Mail, Calendar, Users, Plus, X, Copy } from 'lucide-react';
+import { ArrowLeft, Edit, Trash2, User, Mail, Calendar, Users, Plus, X, Copy, Shield } from 'lucide-react';
 import Input from './ui/Input';
 
 interface ClusterDetailsProps {
@@ -122,7 +122,14 @@ const ClusterDetails: React.FC<ClusterDetailsProps> = ({
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">{cluster.name}</h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-2xl font-bold text-gray-900">{cluster.name}</h1>
+              {cluster.name === "all_users" && (
+                <div title="System cluster - cannot be deleted">
+                  <Shield className="h-5 w-5 text-blue-500" />
+                </div>
+              )}
+            </div>
             <p className="text-gray-600">Cluster Details</p>
           </div>
         </div>
@@ -222,14 +229,21 @@ const ClusterDetails: React.FC<ClusterDetailsProps> = ({
           <div className="p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-medium text-gray-900">Cluster Members</h3>
-              <Button
-                onClick={() => setAddUsersModalOpen(true)}
-                size="sm"
-                className="flex items-center gap-2"
-              >
-                <Plus className="h-4 w-4" />
-                Add Users
-              </Button>
+              {cluster.name !== "all_users" && (
+                <Button
+                  onClick={() => setAddUsersModalOpen(true)}
+                  size="sm"
+                  className="flex items-center gap-2"
+                >
+                  <Plus className="h-4 w-4" />
+                  Add Users
+                </Button>
+              )}
+              {cluster.name === "all_users" && (
+                <div className="text-sm text-gray-500 italic">
+                  System cluster - automatically contains all users
+                </div>
+              )}
             </div>
             
             {cluster.users.length > 0 ? (
@@ -253,16 +267,23 @@ const ClusterDetails: React.FC<ClusterDetailsProps> = ({
                         {formatDate(user.added_at)}
                       </TableCell>
                       <TableCell>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleRemoveUser(user.account_id)}
-                          className="p-2 h-8 w-8 text-red-600 hover:text-red-700"
-                          loading={removeUserFromClusterMutation.isLoading}
-                          title="Remove from cluster"
-                        >
-                          <X className="h-4 w-4" />
-                        </Button>
+                        {cluster.name !== "all_users" && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleRemoveUser(user.account_id)}
+                            className="p-2 h-8 w-8 text-red-600 hover:text-red-700"
+                            loading={removeUserFromClusterMutation.isLoading}
+                            title="Remove from cluster"
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        )}
+                        {cluster.name === "all_users" && (
+                          <div title="Cannot remove users from system cluster" className="p-2 h-8 w-8 flex items-center justify-center">
+                            <X className="h-4 w-4 text-gray-300" />
+                          </div>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -271,15 +292,21 @@ const ClusterDetails: React.FC<ClusterDetailsProps> = ({
             ) : (
               <div className="bg-gray-50 rounded-md p-8 text-center">
                 <User className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                <p className="text-gray-500 mb-4">No users in this cluster.</p>
-                <Button
-                  onClick={() => setAddUsersModalOpen(true)}
-                  variant="secondary"
-                  className="flex items-center gap-2"
-                >
-                  <Plus className="h-4 w-4" />
-                  Add Users
-                </Button>
+                {cluster.name === "all_users" ? (
+                  <p className="text-gray-500 mb-4">System cluster - will automatically contain all users.</p>
+                ) : (
+                  <>
+                    <p className="text-gray-500 mb-4">No users in this cluster.</p>
+                    <Button
+                      onClick={() => setAddUsersModalOpen(true)}
+                      variant="secondary"
+                      className="flex items-center gap-2"
+                    >
+                      <Plus className="h-4 w-4" />
+                      Add Users
+                    </Button>
+                  </>
+                )}
               </div>
             )}
           </div>

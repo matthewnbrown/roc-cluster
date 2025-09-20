@@ -1,0 +1,399 @@
+import React, { useState } from 'react';
+import { useJobs, useCancelJob } from '../hooks/useJobs';
+import { JobResponse, JobStatus } from '../types/api';
+import { Table, TableHeader, TableBody, TableRow, TableCell } from './ui/Table';
+import Button from './ui/Button';
+import Pagination from './ui/Pagination';
+import { Plus, Eye, X, Search, Clock, CheckCircle, XCircle, AlertCircle, Pause, Copy } from 'lucide-react';
+import Input from './ui/Input';
+
+interface JobListProps {
+  onViewJob: (job: JobResponse) => void;
+  onCreateJob: () => void;
+  onCloneJob: (job: JobResponse) => void;
+}
+
+const JobList: React.FC<JobListProps> = ({ onViewJob, onCreateJob, onCloneJob }) => {
+  const [page, setPage] = useState(1);
+  const [perPage] = useState(20);
+  const [statusFilter, setStatusFilter] = useState<string>('');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [expandedJobId, setExpandedJobId] = useState<number | null>(null);
+
+  const { data: jobsData, isLoading, error } = useJobs(page, perPage, statusFilter || undefined);
+  const cancelJobMutation = useCancelJob();
+
+  const handleCancelJob = async (job: JobResponse) => {
+    if (window.confirm(`Are you sure you want to cancel job "${job.name}"?`)) {
+      try {
+        await cancelJobMutation.mutateAsync({ id: job.id });
+      } catch (error) {
+        console.error('Failed to cancel job:', error);
+      }
+    }
+  };
+
+  const handleRowClick = (job: JobResponse) => {
+    setExpandedJobId(expandedJobId === job.id ? null : job.id);
+  };
+
+  const getStatusIcon = (status: JobStatus) => {
+    switch (status) {
+      case 'pending':
+        return <Clock className="h-4 w-4 text-yellow-500" />;
+      case 'running':
+        return <AlertCircle className="h-4 w-4 text-blue-500" />;
+      case 'completed':
+        return <CheckCircle className="h-4 w-4 text-green-500" />;
+      case 'failed':
+        return <XCircle className="h-4 w-4 text-red-500" />;
+      case 'cancelled':
+        return <Pause className="h-4 w-4 text-gray-500" />;
+      default:
+        return <Clock className="h-4 w-4 text-gray-500" />;
+    }
+  };
+
+  const getStatusColor = (status: JobStatus) => {
+    switch (status) {
+      case 'pending':
+        return 'bg-yellow-100 text-yellow-800';
+      case 'running':
+        return 'bg-blue-100 text-blue-800';
+      case 'completed':
+        return 'bg-green-100 text-green-800';
+      case 'failed':
+        return 'bg-red-100 text-red-800';
+      case 'cancelled':
+        return 'bg-gray-100 text-gray-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+
+  const getProgressPercentage = (job: JobResponse) => {
+    if (job.total_steps === 0) return 0;
+    // Include both completed and failed steps as "finished" steps
+    const finishedSteps = job.completed_steps + job.failed_steps;
+    return Math.round((finishedSteps / job.total_steps) * 100);
+  };
+
+  // Filter jobs by search term
+  const filteredJobs = jobsData?.jobs.filter(job =>
+    job.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (job.description && job.description.toLowerCase().includes(searchTerm.toLowerCase()))
+  ) || [];
+
+  if (error) {
+    return (
+      <div className="bg-red-50 border border-red-200 rounded-md p-4">
+        <p className="text-red-800">Error loading jobs: {error.message}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Jobs</h1>
+          <p className="text-gray-600">Manage and monitor bulk operations</p>
+        </div>
+        <Button onClick={onCreateJob} className="flex items-center gap-2">
+          <Plus className="h-4 w-4" />
+          Create Job
+        </Button>
+      </div>
+
+      {/* Filters */}
+      <div className="flex items-center space-x-4">
+        <div className="flex-1 max-w-md">
+          <Input
+            placeholder="Search jobs..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full"
+          />
+        </div>
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+          className="px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
+        >
+          <option value="">All Statuses</option>
+          <option value="pending">Pending</option>
+          <option value="running">Running</option>
+          <option value="completed">Completed</option>
+          <option value="failed">Failed</option>
+          <option value="cancelled">Cancelled</option>
+        </select>
+      </div>
+
+      {/* Jobs Table */}
+      <div className="bg-white shadow rounded-lg overflow-hidden">
+        {isLoading ? (
+          <div className="flex items-center justify-center h-32">
+            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary-600"></div>
+          </div>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableCell header className="w-16">ID</TableCell>
+                <TableCell header className="min-w-[200px]">Name</TableCell>
+                <TableCell header className="min-w-[120px]">Status</TableCell>
+                <TableCell header className="min-w-[120px]">Progress</TableCell>
+                <TableCell header className="min-w-[120px]">Steps</TableCell>
+                <TableCell header className="min-w-[150px]">Created</TableCell>
+                <TableCell header className="min-w-[120px]">Duration</TableCell>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredJobs.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={7} className="text-center py-8 text-gray-500">
+                    {searchTerm ? 'No jobs found matching your search.' : 'No jobs found.'}
+                  </TableCell>
+                </TableRow>
+              ) : (
+                filteredJobs.map((job) => (
+                  <React.Fragment key={job.id}>
+                    <TableRow 
+                      className="cursor-pointer hover:bg-gray-50 transition-colors"
+                      onClick={() => handleRowClick(job)}
+                    >
+                      <TableCell className="font-mono text-sm">{job.id}</TableCell>
+                      <TableCell>
+                        <div>
+                          <div className="font-medium text-gray-900">{job.name}</div>
+                          {job.description && (
+                            <div className="text-sm text-gray-500 truncate max-w-xs">
+                              {job.description}
+                            </div>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <span
+                          className={`inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(job.status)}`}
+                        >
+                          {getStatusIcon(job.status)}
+                          {job.status.charAt(0).toUpperCase() + job.status.slice(1)}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center space-x-2">
+                          <div className="flex-1 bg-gray-200 rounded-full h-2">
+                            <div
+                              className="bg-primary-600 h-2 rounded-full transition-all duration-300"
+                              style={{ width: `${getProgressPercentage(job)}%` }}
+                            ></div>
+                          </div>
+                          <span className="text-xs text-gray-500 w-8">
+                            {getProgressPercentage(job)}%
+                          </span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-sm text-gray-900">
+                        {job.completed_steps}/{job.total_steps}
+                        {job.failed_steps > 0 && (
+                          <span className="text-red-600 ml-1">
+                            ({job.failed_steps} failed)
+                          </span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-gray-500 text-sm">
+                        {formatDate(job.created_at)}
+                      </TableCell>
+                      <TableCell className="text-gray-500 text-sm">
+                        {job.started_at && job.completed_at ? (
+                          <>
+                            {Math.round(
+                              (new Date(job.completed_at).getTime() - new Date(job.started_at).getTime()) / 1000
+                            )}s
+                          </>
+                        ) : job.started_at ? (
+                          'Running...'
+                        ) : (
+                          '-'
+                        )}
+                      </TableCell>
+                    </TableRow>
+                    
+                    {/* Expanded Job Details */}
+                    {expandedJobId === job.id && (
+                      <TableRow>
+                        <TableCell colSpan={7} className="p-0">
+                          <div className="bg-gray-50 border-t border-gray-200 p-6">
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                              {/* Job Overview */}
+                              <div className="space-y-4">
+                                <h4 className="font-medium text-gray-900">Job Overview</h4>
+                                <div className="space-y-2 text-sm">
+                                  <div>
+                                    <span className="font-medium text-gray-700">ID:</span>
+                                    <span className="ml-2 font-mono">{job.id}</span>
+                                  </div>
+                                  <div>
+                                    <span className="font-medium text-gray-700">Name:</span>
+                                    <span className="ml-2">{job.name}</span>
+                                  </div>
+                                  {job.description && (
+                                    <div>
+                                      <span className="font-medium text-gray-700">Description:</span>
+                                      <span className="ml-2">{job.description}</span>
+                                    </div>
+                                  )}
+                                  <div>
+                                    <span className="font-medium text-gray-700">Status:</span>
+                                    <span className={`ml-2 inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(job.status)}`}>
+                                      {getStatusIcon(job.status)}
+                                      {job.status.charAt(0).toUpperCase() + job.status.slice(1)}
+                                    </span>
+                                  </div>
+                                  <div>
+                                    <span className="font-medium text-gray-700">Parallel Execution:</span>
+                                    <span className="ml-2">{job.parallel_execution ? 'Yes' : 'No'}</span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Progress & Timing */}
+                              <div className="space-y-4">
+                                <h4 className="font-medium text-gray-900">Progress & Timing</h4>
+                                <div className="space-y-2 text-sm">
+                                  <div>
+                                    <span className="font-medium text-gray-700">Progress:</span>
+                                    <div className="mt-1 flex items-center space-x-2">
+                                      <div className="flex-1 bg-gray-200 rounded-full h-2">
+                                        <div
+                                          className="bg-primary-600 h-2 rounded-full transition-all duration-300"
+                                          style={{ width: `${getProgressPercentage(job)}%` }}
+                                        ></div>
+                                      </div>
+                                      <span className="text-xs text-gray-500 w-8">
+                                        {getProgressPercentage(job)}%
+                                      </span>
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <span className="font-medium text-gray-700">Steps:</span>
+                                    <span className="ml-2">{job.completed_steps + job.failed_steps}/{job.total_steps}</span>
+                                    {job.failed_steps > 0 && (
+                                      <span className="text-red-600 ml-1">({job.failed_steps} failed)</span>
+                                    )}
+                                  </div>
+                                  <div>
+                                    <span className="font-medium text-gray-700">Created:</span>
+                                    <span className="ml-2">{formatDate(job.created_at)}</span>
+                                  </div>
+                                  {job.started_at && (
+                                    <div>
+                                      <span className="font-medium text-gray-700">Started:</span>
+                                      <span className="ml-2">{formatDate(job.started_at)}</span>
+                                    </div>
+                                  )}
+                                  {job.completed_at && (
+                                    <div>
+                                      <span className="font-medium text-gray-700">Completed:</span>
+                                      <span className="ml-2">{formatDate(job.completed_at)}</span>
+                                    </div>
+                                  )}
+                                  {job.started_at && job.completed_at && (
+                                    <div>
+                                      <span className="font-medium text-gray-700">Duration:</span>
+                                      <span className="ml-2">
+                                        {Math.round(
+                                          (new Date(job.completed_at).getTime() - new Date(job.started_at).getTime()) / 1000
+                                        )}s
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Actions & Error */}
+                              <div className="space-y-4">
+                                <h4 className="font-medium text-gray-900">Actions & Status</h4>
+                                <div className="space-y-2 text-sm">
+                                  <div className="flex items-center space-x-2">
+                                    <Button
+                                      variant="secondary"
+                                      size="sm"
+                                      onClick={() => onViewJob(job)}
+                                      className="flex items-center gap-2"
+                                    >
+                                      <Eye className="h-4 w-4" />
+                                      View Full Details
+                                    </Button>
+                                    <Button
+                                      variant="secondary"
+                                      size="sm"
+                                      onClick={() => onCloneJob(job)}
+                                      className="flex items-center gap-2"
+                                    >
+                                      <Copy className="h-4 w-4" />
+                                      Clone Job
+                                    </Button>
+                                  </div>
+                                  {(job.status === 'pending' || job.status === 'running') && (
+                                    <div className="flex items-center space-x-2">
+                                      <Button
+                                        variant="secondary"
+                                        size="sm"
+                                        onClick={() => handleCancelJob(job)}
+                                        className="text-red-600 hover:text-red-700"
+                                        loading={cancelJobMutation.isLoading}
+                                      >
+                                        <X className="h-4 w-4 mr-1" />
+                                        Cancel Job
+                                      </Button>
+                                    </div>
+                                  )}
+                                  {job.error_message && (
+                                    <div>
+                                      <span className="font-medium text-gray-700">Error:</span>
+                                      <div className="mt-1 p-2 bg-red-50 border border-red-200 rounded text-red-700 text-xs">
+                                        {job.error_message}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </React.Fragment>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        )}
+      </div>
+
+      {/* Pagination */}
+      {jobsData && jobsData.total_pages > 1 && (
+        <Pagination
+          currentPage={page}
+          totalPages={jobsData.total_pages}
+          onPageChange={setPage}
+        />
+      )}
+    </div>
+  );
+};
+
+export default JobList;
