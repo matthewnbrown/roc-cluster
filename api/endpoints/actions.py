@@ -8,10 +8,9 @@ import logging
 from datetime import datetime, timezone
 
 from api.schemas import (
-    AccountIdentifier, AccountIdentifierType, AttackRequest, BulkActionSubresponse, CaptchaSolutionItem, SabotageRequest, SpyRequest, BecomeOfficerRequest, SendCreditsRequest,
+    AccountIdentifier, AccountIdentifierType, AttackRequest, CaptchaSolutionItem, SabotageRequest, SpyRequest, BecomeOfficerRequest, SendCreditsRequest,
     RecruitRequest, ArmoryPurchaseRequest, TrainingPurchaseRequest, 
-    EnableCreditSavingRequest, PurchaseUpgradeRequest, ActionResponse,
-    BulkActionRequest, BulkActionResponse
+    EnableCreditSavingRequest, PurchaseUpgradeRequest, ActionResponse
 )
 from api.account_manager import AccountManager
 
@@ -306,56 +305,6 @@ async def get_solved_captchas(
         logger.error(f"Error getting solved captchas: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
-
-# Bulk Actions
-@router.post("/bulk", response_model=BulkActionResponse)
-async def execute_bulk_action(
-    request: BulkActionRequest,
-    manager: AccountManager = Depends(get_account_manager)
-):
-    """Execute an action on multiple accounts"""
-    try:
-        # Prepare parameters for bulk action
-        kwargs = {}
-        if request.parameters:
-            kwargs.update(request.parameters)
-        if request.target_id:
-            kwargs["target_id"] = request.target_id
-        
-        results = await manager.execute_bulk_action(
-            request.accounts,
-            request.action_type,
-            max_retries=request.max_retries,
-            **kwargs
-        )
-        
-        # Count successful and failed actions
-        successful = sum(1 for r in results if r.get("success", False))
-        failed = len(results) - successful
-        
-        return BulkActionResponse(
-            total_accounts=len(request.accounts),
-            successful=successful,
-            failed=failed,
-            results=[
-                BulkActionSubresponse(
-                    success=r.get("success", False),
-                    message=r.get("message"),
-                    data=r.get("data"),
-                    error=r.get("error"),
-                    timestamp=datetime.now(timezone.utc),
-                    account=AccountIdentifier(
-                        id_type=r.get("account_id_type"),
-                        id=r.get("account_id")
-                    )
-                ) for r in results
-            ],
-            timestamp=datetime.now(timezone.utc)
-        )
-        
-    except Exception as e:
-        logger.error(f"Error in bulk action: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
 
 # Utility endpoints
 @router.get("/account/{account_id}/metadata")

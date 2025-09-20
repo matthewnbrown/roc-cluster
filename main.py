@@ -16,7 +16,7 @@ from api.database import init_db, get_db
 from api.db_models import Account, Cluster, ClusterUser
 from api.schemas import AccountCreate, AccountResponse
 from api.account_manager import AccountManager
-from api.endpoints import accounts, actions, clusters
+from api.endpoints import accounts, actions, clusters, jobs
 from api.async_logger import async_logger
 from api.captcha_feedback_service import captcha_feedback_service
 
@@ -24,8 +24,9 @@ from api.captcha_feedback_service import captcha_feedback_service
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Global account manager instance
+# Global instances
 account_manager: Optional[AccountManager] = None
+job_manager: Optional["JobManager"] = None
 
 async def create_initial_all_users_cluster():
     """Create the initial all_users cluster and add all existing users to it"""
@@ -80,7 +81,7 @@ async def create_initial_all_users_cluster():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize and cleanup resources"""
-    global account_manager
+    global account_manager, job_manager
     
     # Initialize database
     init_db()
@@ -100,6 +101,11 @@ async def lifespan(app: FastAPI):
     
     account_manager = AccountManager()
     logger.info("Account manager initialized")
+    
+    # Initialize job manager
+    from api.job_manager import JobManager
+    job_manager = JobManager(account_manager)
+    logger.info("Job manager initialized")
     
     yield
     
@@ -144,6 +150,7 @@ app.add_middleware(
 app.include_router(accounts.router, prefix="/api/v1/accounts", tags=["accounts"])
 app.include_router(actions.router, prefix="/api/v1/actions", tags=["actions"])
 app.include_router(clusters.router, prefix="/api/v1/clusters", tags=["clusters"])
+app.include_router(jobs.router, prefix="/api/v1/jobs", tags=["jobs"])
 
 @app.get("/")
 async def root():

@@ -82,16 +82,54 @@ class ROCAPIClient:
         response.raise_for_status()
         return response.json()
     
-    async def bulk_action(self, account_ids: list, action_type: str, **kwargs) -> Dict[str, Any]:
-        """Execute bulk action on multiple accounts"""
+    async def create_job(self, name: str, description: str, steps: list, parallel_execution: bool = False) -> Dict[str, Any]:
+        """Create a new job with multiple steps
+        
+        Steps can contain:
+        - account_ids: List of account IDs
+        - cluster_ids: List of cluster IDs (will be expanded to individual accounts)
+        - Both account_ids and cluster_ids in the same step (will be combined)
+        """
         response = await self.client.post(
-            f"{self.base_url}/api/v1/actions/bulk",
+            f"{self.base_url}/api/v1/jobs/",
             json={
-                "account_ids": account_ids,
-                "action_type": action_type,
-                "parameters": kwargs
+                "name": name,
+                "description": description,
+                "parallel_execution": parallel_execution,
+                "steps": steps
             }
         )
+        response.raise_for_status()
+        return response.json()
+    
+    async def get_job_status(self, job_id: int) -> Dict[str, Any]:
+        """Get job status"""
+        response = await self.client.get(f"{self.base_url}/api/v1/jobs/{job_id}/status")
+        response.raise_for_status()
+        return response.json()
+    
+    async def cancel_job(self, job_id: int, reason: str = None) -> Dict[str, Any]:
+        """Cancel a job"""
+        response = await self.client.post(
+            f"{self.base_url}/api/v1/jobs/{job_id}/cancel",
+            json={"reason": reason} if reason else {}
+        )
+        response.raise_for_status()
+        return response.json()
+    
+    async def list_jobs(self, status: str = None, page: int = 1) -> Dict[str, Any]:
+        """List jobs"""
+        params = {"page": page, "per_page": 20}
+        if status:
+            params["status"] = status
+        
+        response = await self.client.get(f"{self.base_url}/api/v1/jobs/", params=params)
+        response.raise_for_status()
+        return response.json()
+    
+    async def get_valid_action_types(self) -> Dict[str, Any]:
+        """Get list of valid action types for job steps"""
+        response = await self.client.get(f"{self.base_url}/api/v1/jobs/valid-action-types")
         response.raise_for_status()
         return response.json()
 
@@ -156,18 +194,137 @@ async def main():
         except httpx.HTTPStatusError as e:
             print(f"⚠️  Armory purchase failed: {e.response.text}")
         
-        # Bulk action example
-        print(f"\n7. Attempting bulk training purchase on account {account_id}...")
+        # Job creation example (replaces bulk actions)
+        print(f"\n7. Creating a sequential job for training purchase on account {account_id}...")
         try:
-            bulk_result = await client.bulk_action(
-                [account_id],
-                "purchase_training",
-                training_type="defense_soldiers",
-                count=20
+            job_result = await client.create_job(
+                name="Sequential Training Job",
+                description="Purchase training for defense soldiers (sequential)",
+                parallel_execution=False,  # Sequential execution
+                steps=[{
+                    "account_ids": [account_id],
+                    "action_type": "purchase_training",
+                    "parameters": {
+                        "training_type": "defense_soldiers",
+                        "count": 20
+                    }
+                }]
             )
-            print(f"✅ Bulk action result: {bulk_result}")
+            print(f"✅ Sequential job created: {job_result}")
+            
+            # Check job status
+            job_id = job_result["id"]
+            print(f"\n8. Checking sequential job {job_id} status...")
+            status_result = await client.get_job_status(job_id)
+            print(f"✅ Sequential job status: {status_result}")
+            
         except httpx.HTTPStatusError as e:
-            print(f"⚠️  Bulk action failed: {e.response.text}")
+            print(f"⚠️  Sequential job creation failed: {e.response.text}")
+        except Exception as e:
+            print(f"⚠️  Sequential job creation failed: {str(e)}")
+        
+        # Cluster-based job example
+        print(f"\n9. Creating a cluster-based job for recruiting across multiple accounts...")
+        try:
+            cluster_job_result = await client.create_job(
+                name="Cluster Recruitment Job",
+                description="Recruit soldiers across all accounts in cluster 1",
+                parallel_execution=True,  # Parallel execution for speed
+                steps=[
+                    {
+                        "cluster_ids": [1],  # Will expand to all accounts in cluster 1
+                        "action_type": "recruit",
+                        "parameters": {
+                            "soldier_type": "infantry",
+                            "count": 100
+                        }
+                    }
+                ]
+            )
+            print(f"✅ Cluster job created: {cluster_job_result}")
+            
+            # Check cluster job status
+            cluster_job_id = cluster_job_result["id"]
+            print(f"\n10. Checking cluster job {cluster_job_id} status...")
+            cluster_status_result = await client.get_job_status(cluster_job_id)
+            print(f"✅ Cluster job status: {cluster_status_result}")
+            
+        except httpx.HTTPStatusError as e:
+            print(f"⚠️  Cluster job creation failed: {e.response.text}")
+        except Exception as e:
+            print(f"⚠️  Cluster job creation failed: {str(e)}")
+        
+        # Combined account_ids and cluster_ids job example
+        print(f"\n11. Creating a combined job with both account_ids and cluster_ids in same step...")
+        try:
+            combined_job_result = await client.create_job(
+                name="Combined Account/Cluster Job",
+                description="Execute action on specific accounts AND all cluster members in one step",
+                parallel_execution=True,
+                steps=[
+                    {
+                        "account_ids": [account_id, account_id + 1],  # Specific accounts
+                        "cluster_ids": [1],  # All accounts in cluster 1
+                        "action_type": "recruit",
+                        "parameters": {
+                            "soldier_type": "cavalry",
+                            "count": 50
+                        }
+                    }
+                ]
+            )
+            print(f"✅ Combined job created: {combined_job_result}")
+            
+            # Check combined job status
+            combined_job_id = combined_job_result["id"]
+            print(f"\n12. Checking combined job {combined_job_id} status...")
+            combined_status_result = await client.get_job_status(combined_job_id)
+            print(f"✅ Combined job status: {combined_status_result}")
+            
+        except httpx.HTTPStatusError as e:
+            print(f"⚠️  Combined job creation failed: {e.response.text}")
+        except Exception as e:
+            print(f"⚠️  Combined job creation failed: {str(e)}")
+        
+        # Multiple clusters and accounts example
+        print(f"\n13. Creating a multi-target job with multiple clusters and accounts...")
+        try:
+            multi_job_result = await client.create_job(
+                name="Multi-Target Job",
+                description="Execute action on multiple accounts and multiple clusters",
+                parallel_execution=True,
+                steps=[
+                    {
+                        "account_ids": [account_id],  # Specific account
+                        "cluster_ids": [1, 2],  # Multiple clusters
+                        "action_type": "purchase_training",
+                        "parameters": {
+                            "training_type": "defense_soldiers",
+                            "count": 25
+                        }
+                    }
+                ]
+            )
+            print(f"✅ Multi-target job created: {multi_job_result}")
+            
+            # Check multi-target job status
+            multi_job_id = multi_job_result["id"]
+            print(f"\n14. Checking multi-target job {multi_job_id} status...")
+            multi_status_result = await client.get_job_status(multi_job_id)
+            print(f"✅ Multi-target job status: {multi_status_result}")
+            
+        except httpx.HTTPStatusError as e:
+            print(f"⚠️  Multi-target job creation failed: {e.response.text}")
+        except Exception as e:
+            print(f"⚠️  Multi-target job creation failed: {str(e)}")
+        
+        # Get valid action types example
+        print(f"\n15. Getting valid action types...")
+        try:
+            valid_types = await client.get_valid_action_types()
+            print(f"✅ Valid action types: {valid_types}")
+        except Exception as e:
+            print(f"⚠️  Failed to get valid action types: {str(e)}")
         
         print("\n🎉 Example completed successfully!")
         print("\nNote: Some actions may fail because they require actual ROC website integration.")

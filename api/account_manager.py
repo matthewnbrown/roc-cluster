@@ -115,40 +115,7 @@ class AccountManager:
                 if roc_account:
                     await roc_account.cleanup()
     
-    async def execute_bulk_action(self, accounts: List[AccountIdentifier], action: str, max_retries: int = 0, **kwargs) -> List[Dict[str, Any]]:
-        """Execute an action on multiple accounts using on-demand creation"""
-        tasks = []
-        
-        # find if action is an actiontype
-        if action in self.ActionType:
-            action = self.ActionType(action)
-        else:
-            return {"success": False, "error": "Invalid action"}
-        
-        for account_id in accounts:
-            task = self.execute_action(account_id.id_type, account_id.id, action, max_retries=max_retries, **kwargs)
-            tasks.append(task)
-        
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        
-        # Convert exceptions to error results
-        processed_results = []
-        for i, result in enumerate(results):
-            if isinstance(result, Exception):
-                processed_results.append({
-                    "account_id_type": accounts[i].id_type,
-                    "account_id": accounts[i].id,
-                    "success": False,
-                    "error": str(result)
-                })
-            else:
-                processed_results.append({
-                    "account_id_type": accounts[i].id_type,
-                    "account_id": accounts[i].id,
-                    **result
-                })
-        
-        return processed_results
+
     
     async def cleanup(self):
         """Cleanup method - no longer needed since we don't store persistent instances"""

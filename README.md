@@ -25,10 +25,13 @@ A lightweight, high-performance API for managing multiple ROC (Rise of Civilizat
 - **Enable Credit Saving** - Activate credit saving mode
 - **Purchase Upgrades** - Buy account upgrades
 
-### Bulk Operations
-- Execute actions across multiple accounts simultaneously
-- Parallel processing for improved performance
-- Comprehensive error handling and reporting
+### Job Management
+- Create jobs with multiple steps and actions for bulk operations
+- **Sequential Execution** (default): Steps run one after another in order
+- **Parallel Execution**: All steps run simultaneously for maximum speed
+- Asynchronous job execution with status tracking
+- Job cancellation and progress monitoring
+- View active and completed jobs
 
 ## Quick Start
 
@@ -133,21 +136,277 @@ curl -X POST "http://localhost:8000/api/v1/actions/attack" \
   }'
 ```
 
-### Bulk Training Purchase
+### Job Creation (Replaces Bulk Operations)
+
+#### Individual Account Jobs
 ```bash
-curl -X POST "http://localhost:8000/api/v1/actions/bulk" \
+# Create a sequential job (default - steps run one after another)
+curl -X POST "http://localhost:8000/api/v1/jobs/" \
   -H "Content-Type: application/json" \
   -d '{
-    "account_ids": [1, 2, 3],
-    "action_type": "purchase_training",
-    "parameters": {
-      "training_type": "attack_soldiers",
-      "count": 100
-    }
+    "name": "Sequential Training Job",
+    "description": "Purchase training in order",
+    "parallel_execution": false,
+    "steps": [
+      {
+        "account_ids": [1],
+        "action_type": "recruit",
+        "parameters": {
+          "soldier_type": "infantry",
+          "count": 100
+        }
+      },
+      {
+        "account_ids": [1],
+        "action_type": "purchase_training",
+        "parameters": {
+          "training_type": "attack_soldiers",
+          "count": 50
+        }
+      }
+    ]
+  }'
+
+# Create a parallel job (all steps run simultaneously)
+curl -X POST "http://localhost:8000/api/v1/jobs/" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Parallel Multi-Action Job",
+    "description": "Execute multiple actions simultaneously",
+    "parallel_execution": true,
+    "steps": [
+      {
+        "account_ids": [1],
+        "action_type": "recruit",
+        "parameters": {
+          "soldier_type": "infantry",
+          "count": 100
+        }
+      },
+      {
+        "account_ids": [2],
+        "action_type": "purchase_training",
+        "parameters": {
+          "training_type": "attack_soldiers",
+          "count": 50
+        }
+      }
+    ]
   }'
 ```
 
+#### Cluster-Based Jobs
+```bash
+# Create a job for all accounts in a cluster
+curl -X POST "http://localhost:8000/api/v1/jobs/" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Cluster Recruitment Job",
+    "description": "Recruit soldiers across all accounts in cluster 1",
+    "parallel_execution": true,
+    "steps": [
+      {
+        "cluster_ids": [1],
+        "action_type": "recruit",
+        "parameters": {
+          "soldier_type": "infantry",
+          "count": 100
+        }
+      }
+    ]
+  }'
+
+# Create a job for multiple clusters
+curl -X POST "http://localhost:8000/api/v1/jobs/" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Multi-Cluster Training Job",
+    "description": "Train soldiers across multiple clusters",
+    "parallel_execution": true,
+    "steps": [
+      {
+        "cluster_ids": [1, 2, 3],
+        "action_type": "purchase_training",
+        "parameters": {
+          "training_type": "defense_soldiers",
+          "count": 50
+        }
+      }
+    ]
+  }'
+
+# Combined account_ids and cluster_ids in same step
+curl -X POST "http://localhost:8000/api/v1/jobs/" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Combined Job",
+    "description": "Execute action on specific accounts AND cluster members in one step",
+    "parallel_execution": true,
+    "steps": [
+      {
+        "account_ids": [1, 2, 3],
+        "cluster_ids": [1, 2],
+        "action_type": "recruit",
+        "parameters": {
+          "soldier_type": "cavalry",
+          "count": 50
+        }
+      }
+    ]
+  }'
+
+# Multiple accounts and clusters example
+curl -X POST "http://localhost:8000/api/v1/jobs/" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Multi-Target Job",
+    "description": "Execute action on multiple accounts and multiple clusters",
+    "parallel_execution": true,
+    "steps": [
+      {
+        "account_ids": [1, 2],
+        "cluster_ids": [1, 2, 3],
+        "action_type": "purchase_training",
+        "parameters": {
+          "training_type": "defense_soldiers",
+          "count": 25
+        }
+      }
+    ]
+  }'
+
+# Check job status
+curl -X GET "http://localhost:8000/api/v1/jobs/1/status"
+
+# Cancel a job
+curl -X POST "http://localhost:8000/api/v1/jobs/1/cancel" \
+  -H "Content-Type: application/json" \
+  -d '{"reason": "User requested cancellation"}'
+
+# List all jobs
+curl -X GET "http://localhost:8000/api/v1/jobs/"
+
+# Get valid action types for job steps
+curl -X GET "http://localhost:8000/api/v1/jobs/valid-action-types"
+```
+
 **Note:** Replace `8000` with `8001` if using `start_api.py`
+
+### When to Use Sequential vs Parallel Execution
+
+**Sequential Execution** (`parallel_execution: false` - default):
+- ✅ Use when steps depend on each other (e.g., training soldiers before buying weapons)
+- ✅ Use when you need predictable order of execution
+- ✅ Use for actions on the same account to avoid conflicts
+- ✅ Use when you want to stop execution if a step fails
+
+**Parallel Execution** (`parallel_execution: true`):
+- ✅ Use when steps are independent of each other
+- ✅ Use for actions on different accounts
+- ✅ Use when you want maximum speed and all steps can run simultaneously
+- ✅ Use for bulk operations where order doesn't matter
+
+### Combined Account and Cluster Targeting
+
+The job system supports flexible targeting by combining multiple account IDs and cluster IDs in a single step:
+
+#### How It Works:
+1. **Combines all targeting methods** into a unified set of account IDs
+2. **Expands clusters** to individual account IDs
+3. **Deduplicates accounts** (removes duplicates if an account is in both account_ids and cluster expansion)
+4. **Creates separate steps** for each unique account
+5. **Maintains execution order** within the expanded steps
+
+#### Examples:
+
+**Cluster-only targeting:**
+```json
+{
+  "cluster_ids": [1, 2],
+  "action_type": "recruit"
+}
+```
+*Expands to all accounts in clusters 1 and 2*
+
+**Account-only targeting:**
+```json
+{
+  "account_ids": [1, 2, 3],
+  "action_type": "recruit"
+}
+```
+*Executes on specific accounts 1, 2, and 3*
+
+**Combined targeting (NEW!):**
+```json
+{
+  "account_ids": [1, 2, 3],
+  "cluster_ids": [1, 2],
+  "action_type": "recruit"
+}
+```
+
+**Expansion Example:**
+- account_ids: [1, 2, 3]
+- cluster_ids: [1, 2] → expands to accounts [4, 5, 6]
+- **Final unified set**: [1, 2, 3, 4, 5, 6] (no duplicates)
+- **Creates 6 individual steps** for each account
+
+This powerful combination allows you to target specific accounts AND entire clusters in a single step, making bulk operations incredibly flexible and efficient.
+
+### Action Type Validation
+
+All job steps must use valid action types from the AccountManager.ActionType enum. The system validates action types during job creation and provides helpful error messages.
+
+**Valid Action Types:**
+
+**Actions that require `target_id`:**
+- `attack` - Attack other players
+- `sabotage` - Sabotage other players  
+- `spy` - Gather intelligence on other players
+- `become_officer` - Become an officer of another player
+- `send_credits` - Transfer credits to other players
+
+**Actions that don't require `target_id`:**
+- `recruit` - Recruit soldiers and mercenaries
+- `purchase_armory` - Buy weapons and equipment
+- `purchase_training` - Train soldiers
+- `enable_credit_saving` - Activate credit saving mode
+- `purchase_upgrade` - Buy account upgrades
+- `get_metadata` - Retrieve current account status
+- `get_solved_captchas` - Get solved captcha solutions
+
+**Note:** The `target_id` parameter is only passed to actions that need it. For actions like `get_metadata`, you don't need to specify a `target_id`.
+
+**Validation:**
+```bash
+# Get current valid action types
+curl -X GET "http://localhost:8000/api/v1/jobs/valid-action-types"
+```
+
+If you use an invalid action type, you'll get a clear error message:
+```json
+{
+  "detail": "Invalid action_type 'invalid_action'. Valid types are: attack, sabotage, spy, become_officer, send_credits, recruit, purchase_armory, purchase_training, enable_credit_saving, purchase_upgrade, get_metadata, get_solved_captchas"
+}
+```
+
+**Example - get_metadata without target_id:**
+```bash
+curl -X POST "http://localhost:8000/api/v1/jobs/" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Get Account Metadata",
+    "description": "Retrieve metadata for multiple accounts",
+    "parallel_execution": true,
+    "steps": [
+      {
+        "account_ids": [1, 2, 3],
+        "action_type": "get_metadata"
+      }
+    ]
+  }'
+```
 
 ## Architecture
 
@@ -299,7 +558,7 @@ python import_users.py
 
 - **Async Operations**: All I/O operations are asynchronous for better concurrency
 - **Connection Pooling**: Database connections are pooled for efficiency
-- **Bulk Operations**: Multiple accounts can be processed in parallel
+- **Job Management**: Asynchronous job execution with status tracking and cancellation
 - **Caching**: Account metadata is cached to reduce API calls
 - **Rate Limiting**: Built-in rate limiting to prevent abuse
 

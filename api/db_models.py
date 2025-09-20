@@ -2,10 +2,11 @@
 SQLAlchemy database models for the ROC Cluster API
 """
 
-from sqlalchemy import Column, Integer, String, DateTime, Text, Boolean, ForeignKey, UniqueConstraint, Table
+from sqlalchemy import Column, Integer, String, DateTime, Text, Boolean, ForeignKey, UniqueConstraint, Table, Enum
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from api.database import Base
+import enum
 
 
 class Account(Base):
@@ -121,3 +122,56 @@ class ClusterUser(Base):
     __table_args__ = (
         UniqueConstraint('cluster_id', 'account_id', name='unique_cluster_user'),
     )
+
+
+class JobStatus(enum.Enum):
+    """Job status enumeration"""
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class Job(Base):
+    """Job model for tracking bulk operations"""
+    __tablename__ = "jobs"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), nullable=False)  # User-friendly job name
+    description = Column(Text, nullable=True)  # Optional job description
+    status = Column(Enum(JobStatus), default=JobStatus.PENDING, nullable=False)
+    parallel_execution = Column(Boolean, default=False, nullable=False)  # Execute steps in parallel
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    started_at = Column(DateTime(timezone=True), nullable=True)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+    total_steps = Column(Integer, default=0, nullable=False)
+    completed_steps = Column(Integer, default=0, nullable=False)
+    failed_steps = Column(Integer, default=0, nullable=False)
+    error_message = Column(Text, nullable=True)  # Error message if job failed
+    
+    # Relationships
+    steps = relationship("JobStep", back_populates="job", cascade="all, delete-orphan")
+
+
+class JobStep(Base):
+    """Individual step within a job"""
+    __tablename__ = "job_steps"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    job_id = Column(Integer, ForeignKey("jobs.id"), nullable=False)
+    step_order = Column(Integer, nullable=False)  # Order of execution within the job
+    action_type = Column(String(50), nullable=False)  # attack, sabotage, spy, etc.
+    account_id = Column(Integer, ForeignKey("accounts.id"), nullable=False)
+    target_id = Column(String(100), nullable=True)  # Target user ID for user actions
+    parameters = Column(Text, nullable=True)  # JSON string of action parameters
+    max_retries = Column(Integer, default=0, nullable=False)
+    status = Column(Enum(JobStatus), default=JobStatus.PENDING, nullable=False)
+    result = Column(Text, nullable=True)  # JSON string of step result
+    error_message = Column(Text, nullable=True)  # Error message if step failed
+    started_at = Column(DateTime(timezone=True), nullable=True)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+    
+    # Relationships
+    job = relationship("Job", back_populates="steps")
+    account = relationship("Account")

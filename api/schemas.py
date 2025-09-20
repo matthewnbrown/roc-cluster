@@ -6,6 +6,7 @@ from enum import Enum
 from pydantic import BaseModel, EmailStr
 from typing import Optional, Dict, Any, List, Generic, TypeVar
 from datetime import datetime
+import json
 
 # Generic type for paginated responses
 T = TypeVar('T')
@@ -192,29 +193,6 @@ class ActionResponse(BaseModel):
         exclude_none = True
 
 
-class BulkActionSubresponse(ActionResponse):
-    account: AccountIdentifier
-    
-    class Config:
-        exclude_none = True
-
-
-class BulkActionRequest(BaseModel):
-    """Request for bulk actions across multiple accounts"""
-    accounts: List[AccountIdentifier]
-    action_type: str
-    parameters: Optional[Dict[str, Any]] = None
-    target_id: Optional[str] = None
-    max_retries: Optional[int] = 0
-
-
-class BulkActionResponse(BaseModel):
-    """Response for bulk actions"""
-    total_accounts: int
-    successful: int
-    failed: int
-    results: List[BulkActionSubresponse]
-    timestamp: datetime
 
 
 # Retry Configuration Schema
@@ -321,3 +299,93 @@ class ClusterSearch(BaseModel):
     description: Optional[str] = None
     user_count_min: Optional[int] = None
     user_count_max: Optional[int] = None
+
+
+# Job Schemas
+class JobStatusEnum(str, Enum):
+    """Job status enumeration"""
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class JobStepRequest(BaseModel):
+    """Request for creating a job step"""
+    account_ids: Optional[List[int]] = []  # List of account IDs
+    cluster_ids: Optional[List[int]] = []  # List of cluster IDs to expand
+    action_type: str
+    parameters: Optional[Dict[str, Any]] = None
+    max_retries: int = 0
+    
+    def __init__(self, **data):
+        super().__init__(**data)
+        # Validate that at least one of account_ids or cluster_ids is provided
+        if not self.account_ids and not self.cluster_ids:
+            raise ValueError("Either account_ids or cluster_ids must be provided")
+        
+        # Validate action_type (basic validation - detailed validation happens in job manager)
+        if not self.action_type:
+            raise ValueError("action_type is required")
+
+
+class JobCreateRequest(BaseModel):
+    """Request for creating a new job"""
+    name: str
+    description: Optional[str] = None
+    parallel_execution: bool = False  # Execute steps in parallel instead of sequential
+    steps: List[JobStepRequest]
+
+
+class JobStepResponse(BaseModel):
+    """Response for a job step"""
+    id: int
+    step_order: int
+    action_type: str
+    account_id: int
+    target_id: Optional[str] = None
+    parameters: Optional[Dict[str, Any]] = None
+    max_retries: int
+    status: JobStatusEnum
+    result: Optional[Dict[str, Any]] = None
+    error_message: Optional[str] = None
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    
+    class Config:
+        exclude_none = True
+
+
+class JobResponse(BaseModel):
+    """Response for a job"""
+    id: int
+    name: str
+    description: Optional[str] = None
+    status: JobStatusEnum
+    parallel_execution: bool
+    created_at: datetime
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    total_steps: int
+    completed_steps: int
+    failed_steps: int
+    error_message: Optional[str] = None
+    steps: Optional[List[JobStepResponse]] = None
+    
+    class Config:
+        exclude_none = True
+
+
+class JobListResponse(BaseModel):
+    """Response for listing jobs"""
+    jobs: List[JobResponse]
+    total: int
+    page: int
+    per_page: int
+    total_pages: int
+
+
+class JobCancelRequest(BaseModel):
+    """Request for cancelling a job"""
+    reason: Optional[str] = None

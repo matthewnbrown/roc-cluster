@@ -6,11 +6,12 @@
     "configurations": [
     
         {
-            "name": "Python Debugger: Current File with Arguments",
+            "name": "Python Debugger: StartAPI with Arguments",
             "type": "debugpy",
             "request": "launch",
             "program": "start_api.py",
             "console": "integratedTerminal",
+            "python": "${command:python.interpreterPath}",
             "args": "${command:pickArgs}"
         }
     ]
