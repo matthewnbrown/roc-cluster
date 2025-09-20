@@ -318,8 +318,63 @@ async def main():
         except Exception as e:
             print(f"⚠️  Multi-target job creation failed: {str(e)}")
         
+        # Async steps example
+        print(f"\n15. Creating a job with async steps...")
+        try:
+            async_job_result = await client.create_job(
+                name="Async Steps Demo Job",
+                description="Demonstrates async step execution - some steps run in background",
+                parallel_execution=False,  # Sequential execution with async steps
+                steps=[
+                    {
+                        "account_ids": [account_id],
+                        "action_type": "get_metadata",
+                        "parameters": {},
+                        "is_async": False  # Sync step - waits for completion
+                    },
+                    {
+                        "account_ids": [account_id],
+                        "action_type": "recruit",
+                        "parameters": {},
+                        "is_async": True  # Async step - launches without waiting
+                    },
+                    {
+                        "account_ids": [account_id],
+                        "action_type": "get_metadata",
+                        "parameters": {},
+                        "is_async": False  # Another sync step
+                    },
+                    {
+                        "account_ids": [account_id],
+                        "action_type": "purchase_training",
+                        "parameters": {
+                            "training_type": "defense_soldiers",
+                            "count": 10
+                        },
+                        "is_async": True  # Another async step
+                    }
+                ]
+            )
+            print(f"✅ Async job created: {async_job_result}")
+            
+            # Wait a bit and check job status
+            await asyncio.sleep(2)
+            job_status = await client.get_job(async_job_result['id'], include_steps=True)
+            print(f"📊 Job status after 2 seconds: {job_status['status']}")
+            print(f"📊 Completed steps: {job_status['completed_steps']}/{job_status['total_steps']}")
+            
+            # Show which steps are async
+            if job_status.get('steps'):
+                print("📋 Step details:")
+                for step in job_status['steps']:
+                    async_indicator = "🔄 ASYNC" if step['is_async'] else "⏳ SYNC"
+                    print(f"  Step {step['step_order']}: {step['action_type']} - {async_indicator} - Status: {step['status']}")
+            
+        except Exception as e:
+            print(f"⚠️  Async job creation failed: {str(e)}")
+
         # Get valid action types example
-        print(f"\n15. Getting valid action types...")
+        print(f"\n16. Getting valid action types...")
         try:
             valid_types = await client.get_valid_action_types()
             print(f"✅ Valid action types: {valid_types}")

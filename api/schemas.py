@@ -391,3 +391,55 @@ class JobListResponse(BaseModel):
 class JobCancelRequest(BaseModel):
     """Request for cancelling a job"""
     reason: Optional[str] = None
+
+
+# Weapon Schemas
+class WeaponResponse(BaseModel):
+    """Response schema for weapons"""
+    id: int
+    roc_weapon_id: int
+    name: str
+    display_name: str
+    created_at: datetime
+    
+    class Config:
+        orm_mode = True
+
+
+# Armory Preferences Schemas
+class ArmoryWeaponPreferenceResponse(BaseModel):
+    """Response schema for individual weapon preference"""
+    weapon_id: int
+    weapon_name: str
+    weapon_display_name: str
+    percentage: float
+    
+    class Config:
+        orm_mode = True
+
+
+class ArmoryPreferencesBase(BaseModel):
+    """Base schema for armory preferences"""
+    weapon_preferences: List[ArmoryWeaponPreferenceResponse] = []
+
+
+class ArmoryPreferencesCreate(BaseModel):
+    """Schema for creating armory preferences"""
+    account_id: int
+    weapon_percentages: Dict[str, float]  # weapon_name -> percentage
+
+
+class ArmoryPreferencesUpdate(BaseModel):
+    """Schema for updating armory preferences"""
+    weapon_percentages: Dict[str, float]  # weapon_name -> percentage
+
+
+class ArmoryPreferencesResponse(ArmoryPreferencesBase):
+    """Response schema for armory preferences"""
+    id: int
+    account_id: int
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    
+    class Config:
+        orm_mode = True

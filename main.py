@@ -16,7 +16,7 @@ from api.database import init_db, get_db
 from api.db_models import Account, Cluster, ClusterUser
 from api.schemas import AccountCreate, AccountResponse
 from api.account_manager import AccountManager
-from api.endpoints import accounts, actions, clusters, jobs
+from api.endpoints import accounts, actions, clusters, jobs, armory
 from api.async_logger import async_logger
 from api.captcha_feedback_service import captcha_feedback_service
 
@@ -87,6 +87,11 @@ async def lifespan(app: FastAPI):
     init_db()
     logger.info("Database initialized")
     
+    # Run adhoc scripts (migrations, setup, etc.)
+    from scripts.adhoc import run_adhoc_scripts
+    run_adhoc_scripts()
+    logger.info("Adhoc scripts completed")
+    
     # Create initial all_users cluster
     await create_initial_all_users_cluster()
     logger.info("Initial all_users cluster created/verified")
@@ -151,6 +156,7 @@ app.include_router(accounts.router, prefix="/api/v1/accounts", tags=["accounts"]
 app.include_router(actions.router, prefix="/api/v1/actions", tags=["actions"])
 app.include_router(clusters.router, prefix="/api/v1/clusters", tags=["clusters"])
 app.include_router(jobs.router, prefix="/api/v1/jobs", tags=["jobs"])
+app.include_router(armory.router, prefix="/api/v1/armory", tags=["armory"])
 
 @app.get("/")
 async def root():

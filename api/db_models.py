@@ -2,7 +2,7 @@
 SQLAlchemy database models for the ROC Cluster API
 """
 
-from sqlalchemy import Column, Integer, String, DateTime, Text, Boolean, ForeignKey, UniqueConstraint, Table, Enum
+from sqlalchemy import Column, Integer, String, DateTime, Text, Boolean, ForeignKey, UniqueConstraint, Table, Enum, Float
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from api.database import Base
@@ -27,6 +27,7 @@ class Account(Base):
     actions = relationship("AccountAction", back_populates="account", cascade="all, delete-orphan")
     cookies = relationship("UserCookies", back_populates="account", cascade="all, delete-orphan")
     clusters = relationship("ClusterUser", back_populates="account", cascade="all, delete-orphan")
+    armory_preferences = relationship("ArmoryPreferences", back_populates="account", cascade="all, delete-orphan")
 
 
 class AccountLog(Base):
@@ -176,3 +177,47 @@ class JobStep(Base):
     # Relationships
     job = relationship("Job", back_populates="steps")
     account = relationship("Account")
+
+
+class Weapon(Base):
+    """Weapon model for storing ROC weapon information"""
+    __tablename__ = "weapons"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    roc_weapon_id = Column(Integer, unique=True, nullable=False)  # The in-game ROC weapon ID
+    name = Column(String(50), unique=True, nullable=False)  # weapon name (dagger, maul, etc.)
+    display_name = Column(String(100), nullable=False)  # Human-readable display name
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class ArmoryPreferences(Base):
+    """Armory purchase preferences for each account"""
+    __tablename__ = "armory_preferences"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    account_id = Column(Integer, ForeignKey("accounts.id"), nullable=False, unique=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    
+    # Relationships
+    account = relationship("Account", back_populates="armory_preferences")
+    weapon_preferences = relationship("ArmoryWeaponPreference", back_populates="preferences", cascade="all, delete-orphan")
+
+
+class ArmoryWeaponPreference(Base):
+    """Individual weapon preference within armory preferences"""
+    __tablename__ = "armory_weapon_preferences"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    preferences_id = Column(Integer, ForeignKey("armory_preferences.id"), nullable=False)
+    weapon_id = Column(Integer, ForeignKey("weapons.id"), nullable=False)
+    percentage = Column(Float, default=0.0, nullable=False)
+    
+    # Relationships
+    preferences = relationship("ArmoryPreferences", back_populates="weapon_preferences")
+    weapon = relationship("Weapon")
+    
+    # Ensure unique weapon per preferences
+    __table_args__ = (
+        UniqueConstraint('preferences_id', 'weapon_id', name='unique_preference_weapon'),
+    )
