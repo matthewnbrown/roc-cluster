@@ -28,6 +28,7 @@ class Account(Base):
     cookies = relationship("UserCookies", back_populates="account", cascade="all, delete-orphan")
     clusters = relationship("ClusterUser", back_populates="account", cascade="all, delete-orphan")
     armory_preferences = relationship("ArmoryPreferences", back_populates="account", cascade="all, delete-orphan")
+    training_preferences = relationship("TrainingPreferences", back_populates="account", cascade="all, delete-orphan")
 
 
 class AccountLog(Base):
@@ -190,6 +191,18 @@ class Weapon(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
+class SoldierType(Base):
+    """Soldier type model for storing ROC soldier/training information"""
+    __tablename__ = "soldier_types"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    roc_soldier_type_id = Column(String(50), unique=True, nullable=False)  # The in-game ROC soldier type ID
+    name = Column(String(50), unique=True, nullable=False)  # soldier type name (attack_soldiers, etc.)
+    display_name = Column(String(100), nullable=False)  # Human-readable display name
+    costs_soldiers = Column(Boolean, default=True, nullable=False)  # Whether this type costs soldiers
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
 class ArmoryPreferences(Base):
     """Armory purchase preferences for each account"""
     __tablename__ = "armory_preferences"
@@ -220,4 +233,37 @@ class ArmoryWeaponPreference(Base):
     # Ensure unique weapon per preferences
     __table_args__ = (
         UniqueConstraint('preferences_id', 'weapon_id', name='unique_preference_weapon'),
+    )
+
+
+class TrainingPreferences(Base):
+    """Training purchase preferences for each account"""
+    __tablename__ = "training_preferences"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    account_id = Column(Integer, ForeignKey("accounts.id"), nullable=False, unique=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    
+    # Relationships
+    account = relationship("Account", back_populates="training_preferences")
+    soldier_type_preferences = relationship("TrainingSoldierTypePreference", back_populates="preferences", cascade="all, delete-orphan")
+
+
+class TrainingSoldierTypePreference(Base):
+    """Individual soldier type preference within training preferences"""
+    __tablename__ = "training_soldier_type_preferences"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    preferences_id = Column(Integer, ForeignKey("training_preferences.id"), nullable=False)
+    soldier_type_id = Column(Integer, ForeignKey("soldier_types.id"), nullable=False)
+    percentage = Column(Float, default=0.0, nullable=False)
+    
+    # Relationships
+    preferences = relationship("TrainingPreferences", back_populates="soldier_type_preferences")
+    soldier_type = relationship("SoldierType")
+    
+    # Ensure unique soldier type per preferences
+    __table_args__ = (
+        UniqueConstraint('preferences_id', 'soldier_type_id', name='unique_preference_soldier_type'),
     )

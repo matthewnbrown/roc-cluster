@@ -218,3 +218,4 @@ __marimo__/
 # roc-cluster unique
 errors/*
 data/*
+**/executed_scripts.txt

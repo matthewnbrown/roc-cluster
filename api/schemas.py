@@ -443,3 +443,57 @@ class ArmoryPreferencesResponse(ArmoryPreferencesBase):
     
     class Config:
         orm_mode = True
+
+
+# Soldier Types Schemas
+class SoldierTypeResponse(BaseModel):
+    """Response schema for soldier types"""
+    id: int
+    roc_soldier_type_id: str
+    name: str
+    display_name: str
+    costs_soldiers: bool
+    created_at: datetime
+    
+    class Config:
+        orm_mode = True
+
+
+# Training Preferences Schemas
+class TrainingSoldierTypePreferenceResponse(BaseModel):
+    """Response schema for individual soldier type preference"""
+    soldier_type_id: int
+    soldier_type_name: str
+    soldier_type_display_name: str
+    soldier_type_costs_soldiers: bool
+    percentage: float
+    
+    class Config:
+        orm_mode = True
+
+
+class TrainingPreferencesBase(BaseModel):
+    """Base schema for training preferences"""
+    soldier_type_preferences: List[TrainingSoldierTypePreferenceResponse] = []
+
+
+class TrainingPreferencesCreate(BaseModel):
+    """Schema for creating training preferences"""
+    account_id: int
+    soldier_type_percentages: Dict[str, float]  # soldier_type_name -> percentage
+
+
+class TrainingPreferencesUpdate(BaseModel):
+    """Schema for updating training preferences"""
+    soldier_type_percentages: Dict[str, float]  # soldier_type_name -> percentage
+
+
+class TrainingPreferencesResponse(TrainingPreferencesBase):
+    """Response schema for training preferences"""
+    id: int
+    account_id: int
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    
+    class Config:
+        orm_mode = True

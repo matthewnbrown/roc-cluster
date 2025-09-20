@@ -8,13 +8,21 @@ from typing import List
 import logging
 
 from api.database import get_db
-from api.db_models import Weapon, ArmoryPreferences, ArmoryWeaponPreference, Account
+from api.db_models import (
+    Weapon, ArmoryPreferences, ArmoryWeaponPreference, Account,
+    SoldierType, TrainingPreferences, TrainingSoldierTypePreference
+)
 from api.schemas import (
     WeaponResponse, 
     ArmoryPreferencesCreate, 
     ArmoryPreferencesUpdate, 
     ArmoryPreferencesResponse,
-    ArmoryWeaponPreferenceResponse
+    ArmoryWeaponPreferenceResponse,
+    SoldierTypeResponse,
+    TrainingPreferencesCreate,
+    TrainingPreferencesUpdate,
+    TrainingPreferencesResponse,
+    TrainingSoldierTypePreferenceResponse
 )
 
 logger = logging.getLogger(__name__)
@@ -274,3 +282,263 @@ async def delete_armory_preferences(
     db.commit()
     
     logger.info(f"Deleted armory preferences for account {account_id}")
+
+
+# Soldier Types Endpoints
+@router.get("/soldier-types", response_model=List[SoldierTypeResponse])
+async def get_soldier_types(db: Session = Depends(get_db)):
+    """Get all available soldier types"""
+    soldier_types = db.query(SoldierType).all()
+    return soldier_types
+
+
+# Training Preferences Endpoints
+@router.get("/training-preferences/{account_id}", response_model=TrainingPreferencesResponse)
+async def get_training_preferences(
+    account_id: int,
+    db: Session = Depends(get_db)
+):
+    """Get training preferences for a specific account"""
+    # Check if account exists
+    account = db.query(Account).filter(Account.id == account_id).first()
+    if not account:
+        raise HTTPException(
+            status_code=404,
+            detail="Account not found"
+        )
+    
+    preferences = db.query(TrainingPreferences).filter(
+        TrainingPreferences.account_id == account_id
+    ).first()
+    
+    if not preferences:
+        # Create default preferences if none exist
+        preferences = TrainingPreferences(account_id=account_id)
+        db.add(preferences)
+        db.commit()
+        db.refresh(preferences)
+    
+    # Build response with soldier type preferences
+    soldier_type_preferences = []
+    for stp in preferences.soldier_type_preferences:
+        soldier_type_preferences.append(TrainingSoldierTypePreferenceResponse(
+            soldier_type_id=stp.soldier_type.id,
+            soldier_type_name=stp.soldier_type.name,
+            soldier_type_display_name=stp.soldier_type.display_name,
+            soldier_type_costs_soldiers=stp.soldier_type.costs_soldiers,
+            percentage=stp.percentage
+        ))
+    
+    return TrainingPreferencesResponse(
+        id=preferences.id,
+        account_id=preferences.account_id,
+        created_at=preferences.created_at,
+        updated_at=preferences.updated_at,
+        soldier_type_preferences=soldier_type_preferences
+    )
+
+
+@router.post("/training-preferences", response_model=TrainingPreferencesResponse, status_code=status.HTTP_201_CREATED)
+async def create_training_preferences(
+    preferences_data: TrainingPreferencesCreate,
+    db: Session = Depends(get_db)
+):
+    """Create training preferences for an account"""
+    # Check if account exists
+    account = db.query(Account).filter(Account.id == preferences_data.account_id).first()
+    if not account:
+        raise HTTPException(
+            status_code=404,
+            detail="Account not found"
+        )
+    
+    # Check if preferences already exist
+    existing_preferences = db.query(TrainingPreferences).filter(
+        TrainingPreferences.account_id == preferences_data.account_id
+    ).first()
+    
+    if existing_preferences:
+        raise HTTPException(
+            status_code=400,
+            detail="Training preferences already exist for this account"
+        )
+    
+    # Validate soldier type names and get soldier types
+    soldier_types = db.query(SoldierType).all()
+    soldier_type_by_name = {st.name: st for st in soldier_types}
+    
+    # Validate that all soldier type names exist
+    invalid_soldier_types = []
+    for soldier_type_name in preferences_data.soldier_type_percentages.keys():
+        if soldier_type_name not in soldier_type_by_name:
+            invalid_soldier_types.append(soldier_type_name)
+    
+    if invalid_soldier_types:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid soldier type names: {', '.join(invalid_soldier_types)}"
+        )
+    
+    # Validate that percentages sum to <= 100%
+    total_percentage = sum(preferences_data.soldier_type_percentages.values())
+    
+    if total_percentage > 100.0:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Total percentage ({total_percentage:.2f}%) cannot exceed 100%"
+        )
+    
+    # Create preferences
+    preferences = TrainingPreferences(account_id=preferences_data.account_id)
+    db.add(preferences)
+    db.commit()
+    db.refresh(preferences)
+    
+    # Create soldier type preferences
+    for soldier_type_name, percentage in preferences_data.soldier_type_percentages.items():
+        if percentage > 0:  # Only create entries for soldier types with > 0%
+            soldier_type = soldier_type_by_name[soldier_type_name]
+            soldier_type_preference = TrainingSoldierTypePreference(
+                preferences_id=preferences.id,
+                soldier_type_id=soldier_type.id,
+                percentage=percentage
+            )
+            db.add(soldier_type_preference)
+    
+    db.commit()
+    db.refresh(preferences)
+    
+    # Build response
+    soldier_type_preferences = []
+    for stp in preferences.soldier_type_preferences:
+        soldier_type_preferences.append(TrainingSoldierTypePreferenceResponse(
+            soldier_type_id=stp.soldier_type.id,
+            soldier_type_name=stp.soldier_type.name,
+            soldier_type_display_name=stp.soldier_type.display_name,
+            soldier_type_costs_soldiers=stp.soldier_type.costs_soldiers,
+            percentage=stp.percentage
+        ))
+    
+    logger.info(f"Created training preferences for account {preferences_data.account_id}")
+    
+    return TrainingPreferencesResponse(
+        id=preferences.id,
+        account_id=preferences.account_id,
+        created_at=preferences.created_at,
+        updated_at=preferences.updated_at,
+        soldier_type_preferences=soldier_type_preferences
+    )
+
+
+@router.put("/training-preferences/{account_id}", response_model=TrainingPreferencesResponse)
+async def update_training_preferences(
+    account_id: int,
+    preferences_data: TrainingPreferencesUpdate,
+    db: Session = Depends(get_db)
+):
+    """Update training preferences for an account"""
+    # Check if account exists
+    account = db.query(Account).filter(Account.id == account_id).first()
+    if not account:
+        raise HTTPException(
+            status_code=404,
+            detail="Account not found"
+        )
+    
+    preferences = db.query(TrainingPreferences).filter(
+        TrainingPreferences.account_id == account_id
+    ).first()
+    
+    if not preferences:
+        # Create new preferences if none exist
+        preferences = TrainingPreferences(account_id=account_id)
+        db.add(preferences)
+        db.commit()
+        db.refresh(preferences)
+    
+    # Validate soldier type names and get soldier types
+    soldier_types = db.query(SoldierType).all()
+    soldier_type_by_name = {st.name: st for st in soldier_types}
+    
+    # Validate that all soldier type names exist
+    invalid_soldier_types = []
+    for soldier_type_name in preferences_data.soldier_type_percentages.keys():
+        if soldier_type_name not in soldier_type_by_name:
+            invalid_soldier_types.append(soldier_type_name)
+    
+    if invalid_soldier_types:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid soldier type names: {', '.join(invalid_soldier_types)}"
+        )
+    
+    # Validate that percentages sum to <= 100%
+    total_percentage = sum(preferences_data.soldier_type_percentages.values())
+    
+    if total_percentage > 100.0:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Total percentage ({total_percentage:.2f}%) cannot exceed 100%"
+        )
+    
+    # Delete existing soldier type preferences
+    db.query(TrainingSoldierTypePreference).filter(
+        TrainingSoldierTypePreference.preferences_id == preferences.id
+    ).delete()
+    
+    # Create new soldier type preferences
+    for soldier_type_name, percentage in preferences_data.soldier_type_percentages.items():
+        if percentage > 0:  # Only create entries for soldier types with > 0%
+            soldier_type = soldier_type_by_name[soldier_type_name]
+            soldier_type_preference = TrainingSoldierTypePreference(
+                preferences_id=preferences.id,
+                soldier_type_id=soldier_type.id,
+                percentage=percentage
+            )
+            db.add(soldier_type_preference)
+    
+    db.commit()
+    db.refresh(preferences)
+    
+    # Build response
+    soldier_type_preferences = []
+    for stp in preferences.soldier_type_preferences:
+        soldier_type_preferences.append(TrainingSoldierTypePreferenceResponse(
+            soldier_type_id=stp.soldier_type.id,
+            soldier_type_name=stp.soldier_type.name,
+            soldier_type_display_name=stp.soldier_type.display_name,
+            soldier_type_costs_soldiers=stp.soldier_type.costs_soldiers,
+            percentage=stp.percentage
+        ))
+    
+    logger.info(f"Updated training preferences for account {account_id}")
+    
+    return TrainingPreferencesResponse(
+        id=preferences.id,
+        account_id=preferences.account_id,
+        created_at=preferences.created_at,
+        updated_at=preferences.updated_at,
+        soldier_type_preferences=soldier_type_preferences
+    )
+
+
+@router.delete("/training-preferences/{account_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_training_preferences(
+    account_id: int,
+    db: Session = Depends(get_db)
+):
+    """Delete training preferences for an account"""
+    preferences = db.query(TrainingPreferences).filter(
+        TrainingPreferences.account_id == account_id
+    ).first()
+    
+    if not preferences:
+        raise HTTPException(
+            status_code=404,
+            detail="Training preferences not found"
+        )
+    
+    db.delete(preferences)
+    db.commit()
+    
+    logger.info(f"Deleted training preferences for account {account_id}")
