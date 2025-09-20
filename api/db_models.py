@@ -166,6 +166,7 @@ class JobStep(Base):
     target_id = Column(String(100), nullable=True)  # Target user ID for user actions
     parameters = Column(Text, nullable=True)  # JSON string of action parameters
     max_retries = Column(Integer, default=0, nullable=False)
+    is_async = Column(Boolean, default=False, nullable=False)  # Whether this step should be executed asynchronously
     status = Column(Enum(JobStatus), default=JobStatus.PENDING, nullable=False)
     result = Column(Text, nullable=True)  # JSON string of step result
     error_message = Column(Text, nullable=True)  # Error message if step failed

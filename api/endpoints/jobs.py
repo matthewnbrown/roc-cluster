@@ -52,7 +52,7 @@ async def create_job(
             
             if step.parameters:
                 step_data["parameters"] = step.parameters
-            step_data["skip_on_error"] = step.skip_on_error
+
             steps_data.append(step_data)
         
         job = await manager.create_job(

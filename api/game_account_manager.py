@@ -406,6 +406,11 @@ class GameAccountManager:
     async def attack(self, target_id: str, turns: int = -1) -> Dict[str, Any]:
         """Attack another user"""
 
+        try:
+            turns = int(turns)
+        except ValueError:
+            return {"success": False, "error": "Turn count must be an integer"}
+
         if turns < 1 or turns > 12:
             return {"success": False, "error": "Turn count must be between 1 and 12"}
 
@@ -415,7 +420,7 @@ class GameAccountManager:
             payload = {
                 "defender_id": target_id,
                 "mission_type": "attack",
-                "turns": turns
+                "attacks": turns
             }
             
             results = []
@@ -427,11 +432,14 @@ class GameAccountManager:
                 result = await self.__retry_login_wrapper(_submit)
             
                 if 'detail.php' not in result.url.path:
+                    logger.error(f"Unknown error. No captcha error, but not on attack detail url: {result.url}")
+                    with open(f"./errors/{self.account.username}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}_attack_error.html", "w", encoding="utf-8") as f:
+                        f.write(await result.read())
                     return {"success": False, "error": "Unknown error. No captcha error, but not on attack detail url"}
                 
                 page_text = await result.text()
                 if 'You Get Nothing' in page_text:
-                    return {"success": False, "error": "Enemy defended"}
+                    return {"success": True, "error": "Enemy defended"}
                 elif 'ribbon won' in page_text:
                     soup = BeautifulSoup(page_text, 'html.parser')
                     won_ribbon = soup.find('div', class_='ribbon won')
@@ -534,7 +542,7 @@ class GameAccountManager:
                 
                 page_text = await result.text()
                 if 'As they approach, an alarm is cried out by enemy sentries' in page_text:
-                    return {"success": False, "error": "Enemy sentries detected"}
+                    return {"success": True, "error": "Enemy sentries detected"}
                 data = parse_recon_data(page_text)
                 if data["success"]:
                     return {"success": True, "data": data}

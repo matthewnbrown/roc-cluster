@@ -318,6 +318,7 @@ class JobStepRequest(BaseModel):
     action_type: str
     parameters: Optional[Dict[str, Any]] = None
     max_retries: int = 0
+    is_async: bool = False  # Whether this step should be executed asynchronously
     
     def __init__(self, **data):
         super().__init__(**data)
@@ -347,6 +348,7 @@ class JobStepResponse(BaseModel):
     target_id: Optional[str] = None
     parameters: Optional[Dict[str, Any]] = None
     max_retries: int
+    is_async: bool
     status: JobStatusEnum
     result: Optional[Dict[str, Any]] = None
     error_message: Optional[str] = None

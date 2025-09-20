@@ -370,6 +370,7 @@ class JobManager:
                         account_id=account_id,
                         parameters=json.dumps(step_data.get("parameters", {})) if step_data.get("parameters") else None,
                         max_retries=step_data.get("max_retries", 0),
+                        is_async=step_data.get("is_async", False),
                         status=JobStatus.PENDING
                     )
                     db.add(step)
@@ -496,23 +497,8 @@ class JobManager:
                 # Execute all steps in parallel
                 await self._execute_steps_parallel(steps, db)
             else:
-                # Execute steps sequentially
-                for step in steps:
-                    # Check if job was cancelled
-                    db.refresh(job)
-                    if job.status == JobStatus.CANCELLED:
-                        break
-                    
-                    try:
-                        # Execute the step
-                        await self._execute_step(step, db)
-                        
-                    except Exception as e:
-                        logger.error(f"Error executing step {step.id}: {e}")
-                        step.status = JobStatus.FAILED
-                        step.error_message = str(e)
-                        step.completed_at = datetime.now(timezone.utc)
-                        db.commit()
+                # Execute steps sequentially with async step support
+                await self._execute_steps_sequential(steps, db, job)
                         
                         
             
@@ -527,8 +513,15 @@ class JobManager:
                     and_(JobStep.job_id == job_id, JobStep.status == JobStatus.FAILED)
                 ).count()
                 
+                # Count async steps for logging
+                async_steps = db.query(JobStep).filter(
+                    and_(JobStep.job_id == job_id, JobStep.is_async == True)
+                ).count()
+                
                 job.completed_steps = completed_steps
                 job.failed_steps = failed_steps
+                
+                logger.info(f"Job {job_id} completed: {completed_steps} completed, {failed_steps} failed, {async_steps} async steps")
                 
                 if failed_steps == 0:
                     job.status = JobStatus.COMPLETED
@@ -601,6 +594,39 @@ class JobManager:
             db.commit()
             raise
     
+    async def _execute_steps_sequential(self, steps: List[JobStep], db: Session, job: Job):
+        """Execute steps sequentially with support for async steps"""
+        async_tasks = []  # Track async tasks that are running
+        
+        for step in steps:
+            # Check if job was cancelled
+            db.refresh(job)
+            if job.status == JobStatus.CANCELLED:
+                break
+            
+            try:
+                if step.is_async:
+                    # Launch async step without waiting
+                    task = asyncio.create_task(self._execute_step_safe(step, db))
+                    async_tasks.append(task)
+                    logger.info(f"Launched async step {step.id} for job {job.id}")
+                else:
+                    # Execute sync step and wait for completion
+                    await self._execute_step(step, db)
+                    
+            except Exception as e:
+                logger.error(f"Error executing step {step.id}: {e}")
+                step.status = JobStatus.FAILED
+                step.error_message = str(e)
+                step.completed_at = datetime.now(timezone.utc)
+                db.commit()
+        
+        # Wait for all async tasks to complete
+        if async_tasks:
+            logger.info(f"Waiting for {len(async_tasks)} async tasks to complete for job {job.id}")
+            await asyncio.gather(*async_tasks, return_exceptions=True)
+            logger.info(f"All async tasks completed for job {job.id}")
+
     async def _execute_steps_parallel(self, steps: List[JobStep], db: Session):
         """Execute multiple steps in parallel"""
         # Create tasks for all steps
@@ -653,6 +679,7 @@ class JobManager:
                     target_id=step.target_id,
                     parameters=json.loads(step.parameters) if step.parameters else None,
                     max_retries=step.max_retries,
+                    is_async=step.is_async,
                     status=step.status.value,
                     result=json.loads(step.result) if step.result else None,
                     error_message=step.error_message,
