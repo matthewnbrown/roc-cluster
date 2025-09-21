@@ -267,3 +267,100 @@ class TrainingSoldierTypePreference(Base):
     __table_args__ = (
         UniqueConstraint('preferences_id', 'soldier_type_id', name='unique_preference_soldier_type'),
     )
+
+
+class Race(Base):
+    """Race model for storing ROC race information"""
+    __tablename__ = "races"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    roc_race_id = Column(Integer, unique=True, nullable=False)
+    name = Column(String(50), unique=True, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class RocUser(Base):
+    """ROC user model for storing in-game user information"""
+    __tablename__ = "roc_users"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    roc_user_id = Column(String(100), unique=True, index=True, nullable=False)
+    name = Column(String(100), nullable=False)
+    race = Column(String(50), nullable=True)
+    created = Column(Boolean, default=False, nullable=False)
+    create_date = Column(DateTime(timezone=True), nullable=True)
+    last_updated = Column(DateTime(timezone=True), onupdate=func.now())
+    alliance = Column(String(100), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class RocStat(Base):
+    """ROC stat model for storing stat type information"""
+    __tablename__ = "roc_stats"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(50), unique=True, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class RocUserStats(Base):
+    """ROC user stats model for storing user stat values"""
+    __tablename__ = "roc_user_stats"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    roc_user_id = Column(String(100), ForeignKey("roc_users.roc_user_id"), nullable=False)
+    roc_stat_id = Column(Integer, ForeignKey("roc_stats.id"), nullable=False)
+    value = Column(Float, default=0.0, nullable=False)
+    last_updated = Column(DateTime(timezone=True), onupdate=func.now())
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    # Relationships
+    roc_user = relationship("RocUser", foreign_keys=[roc_user_id])
+    roc_stat = relationship("RocStat")
+    
+    # Ensure unique user-stat pairs
+    __table_args__ = (
+        UniqueConstraint('roc_user_id', 'roc_stat_id', name='unique_user_stat'),
+    )
+
+
+class RocUserSoldiers(Base):
+    """ROC user soldiers model for storing user soldier counts"""
+    __tablename__ = "roc_user_soldiers"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    roc_user_id = Column(String(100), ForeignKey("roc_users.roc_user_id"), nullable=False)
+    roc_soldier_type_id = Column(String(50), ForeignKey("soldier_types.roc_soldier_type_id"), nullable=False)
+    count = Column(Integer, default=0, nullable=False)
+    last_updated = Column(DateTime(timezone=True), onupdate=func.now())
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    # Relationships
+    roc_user = relationship("RocUser", foreign_keys=[roc_user_id])
+    soldier_type = relationship("SoldierType", foreign_keys=[roc_soldier_type_id])
+    
+    # Ensure unique user-soldier type pairs
+    __table_args__ = (
+        UniqueConstraint('roc_user_id', 'roc_soldier_type_id', name='unique_user_soldier_type'),
+    )
+
+
+class RocUserWeapons(Base):
+    """ROC user weapons model for storing user weapon counts"""
+    __tablename__ = "roc_user_weapons"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    roc_user_id = Column(String(100), ForeignKey("roc_users.roc_user_id"), nullable=False)
+    roc_weapon_id = Column(Integer, ForeignKey("weapons.roc_weapon_id"), nullable=False)
+    count = Column(Integer, default=0, nullable=False)
+    last_updated = Column(DateTime(timezone=True), onupdate=func.now())
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    # Relationships
+    roc_user = relationship("RocUser", foreign_keys=[roc_user_id])
+    weapon = relationship("Weapon", foreign_keys=[roc_weapon_id])
+    
+    # Ensure unique user-weapon pairs
+    __table_args__ = (
+        UniqueConstraint('roc_user_id', 'roc_weapon_id', name='unique_user_weapon'),
+    )
