@@ -13,6 +13,9 @@ from api.schemas import (
     SetCreditSavingRequest, PurchaseUpgradeRequest, BuyUpgradeRequest, ActionResponse
 )
 from api.account_manager import AccountManager
+from api.database import get_db
+from api.db_models import Weapon
+from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -23,6 +26,11 @@ def get_account_manager() -> AccountManager:
     if account_manager is None:
         raise HTTPException(status_code=503, detail="Account manager not initialized")
     return account_manager
+
+def validate_weapon_id(weapon_id: int, db: Session) -> bool:
+    """Validate that the weapon ID exists in the database"""
+    weapon = db.query(Weapon).filter(Weapon.roc_weapon_id == weapon_id).first()
+    return weapon is not None
 
 # User Actions (targeting other users)
 @router.post("/attack", response_model=ActionResponse)
@@ -54,17 +62,25 @@ async def attack_user(
 @router.post("/sabotage", response_model=ActionResponse)
 async def sabotage_user(
     request: SabotageRequest,
-    manager: AccountManager = Depends(get_account_manager)
+    manager: AccountManager = Depends(get_account_manager),
+    db: Session = Depends(get_db)
 ):
     """Sabotage another user"""
     try:
+        # Validate that the enemy_weapon is a valid ROC weapon
+        if not validate_weapon_id(request.enemy_weapon, db):
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Invalid weapon ID: {request.enemy_weapon}. Weapon not found in database."
+            )
+        
         result = await manager.execute_action(
             id_type=request.acting_user.id_type,
             id=request.acting_user.id,
             action=AccountManager.ActionType.SABOTAGE,
             max_retries=request.max_retries,
             target_id=request.target_id,
-            spies=request.spies,
+            spy_count=request.spy_count,  # Fixed: was using 'spies' instead of 'spy_count'
             enemy_weapon=request.enemy_weapon
         )
         
@@ -74,6 +90,8 @@ async def sabotage_user(
             error=result.get("error"),
             timestamp=datetime.now(timezone.utc)
         )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error in sabotage action: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")

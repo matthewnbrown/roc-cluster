@@ -471,8 +471,29 @@ class GameAccountManager:
         Returns:
             Dict containing success status and sabotage result or error message
         """
-        if not self.is_logged_in:
-            return {"success": False, "error": "Not logged in"}
+
+        
+        payload = {
+            "defender_id": target_id,
+            "mission_type": "sabotage",
+            "sabspies": spy_count,
+            "enemy_weapon": enemy_weapon
+        }
+        
+        sabotage_url = self.url_generator.sabotage(target_id)
+        
+        async def _submit_sabotage():                
+            return await self.__submit_page(sabotage_url, payload, PageSubmit.SABOTAGE)
+        
+        for i in range(self.max_retries+1):
+            result = await self.__retry_login_wrapper(_submit_sabotage)
+            
+            page_text = await result.text()
+            
+            #todo check if the sabotage was successful
+            return {"success": True, "message": f"Sabotaged user {target_id}"}
+        
+        return {"success": False, "error": "Failed to sabotage user"}
             
         try:
             # Implement sabotage logic
