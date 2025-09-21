@@ -40,6 +40,7 @@ class PageSubmit(Enum):
     PROBE = "Probe"
     SPY = "Recon"
     SABOTAGE = "Sabotage"
+    UPGRADE = ""
 
 
 class GameAccountManager:
@@ -238,7 +239,6 @@ class GameAccountManager:
         """Check if the account is logged in"""
         return page_text.find('<form action="login.php" method="post">') == -1
 
-    
     async def __submit_with_captcha(self, url: str, data: Dict[str, Any], page_name: PageSubmit) -> aiohttp.ClientResponse:
         """[Untested]Submits a form with a captcha"""
         captcha = await self._get_captcha()
@@ -247,20 +247,21 @@ class GameAccountManager:
         
         return await self.submit_captca(url, data, captcha, page_name)
     
-    async def login_if_needed(self, current_page: str | None = None) -> bool:
-        """Login if the account is not logged in"""
-        if current_page is None:
-            async with self.session.get(self.url_generator.home()) as response:
-                page = response.text()
-                if not self.__check_logged_in(page):
-                    return await self.login()
-                self._is_logged_in = True
-                return True
-        else:
-            if not self.__check_logged_in(current_page):
-                return await self.login()
-            self._is_logged_in = True
-            return True
+    async def __retry_login_wrapper(self, func: Callable[[], Awaitable[aiohttp.ClientResponse]]) -> bool:
+        """ Attempts a ROC action, if it fails due to login, it will retry the action after logging in"""
+
+        result = await func()
+        
+        text = await result.text()
+        if not self.__check_logged_in(text):
+            await self.login()
+            result = await func()
+            text = await result.text()
+            if not self.__check_logged_in(text):
+                raise Exception("Failed to login")
+        
+        return result
+    
     
     async def login(self) -> bool:
         """Login to the account"""
@@ -479,24 +480,12 @@ class GameAccountManager:
         except Exception as e:
             return {"success": False, "error": str(e)}
     
-    async def __retry_login_wrapper(self, func: Callable[[], Awaitable[aiohttp.ClientResponse]]) -> bool:
-        """ Attempts a ROC action, if it fails due to login, it will retry the action after logging in"""
-
-        result = await func()
-        
-        text = await result.text()
-        if not self.__check_logged_in(text):
-            await self.login()
-            result = await func()
-            text = await result.text()
-            if not self.__check_logged_in(text):
-                raise Exception("Failed to login")
-        
-        return result
-    
     async def __submit_page(self, url: str, data: Dict[str, Any], page_submit: PageSubmit) -> aiohttp.ClientResponse:
         """Submits a page"""
-        data["submit"] = page_submit.value
+        if type(page_submit) != PageSubmit:
+            raise Exception("Page submit must be a PageSubmit enum")
+        if page_submit.value != "":
+            data["submit"] = page_submit.value
         
         if self.use_captcha: # [Untested]
             return await self.__submit_with_captcha(url, data, page_submit)
@@ -504,7 +493,11 @@ class GameAccountManager:
         async with self.session.post(url, data=data) as response:
             _ = await response.read()
             return response
-            
+    
+    async def __get_page(self, url: str) -> aiohttp.ClientResponse:
+        async with self.session.get(url) as response:
+            _ = await response.read()
+            return response
     
     async def spy(self, target_id: str, spy_count: int = 1) -> Dict[str, Any]:
         """Spy on another user
@@ -652,8 +645,7 @@ class GameAccountManager:
             return {"success": False, "error": "Failed to send credits"}
 
         except Exception as e:
-            return {"success": False, "error": str(e)}
-    
+            return {"success": False, "error": str(e)} 
     
     async def send_all_credits(self, target_id: str) -> Dict[str, Any]:
         get_metadata = await self.get_metadata()
@@ -711,15 +703,47 @@ class GameAccountManager:
         except Exception as e:
             return {"success": False, "error": str(e)}
     
-    async def purchase_upgrade(self, upgrade_type: str) -> Dict[str, Any]:
-        """Purchase upgrade"""
-        if not self.is_logged_in:
-            return {"success": False, "error": "Not logged in"}
-            
+    
+    async def buy_upgrade(self, upgrade_option: str) -> Dict[str, Any]:
+        """Buy upgrade - supports siege, fortification, covert, recruiter"""
+        
+        upgrade_option = upgrade_option.lower().strip()
+        
+        # Validate upgrade option
+        valid_options = ["siege", "fortification", "covert", "recruiter"]
+        if upgrade_option not in valid_options:
+            return {"success": False, "error": f"Invalid upgrade option. Must be one of: {', '.join(valid_options)}"}
+        
         try:
-            # Implement upgrade purchase logic
-            return {"success": True, "message": f"Purchased {upgrade_type} upgrade"}
+            # Map upgrade options to form data
+            form_data_mapping = {
+                "siege": {"upgrade[siege]": "Upgrade+Siege"},
+                "fortification": {"upgrade[fort]": "Upgrade+Fortification"},
+                "covert": {"upgrade[skill]": "Upgrade+Skill"},
+                "recruiter": {"upgrade[recruiter_gold]": "Upgrade+(Gold)"}
+            }
+            
+            form_data = form_data_mapping[upgrade_option]
+            
+           
+            upgrades_url = self.url_generator.upgrades()
+            
+            
+            # TODO GET CURRENT, CHECK GOLD
+            async def _submit_upgrade():                
+                return await self.__submit_page(upgrades_url, form_data, PageSubmit.UPGRADE)
+            
+            for i in range(self.max_retries+1):
+                result = await self.__retry_login_wrapper(_submit_upgrade)
+                
+                page_text = await result.text()
+                
+                # TODO: Compare upgrades cost with previous cost to see if it was successful
+                
+                return {"success": True, "message": f"Successfully purchased {upgrade_option} upgrade"}
+            
         except Exception as e:
+            logger.error(f"Error buying upgrade {upgrade_option} for {self.account.username}: {e}")
             return {"success": False, "error": str(e)}
     
     async def cleanup(self):

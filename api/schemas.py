@@ -180,6 +180,11 @@ class PurchaseUpgradeRequest(SelfActionRequest):
     upgrade_type: str
 
 
+class BuyUpgradeRequest(SelfActionRequest):
+    """Buy upgrade - supports siege, fortification, covert, recruiter"""
+    upgrade_option: str
+
+
 # Action Response Schemas
 class ActionResponse(BaseModel):
     """Response for action execution"""

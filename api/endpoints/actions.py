@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from api.schemas import (
     AccountIdentifier, AccountIdentifierType, AttackRequest, CaptchaSolutionItem, SabotageRequest, SpyRequest, BecomeOfficerRequest, SendCreditsRequest,
     RecruitRequest, ArmoryPurchaseRequest, TrainingPurchaseRequest, 
-    EnableCreditSavingRequest, PurchaseUpgradeRequest, ActionResponse
+    EnableCreditSavingRequest, PurchaseUpgradeRequest, BuyUpgradeRequest, ActionResponse
 )
 from api.account_manager import AccountManager
 
@@ -257,19 +257,20 @@ async def enable_credit_saving(
         logger.error(f"Error in enable credit saving action: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
-@router.post("/purchase-upgrade", response_model=ActionResponse)
-async def purchase_upgrade(
-    request: PurchaseUpgradeRequest,
+
+@router.post("/buy-upgrade", response_model=ActionResponse)
+async def buy_upgrade(
+    request: BuyUpgradeRequest,
     manager: AccountManager = Depends(get_account_manager)
 ):
-    """Purchase upgrade"""
+    """Buy upgrade - supports siege, fortification, covert, recruiter"""
     try:
         result = await manager.execute_action(
             id_type=request.acting_user.id_type,
             id=request.acting_user.id,
-            action=AccountManager.ActionType.PURCHASE_UPGRADE,
+            action=AccountManager.ActionType.BUY_UPGRADE,
             max_retries=request.max_retries,
-            upgrade_type=request.upgrade_type
+            upgrade_option=request.upgrade_option
         )
         
         return ActionResponse(
@@ -279,7 +280,7 @@ async def purchase_upgrade(
             timestamp=datetime.now(timezone.utc)
         )
     except Exception as e:
-        logger.error(f"Error in purchase upgrade action: {e}")
+        logger.error(f"Error in buy upgrade action: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @router.get("/{account_id}/solved-captchas", response_model=List[CaptchaSolutionItem])

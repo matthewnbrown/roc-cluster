@@ -22,7 +22,8 @@ class ROCDecryptUrlGenerator():
             "roc_upgrade": self._rocburl + "upgrades.php",
             "roc_commander_change": self._rocburl + "commander_change.php",
             "roc_send_credits": self._rocburl + "sendcredits.php",
-            "roc_intel_detail": self._rocburl + "intel_detail.php"
+            "roc_intel_detail": self._rocburl + "intel_detail.php",
+            "roc_upgrades": self._rocburl + "upgrades.php"
         }
 
     def get_page_url(self, page: str) -> str:
@@ -93,3 +94,6 @@ class ROCDecryptUrlGenerator():
             return self.get_page_url("roc_intel_detail") + f"?report_id={report_id}"
         else:
             return self.get_page_url("roc_intel_detail")
+        
+    def upgrades(self) -> str:
+        return self.get_page_url("roc_upgrades")

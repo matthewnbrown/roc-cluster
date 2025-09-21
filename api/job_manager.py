@@ -217,21 +217,22 @@ class JobManager:
                     "error": "string (optional)"
                 }
             },
-            "purchase_upgrade": {
-                "description": "Purchase an upgrade for the account",
+            "buy_upgrade": {
+                "description": "Buy upgrade - supports siege, fortification, covert, recruiter",
                 "category": "self_action",
-                "required_parameters": ["upgrade_type"],
+                "required_parameters": ["upgrade_option"],
                 "optional_parameters": [],
                 "parameter_details": {
-                    "upgrade_type": {
+                    "upgrade_option": {
                         "type": "string",
-                        "description": "Type of upgrade to purchase"
+                        "description": "Upgrade option: siege, fortification, covert, or recruiter",
+                        "enum": ["siege", "fortification", "covert", "recruiter"]
                     }
                 },
                 "output": {
                     "success": "boolean",
                     "message": "string (optional)",
-                    "data": "object (optional) - contains upgrade details",
+                    "data": "object (optional) - contains upgrade purchase details",
                     "error": "string (optional)"
                 }
             },

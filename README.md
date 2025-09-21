@@ -372,7 +372,7 @@ All job steps must use valid action types from the AccountManager.ActionType enu
 - `purchase_armory` - Buy weapons and equipment
 - `purchase_training` - Train soldiers
 - `enable_credit_saving` - Activate credit saving mode
-- `purchase_upgrade` - Buy account upgrades
+- `buy_upgrade` - Buy account upgrades
 - `get_metadata` - Retrieve current account status
 - `get_solved_captchas` - Get solved captcha solutions
 
@@ -387,7 +387,7 @@ curl -X GET "http://localhost:8000/api/v1/jobs/valid-action-types"
 If you use an invalid action type, you'll get a clear error message:
 ```json
 {
-  "detail": "Invalid action_type 'invalid_action'. Valid types are: attack, sabotage, spy, become_officer, send_credits, recruit, purchase_armory, purchase_training, enable_credit_saving, purchase_upgrade, get_metadata, get_solved_captchas"
+  "detail": "Invalid action_type 'invalid_action'. Valid types are: attack, sabotage, spy, become_officer, send_credits, recruit, purchase_armory, purchase_training, enable_credit_saving, buy_upgrade, get_metadata, get_solved_captchas"
 }
 ```
 
