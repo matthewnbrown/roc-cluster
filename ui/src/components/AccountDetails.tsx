@@ -1,14 +1,15 @@
 import React, { useState } from 'react';
-import { Account } from '../types/api';
+import { Account, SetCreditSavingRequest } from '../types/api';
 import { useAccount } from '../hooks/useAccounts';
 import { useCookies as useCookiesHook, useUpsertCookies, useDeleteCookies } from '../hooks/useCookies';
 import { useAccountCreditLogs as useCreditLogsHook } from '../hooks/useCreditLogs';
 import { useAccountClusters, useClusters, useAddUsersToCluster, useRemoveUserFromCluster } from '../hooks/useClusters';
+import { actionsApi } from '../services/api';
 import Button from './ui/Button';
 import Modal from './ui/Modal';
 import { Table, TableHeader, TableBody, TableRow, TableCell } from './ui/Table';
 import Pagination from './ui/Pagination';
-import { ArrowLeft, Edit, Trash2, Cookie, CreditCard, User, Mail, Calendar, Shield, Users, Plus, X } from 'lucide-react';
+import { ArrowLeft, Edit, Trash2, Cookie, CreditCard, User, Mail, Calendar, Shield, Users, Plus, X, Settings } from 'lucide-react';
 import ClusterTag from './ui/ClusterTag';
 import Input from './ui/Input';
 
@@ -28,6 +29,7 @@ const AccountDetails: React.FC<AccountDetailsProps> = ({
   const [cookiesModalOpen, setCookiesModalOpen] = useState(false);
   const [cookiesText, setCookiesText] = useState('');
   const [addToClusterModalOpen, setAddToClusterModalOpen] = useState(false);
+  const [creditSavingLoading, setCreditSavingLoading] = useState(false);
 
   const { data: account, isLoading: accountLoading, error: accountError } = useAccount(accountId);
   const { data: cookies, isLoading: cookiesLoading, error: cookiesError } = useCookiesHook(accountId);
@@ -55,6 +57,34 @@ const AccountDetails: React.FC<AccountDetailsProps> = ({
       setCookiesText('');
     } catch (error) {
       console.error('Failed to save cookies:', error);
+    }
+  };
+
+  const handleSetCreditSaving = async (value: 'on' | 'off') => {
+    if (!accountId) return;
+    
+    setCreditSavingLoading(true);
+    try {
+      const request: SetCreditSavingRequest = {
+        acting_user: {
+          id_type: 'id',
+          id: accountId.toString(),
+        },
+        max_retries: 0,
+        value,
+      };
+      
+      const response = await actionsApi.setCreditSaving(request);
+      if (response.success) {
+        alert(`Credit saving ${value === 'on' ? 'enabled' : 'disabled'} successfully!`);
+      } else {
+        alert(`Failed to set credit saving: ${response.error}`);
+      }
+    } catch (error) {
+      console.error('Failed to set credit saving:', error);
+      alert('Failed to set credit saving. Please try again.');
+    } finally {
+      setCreditSavingLoading(false);
     }
   };
 
@@ -246,6 +276,39 @@ const AccountDetails: React.FC<AccountDetailsProps> = ({
                     </div>
                   </div>
                 )}
+              </div>
+            </div>
+            
+            {/* Credit Saving Actions */}
+            <div className="mt-8 border-t pt-6">
+              <div className="flex items-center space-x-3 mb-4">
+                <Settings className="h-5 w-5 text-gray-400" />
+                <h3 className="text-lg font-medium text-gray-900">Account Actions</h3>
+              </div>
+              
+              <div className="bg-gray-50 rounded-lg p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="text-sm font-medium text-gray-900">Credit Saving</h4>
+                    <p className="text-sm text-gray-500">Enable or disable automatic credit saving for this account</p>
+                  </div>
+                  <div className="flex space-x-2">
+                    <Button
+                      onClick={() => handleSetCreditSaving('on')}
+                      disabled={creditSavingLoading}
+                      className="bg-green-600 hover:bg-green-700 text-white"
+                    >
+                      {creditSavingLoading ? 'Loading...' : 'Enable'}
+                    </Button>
+                    <Button
+                      onClick={() => handleSetCreditSaving('off')}
+                      disabled={creditSavingLoading}
+                      className="bg-red-600 hover:bg-red-700 text-white"
+                    >
+                      {creditSavingLoading ? 'Loading...' : 'Disable'}
+                    </Button>
+                  </div>
+                </div>
               </div>
             </div>
           </div>

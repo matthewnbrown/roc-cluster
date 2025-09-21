@@ -170,9 +170,9 @@ class TrainingPurchaseRequest(SelfActionRequest):
     count: int
 
 
-class EnableCreditSavingRequest(SelfActionRequest):
-    """Enable credit saving"""
-    pass
+class SetCreditSavingRequest(SelfActionRequest):
+    """Set credit saving to 'on' or 'off'"""
+    value: str
 
 
 class PurchaseUpgradeRequest(SelfActionRequest):

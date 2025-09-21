@@ -18,6 +18,8 @@ import {
   JobCreateRequest,
   JobStatus,
   ActionType,
+  SetCreditSavingRequest,
+  ActionResponse,
 } from '../types/api';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000/api/v1';
@@ -262,6 +264,15 @@ export const jobsApi = {
     };
   }> => {
     const response: AxiosResponse<any> = await api.get('/jobs/valid-action-types');
+    return response.data;
+  },
+};
+
+// Actions API functions
+export const actionsApi = {
+  // Set credit saving
+  setCreditSaving: async (request: SetCreditSavingRequest): Promise<ActionResponse> => {
+    const response: AxiosResponse<ActionResponse> = await api.post('/actions/set-credit-saving', request);
     return response.data;
   },
 };

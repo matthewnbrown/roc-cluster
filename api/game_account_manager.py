@@ -41,7 +41,7 @@ class PageSubmit(Enum):
     SPY = "Recon"
     SABOTAGE = "Sabotage"
     UPGRADE = ""
-
+    CREDIT_SAVE = ""
 
 class GameAccountManager:
     """Manages a single ROC account session"""
@@ -703,15 +703,36 @@ class GameAccountManager:
         except Exception as e:
             return {"success": False, "error": str(e)}
     
-    async def enable_credit_saving(self) -> Dict[str, Any]:
-        """Enable credit saving"""
-        if not self.is_logged_in:
-            return {"success": False, "error": "Not logged in"}
+    async def set_credit_saving(self, value: str) -> Dict[str, Any]:
+        """Set credit saving to 'on' or 'off'"""
+        
+        # Validate value parameter
+        if value.lower() not in ['on', 'off']:
+            return {"success": False, "error": "Value must be 'on' or 'off'"}
             
         try:
-            # Implement credit saving logic
-            return {"success": True, "message": "Credit saving enabled"}
+            # Determine the URL based on the value
+            if value.lower() == 'off':
+                url = "https://ruinsofchaos.com/recruiter.php?turnoffautosave=1"
+                action = "disabled"
+            else:  # 'on'
+                url = "https://ruinsofchaos.com/recruiter.php?turnonautosave=1"
+                action = "enabled"
+            
+            async def _submit_credit_saving():                
+                return await self.__submit_page(url, {}, PageSubmit.CREDIT_SAVE)
+            
+            for i in range(self.max_retries+1):
+                result = await self.__retry_login_wrapper(_submit_credit_saving)
+                
+                page_text = await result.text()
+                
+                # TODO: Check if the credit saving was successful
+                
+                return {"success": True, "message": f"Credit saving {action}"}
+            
         except Exception as e:
+            logger.error(f"Error setting credit saving for {self.account.username}: {e}")
             return {"success": False, "error": str(e)}
     
     async def buy_upgrade(self, upgrade_option: str) -> Dict[str, Any]:

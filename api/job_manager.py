@@ -204,12 +204,18 @@ class JobManager:
                     "error": "string (optional)"
                 }
             },
-            "enable_credit_saving": {
-                "description": "Enable credit saving feature for the account",
+            "set_credit_saving": {
+                "description": "Set credit saving to 'on' or 'off' for the account",
                 "category": "self_action",
-                "required_parameters": [],
+                "required_parameters": ["value"],
                 "optional_parameters": [],
-                "parameter_details": {},
+                "parameter_details": {
+                    "value": {
+                        "type": "string",
+                        "description": "Credit saving setting: 'on' to enable, 'off' to disable",
+                        "enum": ["on", "off"]
+                    }
+                },
                 "output": {
                     "success": "boolean",
                     "message": "string (optional)",

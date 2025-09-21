@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from api.schemas import (
     AccountIdentifier, AccountIdentifierType, AttackRequest, CaptchaSolutionItem, SabotageRequest, SpyRequest, BecomeOfficerRequest, SendCreditsRequest,
     RecruitRequest, ArmoryPurchaseRequest, TrainingPurchaseRequest, 
-    EnableCreditSavingRequest, PurchaseUpgradeRequest, BuyUpgradeRequest, ActionResponse
+    SetCreditSavingRequest, PurchaseUpgradeRequest, BuyUpgradeRequest, ActionResponse
 )
 from api.account_manager import AccountManager
 
@@ -233,18 +233,19 @@ async def purchase_training(
         logger.error(f"Error in training purchase action: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
-@router.post("/enable-credit-saving", response_model=ActionResponse)
-async def enable_credit_saving(
-    request: EnableCreditSavingRequest,
+@router.post("/set-credit-saving", response_model=ActionResponse)
+async def set_credit_saving(
+    request: SetCreditSavingRequest,
     manager: AccountManager = Depends(get_account_manager)
 ):
-    """Enable credit saving"""
+    """Set credit saving to 'on' or 'off'"""
     try:
         result = await manager.execute_action(
             id_type=request.acting_user.id_type,
             id=request.acting_user.id,
-            action=AccountManager.ActionType.ENABLE_CREDIT_SAVING,
-            max_retries=request.max_retries
+            action=AccountManager.ActionType.SET_CREDIT_SAVING,
+            max_retries=request.max_retries,
+            value=request.value
         )
         
         return ActionResponse(
@@ -254,7 +255,7 @@ async def enable_credit_saving(
             timestamp=datetime.now(timezone.utc)
         )
     except Exception as e:
-        logger.error(f"Error in enable credit saving action: {e}")
+        logger.error(f"Error in set credit saving action: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 

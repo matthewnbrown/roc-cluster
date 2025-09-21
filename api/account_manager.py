@@ -34,7 +34,7 @@ class AccountManager:
         RECRUIT = "recruit"
         PURCHASE_ARMORY = "purchase_armory"
         PURCHASE_TRAINING = "purchase_training"
-        ENABLE_CREDIT_SAVING = "enable_credit_saving"
+        SET_CREDIT_SAVING = "set_credit_saving"
         BUY_UPGRADE = "buy_upgrade"
         GET_METADATA = "get_metadata"
         GET_SOLVED_CAPTCHAS = "get_solved_captchas"
@@ -95,7 +95,7 @@ class AccountManager:
                     "recruit": roc_account.recruit,
                     "purchase_armory": roc_account.purchase_armory,
                     "purchase_training": roc_account.purchase_training,
-                    "enable_credit_saving": roc_account.enable_credit_saving,
+                    "set_credit_saving": roc_account.set_credit_saving,
                     "buy_upgrade": roc_account.buy_upgrade,
                     "get_metadata": roc_account.get_metadata,
                     "get_solved_captchas": roc_account.get_solved_captchas,

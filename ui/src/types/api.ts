@@ -181,3 +181,22 @@ export interface ActionType {
   optional_parameters?: string[];
   output?: Record<string, any>;
 }
+
+// Action Request Types
+export interface AccountIdentifier {
+  id_type: 'id' | 'username' | 'email';
+  id: string;
+}
+
+export interface SetCreditSavingRequest {
+  acting_user: AccountIdentifier;
+  max_retries?: number;
+  value: 'on' | 'off';
+}
+
+export interface ActionResponse {
+  success: boolean;
+  message?: string;
+  error?: string;
+  timestamp: string;
+}
