@@ -659,15 +659,26 @@ class GameAccountManager:
         
         return await self.send_credits(target_id, str(credits))
     
-    async def recruit(self, soldier_type: str, count: int) -> Dict[str, Any]:
+    async def recruit(self) -> Dict[str, Any]:
         """Recruit soldiers"""
-        if not self.is_logged_in:
-            return {"success": False, "error": "Not logged in"}
-            
+        
         try:
-            # Implement recruit logic
-            return {"success": True, "message": f"Recruited {count} {soldier_type} soldiers"}
+            recruit_url = self.url_generator.recruit()
+            
+            async def _submit_upgrade():                
+                return await self.__submit_page(recruit_url, {}, PageSubmit.RECRUIT)
+            
+            for i in range(self.max_retries+1):
+                result = await self.__retry_login_wrapper(_submit_upgrade)
+                
+                page_text = await result.text()
+                
+                # TODO: Check if the recruit was successful (recruit button exists?)
+                
+                return {"success": True, "message": "Successfully recruited"}
+            
         except Exception as e:
+            logger.error(f"Error recruiting for {self.account.username}: {e}")
             return {"success": False, "error": str(e)}
     
     async def purchase_armory(self, items: Dict[str, int]) -> Dict[str, Any]:
@@ -702,7 +713,6 @@ class GameAccountManager:
             return {"success": True, "message": "Credit saving enabled"}
         except Exception as e:
             return {"success": False, "error": str(e)}
-    
     
     async def buy_upgrade(self, upgrade_option: str) -> Dict[str, Any]:
         """Buy upgrade - supports siege, fortification, covert, recruiter"""
