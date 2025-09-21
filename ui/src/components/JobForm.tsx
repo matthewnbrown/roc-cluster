@@ -557,6 +557,12 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
                                 {...register(`steps.${index}.action_type`, {
                                   required: 'Action type is required',
                                 })}
+                                onChange={(e) => {
+                                  // Clear parameters when action type changes
+                                  setValue(`steps.${index}.parameters`, {});
+                                  // Trigger the register onChange as well
+                                  register(`steps.${index}.action_type`).onChange(e);
+                                }}
                                 className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
                               >
                                 <option value="">Select action type</option>
@@ -920,6 +926,12 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
                     {...register(`steps.${index}.action_type`, {
                       required: 'Action type is required',
                     })}
+                    onChange={(e) => {
+                      // Clear parameters when action type changes
+                      setValue(`steps.${index}.parameters`, {});
+                      // Trigger the register onChange as well
+                      register(`steps.${index}.action_type`).onChange(e);
+                    }}
                     className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
                   >
                     <option value="">Select action type</option>

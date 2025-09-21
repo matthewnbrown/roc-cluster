@@ -499,7 +499,7 @@ class GameAccountManager:
             _ = await response.read()
             return response
     
-    async def spy(self, target_id: str, spy_count: int = 1) -> Dict[str, Any]:
+    async def spy(self, target_id: str, spy_count: int = 1 ) -> Dict[str, Any]:
         """Spy on another user
         
         Args:
@@ -509,7 +509,7 @@ class GameAccountManager:
         Returns:
             Dict containing success status and spy data or error message
         """
-
+            
         if spy_count < 1 or spy_count > 25:
             return {"success": False, "error": "Spy count must be between 1 and 25"}
 
@@ -535,7 +535,7 @@ class GameAccountManager:
                 
                 page_text = await result.text()
                 if 'As they approach, an alarm is cried out by enemy sentries' in page_text:
-                    return {"success": True, "error": "Enemy sentries detected"}
+                    return {"success": True, "message": "Enemy sentries detected"}
                 data = parse_recon_data(page_text)
                 if data["success"]:
                     return {"success": True, "data": data}
