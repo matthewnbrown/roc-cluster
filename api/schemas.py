@@ -502,3 +502,26 @@ class TrainingPreferencesResponse(TrainingPreferencesBase):
     
     class Config:
         orm_mode = True
+
+
+# Race Schemas
+class RaceResponse(BaseModel):
+    """Response schema for races"""
+    id: int
+    roc_race_id: int
+    name: str
+    created_at: datetime
+    
+    class Config:
+        orm_mode = True
+
+
+# ROC Stats Schemas
+class RocStatResponse(BaseModel):
+    """Response schema for ROC stats"""
+    id: int
+    name: str
+    created_at: datetime
+    
+    class Config:
+        orm_mode = True
