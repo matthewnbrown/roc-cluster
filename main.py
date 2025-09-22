@@ -16,9 +16,10 @@ from api.database import init_db, get_db
 from api.db_models import Account, Cluster, ClusterUser
 from api.schemas import AccountCreate, AccountResponse
 from api.account_manager import AccountManager
-from api.endpoints import accounts, actions, clusters, jobs, armory, reference_data
+from api.endpoints import accounts, actions, clusters, jobs, armory, reference_data, page_queue
 from api.async_logger import async_logger
 from api.captcha_feedback_service import captcha_feedback_service
+from api.page_data_service import page_data_service
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -104,6 +105,10 @@ async def lifespan(app: FastAPI):
     await captcha_feedback_service.start()
     logger.info("Captcha feedback service started")
     
+    # Start page data service
+    await page_data_service.start()
+    logger.info("Page data service started")
+    
     account_manager = AccountManager()
     logger.info("Account manager initialized")
     
@@ -113,6 +118,10 @@ async def lifespan(app: FastAPI):
     logger.info("Job manager initialized")
     
     yield
+    
+    # Stop page data service
+    await page_data_service.stop()
+    logger.info("Page data service stopped")
     
     # Stop captcha feedback service
     await captcha_feedback_service.stop()
@@ -158,6 +167,7 @@ app.include_router(clusters.router, prefix="/api/v1/clusters", tags=["clusters"]
 app.include_router(jobs.router, prefix="/api/v1/jobs", tags=["jobs"])
 app.include_router(armory.router, prefix="/api/v1/armory", tags=["armory"])
 app.include_router(reference_data.router, prefix="/api/v1/reference-data", tags=["reference-data"])
+app.include_router(page_queue.router, prefix="/api/v1/page-queue", tags=["page-queue"])
 
 @app.get("/")
 async def root():

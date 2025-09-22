@@ -364,3 +364,32 @@ class RocUserWeapons(Base):
     __table_args__ = (
         UniqueConstraint('roc_user_id', 'roc_weapon_id', name='unique_user_weapon'),
     )
+
+
+class PageQueueStatus(enum.Enum):
+    """Page queue status enumeration"""
+    PENDING = "pending"
+    PROCESSING = "processing"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class PageQueue(Base):
+    """Page queue model for storing ROC HTML pages to be processed"""
+    __tablename__ = "page_queue"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    account_id = Column(Integer, ForeignKey("accounts.id"), nullable=False)
+    request_url = Column(String(500), nullable=True)  # URL that was requested
+    response_url = Column(String(500), nullable=True)  # URL that was actually returned
+    page_content = Column(Text, nullable=False)  # HTML content of the page
+    request_method = Column(String(10), nullable=False)  # GET, POST
+    request_data = Column(Text, nullable=True)  # JSON string of POST data if applicable
+    request_time = Column(DateTime(timezone=True), nullable=True)  # When the request was made
+    status = Column(Enum(PageQueueStatus), default=PageQueueStatus.PENDING, nullable=False)
+    error_message = Column(Text, nullable=True)  # Error message if processing failed
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    processed_at = Column(DateTime(timezone=True), nullable=True)
+    
+    # Relationships
+    account = relationship("Account")

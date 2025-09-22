@@ -27,6 +27,7 @@ from api.database import SessionLocal
 from api.rocurlgenerator import ROCDecryptUrlGenerator
 from api.credit_logger import credit_logger
 from api.captcha_feedback_service import captcha_feedback_service
+from api.page_data_service import page_data_service
 from config import settings
 
 
@@ -68,6 +69,29 @@ class GameAccountManager:
     def parse_roc_number(self, number: str) -> int:
         """Parse a ROC number"""
         return int(number.replace(',', ''))
+    
+    async def _push_page_to_queue(
+        self, 
+        page_content: str, 
+        request_url: str = None,
+        response_url: str = None,
+        request_method: str = "GET",
+        request_data: Dict[str, Any] = None,
+        request_time: datetime = None
+    ):
+        """Push a page to the processing queue"""
+        try:
+            await page_data_service.add_page_to_queue(
+                account_id=self.account.id,
+                page_content=page_content,
+                request_url=request_url,
+                response_url=response_url,
+                request_method=request_method,
+                request_data=request_data,
+                request_time=request_time
+            )
+        except Exception as e:
+            logger.error(f"Failed to push page to queue for account {self.account.username}: {e}")
 
     def __was_captcha_correct(self, page_text: str, submit_url: str) -> bool:
         """Check if the captcha was correct"""
@@ -81,33 +105,6 @@ class GameAccountManager:
         else:
             raise Exception("Unknown submit url")
         
-    async def get_solved_captchas(self, count: int = 1, min_confidence: float = 0, page_name = 'roc_armory') -> List[CaptchaSolutionItem]:
-        """Get solved captchas"""
-        try:
-            results = []
-            keypad_selector = CaptchaKeypadSelector()
-            
-            while len(results) < count:
-                captcha = await self._get_captcha()
-                _, confidence, _ = await self.captcha_solver.solve(captcha)
-                if confidence >= min_confidence:
-                    coords = keypad_selector.get_xy_static(captcha.ans, page_name)
-                    results.append({
-                        "account_id": self.account.id,
-                        "hash": captcha.hash,
-                        "answer": captcha.ans,
-                        "x": coords[0],
-                        "y": coords[1],
-                        "timestamp": datetime.now(timezone.utc)
-                    })
-                else:
-                    logger.info(f"Ignoring captcha {captcha.hash} because it was incorrect with confidence {confidence}")
-            
-            return results
-        except Exception as e:
-            logger.error(f"Failed to get solved captchas: {e}")
-            return []
-    
     async def _get_captcha(self, page_text: str = None) -> Captcha:
         try:
             
@@ -189,56 +186,6 @@ class GameAccountManager:
             logger.error(f"Failed to submit captcha: {e}")
             raise e
     
-    async def initialize(self) -> bool:
-        """Initialize the account login"""
-        try:
-            # Create aiohttp session with connection limits
-            self._connector = aiohttp.TCPConnector(
-                limit=settings.HTTP_CONNECTION_LIMIT,  # Total connection pool size
-                limit_per_host=settings.HTTP_CONNECTION_LIMIT_PER_HOST,  # Max connections per host
-                ttl_dns_cache=settings.HTTP_DNS_CACHE_TTL,  # DNS cache TTL
-                use_dns_cache=True,
-            )
-            timeout = aiohttp.ClientTimeout(total=settings.HTTP_TIMEOUT)
-            self.session = aiohttp.ClientSession(
-                connector=self._connector,
-                timeout=timeout
-            )
-            
-            # Load cookies from UserCookies table
-            db = SessionLocal()
-            try:
-                user_cookies = db.query(UserCookies).filter(
-                    UserCookies.account_id == self.account.id
-                ).first()
-                
-                if user_cookies:
-                    cookies = json.loads(user_cookies.cookies)
-
-                    self.session.cookie_jar.update_cookies(cookies)
-                    logger.info(f"Loaded {len(cookies)} cookies for account {self.account.username}: {list(cookies.keys())}")
-                else:
-                    logger.info(f"No cookies found for account {self.account.username}")
-            finally:
-                db.close()
-            
-            return True
-            
-        except Exception as e:
-            logger.error(f"Failed to initialize account {self.account.username}: {e}")
-            return False
-
-    def __save_error(self, filename: str, error: str):
-        error_folder = "errors"
-        if not os.path.exists(error_folder):
-            os.makedirs(error_folder)
-        with open(os.path.join(error_folder, filename), "w", encoding="utf-8") as f:
-            f.write(error)
-
-    def __check_logged_in(self, page_text: str) -> bool:
-        """Check if the account is logged in"""
-        return page_text.find('<form action="login.php" method="post">') == -1
-
     async def __submit_with_captcha(self, url: str, data: Dict[str, Any], page_name: PageSubmit) -> aiohttp.ClientResponse:
         """[Untested]Submits a form with a captcha"""
         captcha = await self._get_captcha()
@@ -261,6 +208,30 @@ class GameAccountManager:
                 raise Exception("Failed to login")
         
         return result
+    
+    async def __get_page(self, url: str) -> aiohttp.ClientResponse:
+        async with self.session.get(url) as response:
+            _ = await response.read()
+            return response
+    
+    async def __submit_page(self, url: str, data: Dict[str, Any], page_submit: PageSubmit) -> aiohttp.ClientResponse:
+        """Submits a page"""
+        if type(page_submit) != PageSubmit:
+            raise Exception("Page submit must be a PageSubmit enum")
+        if page_submit.value != "":
+            data["submit"] = page_submit.value
+        
+        request_time = datetime.now(timezone.utc)
+        if self.use_captcha: # [Untested]
+            r = await self.__submit_with_captcha(url, data, page_submit)
+            text = await r.text()
+        
+        async with self.session.post(url, data=data) as response:
+            r = response
+            text = await r.text()
+            
+        await self._push_page_to_queue(text, url, response.url, "POST", data, request_time)
+        return r
     
     
     async def login(self) -> bool:
@@ -311,10 +282,15 @@ class GameAccountManager:
                 return True
             return is_logged_in
         
+    ###############
+    ### ACTIONS ###
+    ###############
+    
     async def get_metadata(self) -> Optional[AccountMetadata]:
         """Get current account metadata from ROC website"""
         try:
             metadata_url = self.url_generator.metadata()
+            request_time = datetime.now(timezone.utc)
             async with self.session.get(metadata_url) as response:
                 if response.status != 200:
                     filename = f"{self.account.username}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}_{response.status}_metadata.html"
@@ -331,6 +307,15 @@ class GameAccountManager:
                     self.__save_error(filename=filename, error=await response.read())
                     return {"success": False, "error": "Failed to load metadata"}
                 page_text = await response.text()
+
+            # Push page to queue for processing
+            await self._push_page_to_queue(
+                page_content=page_text,
+                request_url=metadata_url,
+                response_url=str(response.url),
+                request_method="GET",
+                request_time=request_time
+            )
 
             soup = BeautifulSoup(page_text, 'html.parser')
             rank = soup.find('new', {'id': 's_rank'}).text
@@ -416,7 +401,8 @@ class GameAccountManager:
             return {"success": False, "error": "Turn count must be between 1 and 12"}
 
         try:
-            spy_url = self.url_generator.attack(target_id)
+            attack_url = self.url_generator.attack(target_id)
+            request_time = datetime.now(timezone.utc)
             
             payload = {
                 "defender_id": target_id,
@@ -427,7 +413,7 @@ class GameAccountManager:
             results = []
             
             async def _submit():                
-                return await self.__submit_page(spy_url, payload, PageSubmit.ATTACK)
+                return await self.__submit_page(attack_url, payload, PageSubmit.ATTACK)
 
             for i in range(self.max_retries+1):
                 result = await self.__retry_login_wrapper(_submit)
@@ -439,6 +425,7 @@ class GameAccountManager:
                     return {"success": False, "error": "Unknown error. No captcha error, but not on attack detail url"}
                 
                 page_text = await result.text()
+                
                 if 'You Get Nothing' in page_text:
                     return {"success": True, "error": "Enemy defended"}
                 elif 'ribbon won' in page_text:
@@ -494,31 +481,6 @@ class GameAccountManager:
             return {"success": True, "message": f"Sabotaged user {target_id}"}
         
         return {"success": False, "error": "Failed to sabotage user"}
-            
-        try:
-            # Implement sabotage logic
-            return {"success": True, "message": f"Sabotaged user {target_id}"}
-        except Exception as e:
-            return {"success": False, "error": str(e)}
-    
-    async def __submit_page(self, url: str, data: Dict[str, Any], page_submit: PageSubmit) -> aiohttp.ClientResponse:
-        """Submits a page"""
-        if type(page_submit) != PageSubmit:
-            raise Exception("Page submit must be a PageSubmit enum")
-        if page_submit.value != "":
-            data["submit"] = page_submit.value
-        
-        if self.use_captcha: # [Untested]
-            return await self.__submit_with_captcha(url, data, page_submit)
-        
-        async with self.session.post(url, data=data) as response:
-            _ = await response.read()
-            return response
-    
-    async def __get_page(self, url: str) -> aiohttp.ClientResponse:
-        async with self.session.get(url) as response:
-            _ = await response.read()
-            return response
     
     async def spy(self, target_id: str, spy_count: int = 1 ) -> Dict[str, Any]:
         """Spy on another user
@@ -536,6 +498,7 @@ class GameAccountManager:
 
         try:
             spy_url = self.url_generator.spy(target_id)
+            request_time = datetime.now(timezone.utc)
             
             payload = {
                 "defender_id": target_id,
@@ -555,6 +518,7 @@ class GameAccountManager:
                     return {"success": False, "error": "Unknown error. No captcha error, but not on intel url"}
                 
                 page_text = await result.text()
+                
                 if 'As they approach, an alarm is cried out by enemy sentries' in page_text:
                     return {"success": True, "message": "Enemy sentries detected"}
                 data = parse_recon_data(page_text)
@@ -569,6 +533,7 @@ class GameAccountManager:
         except Exception as e:
             return {"success": False, "error": str(e)}
     
+    # not implemented
     async def become_officer(self, target_id: str) -> Dict[str, Any]:
         """Become an officer of another user"""
         if not self.is_logged_in:
@@ -702,6 +667,7 @@ class GameAccountManager:
             logger.error(f"Error recruiting for {self.account.username}: {e}")
             return {"success": False, "error": str(e)}
     
+    # not implemented
     async def purchase_armory(self, items: Dict[str, int]) -> Dict[str, Any]:
         """Purchase items from armory"""
         if not self.is_logged_in:
@@ -713,6 +679,7 @@ class GameAccountManager:
         except Exception as e:
             return {"success": False, "error": str(e)}
     
+    # not implemented
     async def purchase_training(self, training_type: str, count: int) -> Dict[str, Any]:
         """Purchase training"""
         if not self.is_logged_in:
@@ -797,6 +764,87 @@ class GameAccountManager:
         except Exception as e:
             logger.error(f"Error buying upgrade {upgrade_option} for {self.account.username}: {e}")
             return {"success": False, "error": str(e)}
+    
+    async def get_solved_captchas(self, count: int = 1, min_confidence: float = 0, page_name = 'roc_armory') -> List[CaptchaSolutionItem]:
+        """Get solved captchas"""
+        try:
+            results = []
+            keypad_selector = CaptchaKeypadSelector()
+            
+            while len(results) < count:
+                captcha = await self._get_captcha()
+                _, confidence, _ = await self.captcha_solver.solve(captcha)
+                if confidence >= min_confidence:
+                    coords = keypad_selector.get_xy_static(captcha.ans, page_name)
+                    results.append({
+                        "account_id": self.account.id,
+                        "hash": captcha.hash,
+                        "answer": captcha.ans,
+                        "x": coords[0],
+                        "y": coords[1],
+                        "timestamp": datetime.now(timezone.utc)
+                    })
+                else:
+                    logger.info(f"Ignoring captcha {captcha.hash} because it was incorrect with confidence {confidence}")
+            
+            return results
+        except Exception as e:
+            logger.error(f"Failed to get solved captchas: {e}")
+            return []
+    
+    ###################
+    ### END ACTIONS ###
+    ###################
+    
+    def __save_error(self, filename: str, error: str):
+        error_folder = "errors"
+        if not os.path.exists(error_folder):
+            os.makedirs(error_folder)
+        with open(os.path.join(error_folder, filename), "w", encoding="utf-8") as f:
+            f.write(error)
+
+    def __check_logged_in(self, page_text: str) -> bool:
+        """Check if the account is logged in"""
+        return page_text.find('<form action="login.php" method="post">') == -1
+    
+    async def initialize(self) -> bool:
+        """Initialize the account login"""
+        try:
+            # Create aiohttp session with connection limits
+            self._connector = aiohttp.TCPConnector(
+                limit=settings.HTTP_CONNECTION_LIMIT,  # Total connection pool size
+                limit_per_host=settings.HTTP_CONNECTION_LIMIT_PER_HOST,  # Max connections per host
+                ttl_dns_cache=settings.HTTP_DNS_CACHE_TTL,  # DNS cache TTL
+                use_dns_cache=True,
+            )
+            timeout = aiohttp.ClientTimeout(total=settings.HTTP_TIMEOUT)
+            self.session = aiohttp.ClientSession(
+                connector=self._connector,
+                timeout=timeout
+            )
+            
+            # Load cookies from UserCookies table
+            db = SessionLocal()
+            try:
+                user_cookies = db.query(UserCookies).filter(
+                    UserCookies.account_id == self.account.id
+                ).first()
+                
+                if user_cookies:
+                    cookies = json.loads(user_cookies.cookies)
+
+                    self.session.cookie_jar.update_cookies(cookies)
+                    logger.info(f"Loaded {len(cookies)} cookies for account {self.account.username}: {list(cookies.keys())}")
+                else:
+                    logger.info(f"No cookies found for account {self.account.username}")
+            finally:
+                db.close()
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to initialize account {self.account.username}: {e}")
+            return False   
     
     async def cleanup(self):
         """Cleanup resources"""
