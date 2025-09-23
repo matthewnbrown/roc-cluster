@@ -198,88 +198,21 @@ async def update_armory_preferences(
     db: Session = Depends(get_db)
 ):
     """Update armory preferences for an account"""
-    # Check if account exists
-    account = db.query(Account).filter(Account.id == account_id).first()
-    if not account:
-        raise HTTPException(
-            status_code=404,
-            detail="Account not found"
-        )
+    from api.preference_service import PreferenceService
     
+    # Use the service to update preferences
+    result = PreferenceService.update_armory_preferences(account_id, preferences_data.weapon_percentages, db)
+    
+    if not result["success"]:
+        if "Account not found" in result["error"]:
+            raise HTTPException(status_code=404, detail=result["error"])
+        else:
+            raise HTTPException(status_code=400, detail=result["error"])
+    
+    # Get the updated preferences to build response
     preferences = db.query(ArmoryPreferences).filter(
         ArmoryPreferences.account_id == account_id
     ).first()
-    
-    if not preferences:
-        # Create new preferences if none exist
-        preferences = ArmoryPreferences(account_id=account_id)
-        db.add(preferences)
-        db.commit()
-        db.refresh(preferences)
-    
-    # Validate weapon names and get weapons
-    weapons = db.query(Weapon).all()
-    weapon_by_name = {weapon.name: weapon for weapon in weapons}
-    
-    # Validate that all weapon names exist
-    invalid_weapons = []
-    for weapon_name in preferences_data.weapon_percentages.keys():
-        if weapon_name not in weapon_by_name:
-            invalid_weapons.append(weapon_name)
-    
-    if invalid_weapons:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid weapon names: {', '.join(invalid_weapons)}"
-        )
-    
-    # Check for duplicate weapon names in the request
-    weapon_names = list(preferences_data.weapon_percentages.keys())
-    if len(weapon_names) != len(set(weapon_names)):
-        raise HTTPException(
-            status_code=400,
-            detail="Duplicate weapon names found in preferences"
-        )
-    
-    # Validate that percentages sum to <= 100%
-    total_percentage = sum(preferences_data.weapon_percentages.values())
-    
-    if total_percentage > 100.0:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Total percentage ({total_percentage:.2f}%) cannot exceed 100%"
-        )
-    
-    # Delete existing weapon preferences
-    db.query(ArmoryWeaponPreference).filter(
-        ArmoryWeaponPreference.preferences_id == preferences.id
-    ).delete()
-    
-    # Create new weapon preferences
-    try:
-        for weapon_name, percentage in preferences_data.weapon_percentages.items():
-            if percentage > 0:  # Only create entries for weapons with > 0%
-                weapon = weapon_by_name[weapon_name]
-                weapon_preference = ArmoryWeaponPreference(
-                    preferences_id=preferences.id,
-                    weapon_id=weapon.id,
-                    percentage=percentage
-                )
-                db.add(weapon_preference)
-        
-        db.commit()
-        db.refresh(preferences)
-    except Exception as e:
-        db.rollback()
-        if "unique_preference_weapon" in str(e):
-            raise HTTPException(
-                status_code=400,
-                detail="Duplicate weapon preference detected. Each weapon can only have one preference per account."
-            )
-        raise HTTPException(
-            status_code=500,
-            detail="Failed to update weapon preferences"
-        )
     
     # Build response
     weapon_preferences = []
@@ -290,8 +223,6 @@ async def update_armory_preferences(
             weapon_display_name=wp.weapon.display_name,
             percentage=wp.percentage
         ))
-    
-    logger.info(f"Updated armory preferences for account {account_id}")
     
     return ArmoryPreferencesResponse(
         id=preferences.id,
@@ -477,68 +408,21 @@ async def update_training_preferences(
     db: Session = Depends(get_db)
 ):
     """Update training preferences for an account"""
-    # Check if account exists
-    account = db.query(Account).filter(Account.id == account_id).first()
-    if not account:
-        raise HTTPException(
-            status_code=404,
-            detail="Account not found"
-        )
+    from api.preference_service import PreferenceService
     
+    # Use the service to update preferences
+    result = PreferenceService.update_training_preferences(account_id, preferences_data.soldier_type_percentages, db)
+    
+    if not result["success"]:
+        if "Account not found" in result["error"]:
+            raise HTTPException(status_code=404, detail=result["error"])
+        else:
+            raise HTTPException(status_code=400, detail=result["error"])
+    
+    # Get the updated preferences to build response
     preferences = db.query(TrainingPreferences).filter(
         TrainingPreferences.account_id == account_id
     ).first()
-    
-    if not preferences:
-        # Create new preferences if none exist
-        preferences = TrainingPreferences(account_id=account_id)
-        db.add(preferences)
-        db.commit()
-        db.refresh(preferences)
-    
-    # Validate soldier type names and get soldier types
-    soldier_types = db.query(SoldierType).all()
-    soldier_type_by_name = {st.name: st for st in soldier_types}
-    
-    # Validate that all soldier type names exist
-    invalid_soldier_types = []
-    for soldier_type_name in preferences_data.soldier_type_percentages.keys():
-        if soldier_type_name not in soldier_type_by_name:
-            invalid_soldier_types.append(soldier_type_name)
-    
-    if invalid_soldier_types:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid soldier type names: {', '.join(invalid_soldier_types)}"
-        )
-    
-    # Validate that percentages sum to <= 100%
-    total_percentage = sum(preferences_data.soldier_type_percentages.values())
-    
-    if total_percentage > 100.0:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Total percentage ({total_percentage:.2f}%) cannot exceed 100%"
-        )
-    
-    # Delete existing soldier type preferences
-    db.query(TrainingSoldierTypePreference).filter(
-        TrainingSoldierTypePreference.preferences_id == preferences.id
-    ).delete()
-    
-    # Create new soldier type preferences
-    for soldier_type_name, percentage in preferences_data.soldier_type_percentages.items():
-        if percentage > 0:  # Only create entries for soldier types with > 0%
-            soldier_type = soldier_type_by_name[soldier_type_name]
-            soldier_type_preference = TrainingSoldierTypePreference(
-                preferences_id=preferences.id,
-                soldier_type_id=soldier_type.id,
-                percentage=percentage
-            )
-            db.add(soldier_type_preference)
-    
-    db.commit()
-    db.refresh(preferences)
     
     # Build response
     soldier_type_preferences = []
@@ -550,8 +434,6 @@ async def update_training_preferences(
             soldier_type_costs_soldiers=stp.soldier_type.costs_soldiers,
             percentage=stp.percentage
         ))
-    
-    logger.info(f"Updated training preferences for account {account_id}")
     
     return TrainingPreferencesResponse(
         id=preferences.id,
