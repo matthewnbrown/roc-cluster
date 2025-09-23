@@ -4,7 +4,7 @@ import { ClusterListResponse } from '../types/api';
 import { Table, TableHeader, TableBody, TableRow, TableCell } from './ui/Table';
 import Button from './ui/Button';
 import Pagination from './ui/Pagination';
-import { Plus, Edit, Trash2, Eye, Search, Users, Copy, Shield } from 'lucide-react';
+import { Plus, Edit, Trash2, Search, Users, Copy, Shield } from 'lucide-react';
 import Input from './ui/Input';
 import ClusterTag from './ui/ClusterTag';
 
@@ -119,7 +119,11 @@ const ClusterList: React.FC<ClusterListProps> = ({
                 </TableRow>
               ) : (
                 clustersData?.data.map((cluster) => (
-                  <TableRow key={cluster.id}>
+                  <TableRow 
+                    key={cluster.id}
+                    className="cursor-pointer hover:bg-gray-50 transition-colors"
+                    onClick={() => onViewCluster(cluster)}
+                  >
                     <TableCell className="font-mono text-sm">{cluster.id}</TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
@@ -144,16 +148,7 @@ const ClusterList: React.FC<ClusterListProps> = ({
                       {formatDate(cluster.created_at)}
                     </TableCell>
                     <TableCell>
-                      <div className="flex items-center space-x-2">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => onViewCluster(cluster)}
-                          className="p-2 h-10 w-10"
-                          title="View details"
-                        >
-                          <Eye className="h-5 w-5" />
-                        </Button>
+                      <div className="flex items-center space-x-2" onClick={(e) => e.stopPropagation()}>
                         <Button
                           variant="ghost"
                           size="sm"

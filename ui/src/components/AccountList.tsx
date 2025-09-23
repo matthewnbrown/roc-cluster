@@ -4,7 +4,7 @@ import { Account } from '../types/api';
 import { Table, TableHeader, TableBody, TableRow, TableCell } from './ui/Table';
 import Button from './ui/Button';
 import Pagination from './ui/Pagination';
-import { Plus, Edit, Trash2, Eye, Search } from 'lucide-react';
+import { Plus, Edit, Trash2, Search } from 'lucide-react';
 import Input from './ui/Input';
 import AccountClusters from './AccountClusters';
 
@@ -36,15 +36,6 @@ const AccountList: React.FC<AccountListProps> = ({
     }
   };
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
 
   const filteredAccounts = accountsData?.data.filter(account =>
     account.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -112,20 +103,23 @@ const AccountList: React.FC<AccountListProps> = ({
                 <TableCell header className="min-w-[180px]">Email</TableCell>
                 <TableCell header className="min-w-[150px]">Clusters</TableCell>
                 <TableCell header className="w-20">Status</TableCell>
-                <TableCell header className="min-w-[120px]">Last Login</TableCell>
                 <TableCell header className="w-40">Actions</TableCell>
               </TableRow>
             </TableHeader>
             <TableBody>
             {filteredAccounts.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="text-center py-8 text-gray-500">
+                <TableCell colSpan={6} className="text-center py-8 text-gray-500">
                   {searchTerm ? 'No accounts found matching your search.' : 'No accounts found.'}
                 </TableCell>
               </TableRow>
             ) : (
               filteredAccounts.map((account) => (
-                <TableRow key={account.id}>
+                <TableRow 
+                  key={account.id} 
+                  className="cursor-pointer hover:bg-gray-50 transition-colors"
+                  onClick={() => onViewAccount(account)}
+                >
                   <TableCell className="font-mono text-sm">{account.id}</TableCell>
                   <TableCell className="font-medium">{account.username}</TableCell>
                   <TableCell className="truncate">{account.email}</TableCell>
@@ -143,20 +137,8 @@ const AccountList: React.FC<AccountListProps> = ({
                       {account.is_active ? 'Active' : 'Inactive'}
                     </span>
                   </TableCell>
-                  <TableCell className="text-gray-500 text-sm">
-                    {account.last_login ? new Date(account.last_login).toLocaleDateString() : 'Never'}
-                  </TableCell>
                   <TableCell>
-                    <div className="flex items-center space-x-3">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => onViewAccount(account)}
-                        className="p-2 h-10 w-10"
-                        title="View details"
-                      >
-                        <Eye className="h-5 w-5" />
-                      </Button>
+                    <div className="flex items-center space-x-3" onClick={(e) => e.stopPropagation()}>
                       <Button
                         variant="ghost"
                         size="sm"
