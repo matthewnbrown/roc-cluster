@@ -216,6 +216,39 @@ export interface FavoriteJobListResponse {
   total: number;
 }
 
+// System Types
+export interface SystemNotification {
+  id: number;
+  timestamp: string;
+  success: boolean;
+  message: string;
+  type: string;
+  details: any;
+}
+
+export interface SystemNotificationsResponse {
+  success: boolean;
+  data: {
+    notifications: SystemNotification[];
+    total: number;
+    since: string;
+  };
+}
+
+export interface PruningStats {
+  total_jobs: number;
+  jobs_beyond_10th: number;
+  total_steps_to_prune: number;
+  pruned_jobs_count: number;
+  service_running: boolean;
+  last_checked: string;
+}
+
+export interface PruningStatsResponse {
+  success: boolean;
+  data: PruningStats;
+}
+
 export interface ActionType {
   action_type: string;
   description: string;

@@ -13,6 +13,8 @@ import JobList from './components/JobList';
 import JobForm from './components/JobForm';
 import JobDetails from './components/JobDetails';
 import FavoriteJobsManager from './components/FavoriteJobsManager';
+import SystemNotifications from './components/SystemNotifications';
+import SystemStatus from './components/SystemStatus';
 
 // Create a client
 const queryClient = new QueryClient({
@@ -36,6 +38,8 @@ const AppContent: React.FC = () => {
   const [showFavoriteJobs, setShowFavoriteJobs] = useState(false);
   const [selectedAccount, setSelectedAccount] = useState<Account | undefined>(undefined);
   const [selectedCluster, setSelectedCluster] = useState<ClusterListResponse | ClusterResponse | undefined>(undefined);
+  const [showSystemNotifications, setShowSystemNotifications] = useState(false);
+  const [showSystemStatus, setShowSystemStatus] = useState(false);
 
   // Account handlers
   const handleViewAccount = (account: Account) => {
@@ -218,6 +222,14 @@ const AppContent: React.FC = () => {
                 >
                   Jobs
                 </button>
+                <div className="relative">
+                  <button
+                    onClick={() => setShowSystemStatus(true)}
+                    className="px-3 py-2 rounded-md text-sm font-medium transition-colors text-gray-500 hover:text-gray-700 hover:bg-gray-100"
+                  >
+                    System
+                  </button>
+                </div>
               </nav>
             </div>
           </div>
@@ -296,6 +308,22 @@ const AppContent: React.FC = () => {
         isOpen={jobFormModalOpen}
         onClose={handleJobFormClose}
         jobToClone={jobToClone}
+      />
+
+      {/* System Status Modal */}
+      <SystemStatus
+        show={showSystemStatus}
+        onClose={() => setShowSystemStatus(false)}
+        onShowNotifications={() => {
+          setShowSystemStatus(false);
+          setShowSystemNotifications(true);
+        }}
+      />
+
+      {/* System Notifications Modal */}
+      <SystemNotifications
+        show={showSystemNotifications}
+        onClose={() => setShowSystemNotifications(false)}
       />
     </div>
   );

@@ -26,6 +26,9 @@ python-multipart>=0.0.5,<0.1.0
 # Environment and Configuration
 python-dotenv>=0.19.0,<1.1.0
 
+# Job Scheduling
+APScheduler>=3.10.0,<3.11.0
+
 # Optional: Database drivers
 # For PostgreSQL: psycopg2-binary>=2.9.0,<2.10.0
 # For MySQL: PyMySQL>=1.0.0,<1.1.0

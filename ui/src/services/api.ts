@@ -32,6 +32,9 @@ import {
   FavoriteJobCreateRequest,
   FavoriteJobResponse,
   FavoriteJobListResponse,
+  SystemNotification,
+  SystemNotificationsResponse,
+  PruningStatsResponse,
 } from '../types/api';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000/api/v1';
@@ -423,6 +426,48 @@ export const favoriteJobsApi = {
 
   async markAsUsed(id: number): Promise<void> {
     await api.post(`/favorite-jobs/${id}/use`);
+  },
+};
+
+// System API
+export const systemApi = {
+  async getPruningStats(): Promise<PruningStatsResponse> {
+    const response: AxiosResponse<PruningStatsResponse> = await api.get('/system/pruning/stats');
+    return response.data;
+  },
+
+  async getNotifications(limit: number = 10, notificationType?: string): Promise<SystemNotificationsResponse> {
+    const params: any = { limit };
+    if (notificationType) {
+      params.notification_type = notificationType;
+    }
+    const response: AxiosResponse<SystemNotificationsResponse> = await api.get('/system/notifications', { params });
+    return response.data;
+  },
+
+  async triggerManualPruning(): Promise<{ success: boolean; message: string }> {
+    const response = await api.post('/system/pruning/trigger');
+    return response.data;
+  },
+
+  async getDetailedHealthCheck(): Promise<any> {
+    const response = await api.get('/system/health/detailed');
+    return response.data;
+  },
+
+  async getDatabaseStats(): Promise<{ success: boolean; data: any }> {
+    const response = await api.get('/system/database/stats');
+    return response.data;
+  },
+
+  async triggerVacuum(): Promise<{ success: boolean; message: string; details?: any }> {
+    const response = await api.post('/system/vacuum');
+    return response.data;
+  },
+
+  async triggerFullVacuum(): Promise<{ success: boolean; message: string; details?: any }> {
+    const response = await api.post('/system/vacuum/full');
+    return response.data;
   },
 };
 

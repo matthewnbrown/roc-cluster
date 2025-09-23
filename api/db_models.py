@@ -151,6 +151,7 @@ class Job(Base):
     completed_steps = Column(Integer, default=0, nullable=False)
     failed_steps = Column(Integer, default=0, nullable=False)
     error_message = Column(Text, nullable=True)  # Error message if job failed
+    pruned = Column(Boolean, default=False, nullable=False)  # Mark if job steps have been pruned
     
     # Relationships
     steps = relationship("JobStep", back_populates="job", cascade="all, delete-orphan")

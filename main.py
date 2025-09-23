@@ -16,10 +16,11 @@ from api.database import init_db, get_db
 from api.db_models import Account, Cluster, ClusterUser
 from api.schemas import AccountCreate, AccountResponse
 from api.account_manager import AccountManager
-from api.endpoints import accounts, actions, clusters, jobs, armory, reference_data, page_queue, favorite_jobs
+from api.endpoints import accounts, actions, clusters, jobs, armory, reference_data, page_queue, favorite_jobs, system
 from api.async_logger import async_logger
 from api.captcha_feedback_service import captcha_feedback_service
 from api.page_data_service import page_data_service
+from api.job_pruning_service import job_pruning_service
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -99,6 +100,13 @@ async def lifespan(app: FastAPI):
     
     # Start async logger
     await async_logger.start()
+    
+    # Register handlers for system logging
+    from api.db_models import AccountLog
+    from api.job_pruning_service import system_notification_handler, job_pruning_handler
+    async_logger.register_handler("job_pruning", AccountLog, job_pruning_handler)
+    async_logger.register_handler("system_notification", AccountLog, system_notification_handler)
+    
     logger.info("Async logger started")
     
     # Start captcha feedback service
@@ -117,7 +125,15 @@ async def lifespan(app: FastAPI):
     job_manager = JobManager(account_manager)
     logger.info("Job manager initialized")
     
+    # Start job pruning service
+    await job_pruning_service.start()
+    logger.info("Job pruning service started")
+    
     yield
+    
+    # Stop job pruning service
+    await job_pruning_service.stop()
+    logger.info("Job pruning service stopped")
     
     # Stop page data service
     await page_data_service.stop()
@@ -169,6 +185,7 @@ app.include_router(armory.router, prefix="/api/v1/armory", tags=["armory"])
 app.include_router(reference_data.router, prefix="/api/v1/reference-data", tags=["reference-data"])
 app.include_router(page_queue.router, prefix="/api/v1/page-queue", tags=["page-queue"])
 app.include_router(favorite_jobs.router, prefix="/api/v1/favorite-jobs", tags=["favorite-jobs"])
+app.include_router(system.router, prefix="/api/v1/system", tags=["system"])
 
 @app.get("/")
 async def root():
