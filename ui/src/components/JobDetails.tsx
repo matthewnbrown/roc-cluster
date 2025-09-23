@@ -126,10 +126,30 @@ const JobDetails: React.FC<JobDetailsProps> = ({ jobId, onBack }) => {
     if (!job) return null;
     
     if (job.started_at && job.completed_at) {
-      const duration = new Date(job.completed_at).getTime() - new Date(job.started_at).getTime();
+      // Backend now sends dates with 'Z' suffix, so direct parsing should work
+      const startTime = new Date(job.started_at).getTime();
+      const endTime = new Date(job.completed_at).getTime();
+      
+      if (isNaN(startTime) || isNaN(endTime)) return null;
+      
+      const duration = endTime - startTime;
       return `${Math.round(duration / 1000)}s`;
     } else if (job.started_at) {
-      const duration = new Date().getTime() - new Date(job.started_at).getTime();
+      // Backend now sends dates with 'Z' suffix, so direct parsing should work
+      const startTime = new Date(job.started_at).getTime();
+      const currentTime = new Date().getTime();
+      
+      if (isNaN(startTime)) {
+        console.warn('Invalid start time:', job.started_at);
+        return 'Invalid start time';
+      }
+      
+      const duration = currentTime - startTime;
+      if (duration < 0) {
+        console.warn('Negative duration detected:', duration);
+        return '0s (running)'; // Handle negative duration
+      }
+      
       return `${Math.round(duration / 1000)}s (running)`;
     }
     return null;
@@ -361,7 +381,13 @@ const JobDetails: React.FC<JobDetailsProps> = ({ jobId, onBack }) => {
                         </div>
                         <div className="text-sm text-gray-500 w-28 flex-shrink-0">
                           {step.started_at && step.completed_at ? (
-                            `${((new Date(step.completed_at).getTime() - new Date(step.started_at).getTime()) / 1000).toFixed(2)}s`
+                            (() => {
+                              const startTime = new Date(step.started_at).getTime();
+                              const endTime = new Date(step.completed_at).getTime();
+                              if (isNaN(startTime) || isNaN(endTime)) return 'Invalid';
+                              const duration = endTime - startTime;
+                              return duration < 0 ? '0.00s' : `${(duration / 1000).toFixed(2)}s`;
+                            })()
                           ) : step.started_at ? (
                             'Running...'
                           ) : (
@@ -441,7 +467,13 @@ const JobDetails: React.FC<JobDetailsProps> = ({ jobId, onBack }) => {
                             <div><span className="font-medium">Started:</span> {step.started_at ? formatDate(step.started_at) : 'Not started'}</div>
                             <div><span className="font-medium">Completed:</span> {step.completed_at ? formatDate(step.completed_at) : 'Not completed'}</div>
                             {step.started_at && step.completed_at && (
-                              <div><span className="font-medium">Duration:</span> {((new Date(step.completed_at).getTime() - new Date(step.started_at).getTime()) / 1000).toFixed(2)}s</div>
+                              <div><span className="font-medium">Duration:</span> {(() => {
+                                const startTime = new Date(step.started_at).getTime();
+                                const endTime = new Date(step.completed_at).getTime();
+                                if (isNaN(startTime) || isNaN(endTime)) return 'Invalid';
+                                const duration = endTime - startTime;
+                                return duration < 0 ? '0.00s' : `${(duration / 1000).toFixed(2)}s`;
+                              })()}</div>
                             )}
                           </div>
                         </div>

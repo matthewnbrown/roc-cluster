@@ -11,6 +11,17 @@ import json
 # Generic type for paginated responses
 T = TypeVar('T')
 
+def datetime_encoder(dt: datetime) -> str:
+    """Custom datetime encoder that ensures UTC timezone suffix"""
+    if dt is None:
+        return None
+    # Ensure the datetime is timezone-aware and in UTC
+    if dt.tzinfo is None:
+        # If no timezone info, assume it's UTC
+        dt = dt.replace(tzinfo=None)
+    # Format as ISO string with Z suffix
+    return dt.isoformat() + 'Z'
+
 
 # Account Schemas
 class AccountBase(BaseModel):
@@ -38,6 +49,9 @@ class AccountResponse(AccountBase):
     
     class Config:
         orm_mode = True
+        json_encoders = {
+            datetime: datetime_encoder
+        }
 
 
 # User Cookies Schemas
@@ -59,6 +73,9 @@ class UserCookiesResponse(BaseModel):
     
     class Config:
         orm_mode = True
+        json_encoders = {
+            datetime: datetime_encoder
+        }
 
 
 # Credit Log Schemas
@@ -74,6 +91,9 @@ class SentCreditLogResponse(BaseModel):
     
     class Config:
         orm_mode = True
+        json_encoders = {
+            datetime: datetime_encoder
+        }
 
 
 # Account Metadata Schema
@@ -196,6 +216,9 @@ class ActionResponse(BaseModel):
     
     class Config:
         exclude_none = True
+        json_encoders = {
+            datetime: datetime_encoder
+        }
 
 
 
@@ -362,6 +385,9 @@ class JobStepResponse(BaseModel):
     
     class Config:
         exclude_none = True
+        json_encoders = {
+            datetime: datetime_encoder
+        }
 
 
 class JobResponse(BaseModel):
@@ -382,6 +408,9 @@ class JobResponse(BaseModel):
     
     class Config:
         exclude_none = True
+        json_encoders = {
+            datetime: datetime_encoder
+        }
 
 
 class JobListResponse(BaseModel):
