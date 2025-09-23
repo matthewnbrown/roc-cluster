@@ -80,7 +80,7 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
   }, [isOpen, reset]);
 
   // Fetch full job details if needed for cloning
-  const shouldFetchJob = !!(isOpen && jobToClone && (!jobToClone.steps || jobToClone.steps.length === 0));
+  const shouldFetchJob = !!(isOpen && jobToClone);
   const { data: fullJobData } = useJob(
     shouldFetchJob ? (jobToClone?.id || 0) : 0, 
     true // include steps
