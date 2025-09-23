@@ -772,6 +772,138 @@ class GameAccountManager:
             logger.error(f"Error submitting armory purchase: {e}")
             return {"success": False, "error": str(e)}
     
+    async def update_armory_preferences(self, weapon_percentages: Dict[str, float]) -> Dict[str, Any]:
+        """Update armory preferences for the account"""
+        try:
+            from api.database import SessionLocal
+            from api.db_models import ArmoryPreferences, ArmoryWeaponPreference, Weapon
+            from sqlalchemy.orm import Session
+            
+            db = SessionLocal()
+            try:
+                # Validate weapon names and get weapons
+                weapons = db.query(Weapon).all()
+                weapon_by_name = {weapon.name: weapon for weapon in weapons}
+                
+                # Validate that all weapon names exist
+                invalid_weapons = []
+                for weapon_name in weapon_percentages.keys():
+                    if weapon_name not in weapon_by_name:
+                        invalid_weapons.append(weapon_name)
+                
+                if invalid_weapons:
+                    return {"success": False, "error": f"Invalid weapon names: {', '.join(invalid_weapons)}"}
+                
+                # Validate that percentages sum to <= 100%
+                total_percentage = sum(weapon_percentages.values())
+                if total_percentage > 100.0:
+                    return {"success": False, "error": f"Total percentage ({total_percentage:.2f}%) cannot exceed 100%"}
+                
+                # Get or create preferences
+                preferences = db.query(ArmoryPreferences).filter(
+                    ArmoryPreferences.account_id == self.account.id
+                ).first()
+                
+                if not preferences:
+                    preferences = ArmoryPreferences(account_id=self.account.id)
+                    db.add(preferences)
+                    db.commit()
+                    db.refresh(preferences)
+                
+                # Delete existing weapon preferences
+                db.query(ArmoryWeaponPreference).filter(
+                    ArmoryWeaponPreference.preferences_id == preferences.id
+                ).delete()
+                
+                # Create new weapon preferences
+                for weapon_name, percentage in weapon_percentages.items():
+                    if percentage > 0:  # Only create entries for weapons with > 0%
+                        weapon = weapon_by_name[weapon_name]
+                        weapon_preference = ArmoryWeaponPreference(
+                            preferences_id=preferences.id,
+                            weapon_id=weapon.id,
+                            percentage=percentage
+                        )
+                        db.add(weapon_preference)
+                
+                db.commit()
+                
+                logger.info(f"Updated armory preferences for account {self.account.id}")
+                return {"success": True, "message": "Armory preferences updated successfully"}
+                
+            finally:
+                db.close()
+                
+        except Exception as e:
+            logger.error(f"Error updating armory preferences for {self.account.username}: {e}")
+            return {"success": False, "error": str(e)}
+    
+    async def update_training_preferences(self, soldier_type_percentages: Dict[str, float]) -> Dict[str, Any]:
+        """Update training preferences for the account"""
+        try:
+            from api.database import SessionLocal
+            from api.db_models import TrainingPreferences, TrainingSoldierTypePreference, SoldierType
+            from sqlalchemy.orm import Session
+            
+            db = SessionLocal()
+            try:
+                # Validate soldier type names and get soldier types
+                soldier_types = db.query(SoldierType).all()
+                soldier_type_by_name = {st.name: st for st in soldier_types}
+                
+                # Validate that all soldier type names exist
+                invalid_soldier_types = []
+                for soldier_type_name in soldier_type_percentages.keys():
+                    if soldier_type_name not in soldier_type_by_name:
+                        invalid_soldier_types.append(soldier_type_name)
+                
+                if invalid_soldier_types:
+                    return {"success": False, "error": f"Invalid soldier type names: {', '.join(invalid_soldier_types)}"}
+                
+                # Validate that percentages sum to <= 100%
+                total_percentage = sum(soldier_type_percentages.values())
+                if total_percentage > 100.0:
+                    return {"success": False, "error": f"Total percentage ({total_percentage:.2f}%) cannot exceed 100%"}
+                
+                # Get or create preferences
+                preferences = db.query(TrainingPreferences).filter(
+                    TrainingPreferences.account_id == self.account.id
+                ).first()
+                
+                if not preferences:
+                    preferences = TrainingPreferences(account_id=self.account.id)
+                    db.add(preferences)
+                    db.commit()
+                    db.refresh(preferences)
+                
+                # Delete existing soldier type preferences
+                db.query(TrainingSoldierTypePreference).filter(
+                    TrainingSoldierTypePreference.preferences_id == preferences.id
+                ).delete()
+                
+                # Create new soldier type preferences
+                for soldier_type_name, percentage in soldier_type_percentages.items():
+                    if percentage > 0:  # Only create entries for soldier types with > 0%
+                        soldier_type = soldier_type_by_name[soldier_type_name]
+                        soldier_type_preference = TrainingSoldierTypePreference(
+                            preferences_id=preferences.id,
+                            soldier_type_id=soldier_type.id,
+                            percentage=percentage
+                        )
+                        db.add(soldier_type_preference)
+                
+                db.commit()
+                
+                logger.info(f"Updated training preferences for account {self.account.id}")
+                return {"success": True, "message": "Training preferences updated successfully"}
+                
+            finally:
+                db.close()
+                
+        except Exception as e:
+            logger.error(f"Error updating training preferences for {self.account.username}: {e}")
+            return {"success": False, "error": str(e)}
+    
     # not implemented
     async def purchase_training(self, training_type: str, count: int) -> Dict[str, Any]:
         """Purchase training"""

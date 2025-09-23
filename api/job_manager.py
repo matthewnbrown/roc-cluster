@@ -291,6 +291,42 @@ class JobManager:
                     "data": "array (optional) - contains captcha solution items",
                     "error": "string (optional)"
                 }
+            },
+            "update_armory_preferences": {
+                "description": "Update armory preferences for the account. Available weapons: dagger, maul, blade, excalibur, sai, shield, mithril, dragonskin, cloak, hook, pickaxe, horn, guard_dog, torch",
+                "category": "self_action",
+                "required_parameters": ["weapon_percentages"],
+                "optional_parameters": [],
+                "parameter_details": {
+                    "weapon_percentages": {
+                        "type": "object",
+                        "description": "Dictionary of weapon_name: percentage pairs (percentages must sum to <= 100%). Available weapons: dagger, maul, blade, excalibur, sai, shield, mithril, dragonskin, cloak, hook, pickaxe, horn, guard_dog, torch"
+                    }
+                },
+                "output": {
+                    "success": "boolean",
+                    "message": "string (optional)",
+                    "data": "object (optional) - contains preference update details",
+                    "error": "string (optional)"
+                }
+            },
+            "update_training_preferences": {
+                "description": "Update training preferences for the account",
+                "category": "self_action",
+                "required_parameters": ["soldier_type_percentages"],
+                "optional_parameters": [],
+                "parameter_details": {
+                    "soldier_type_percentages": {
+                        "type": "object",
+                        "description": "Dictionary of soldier_type_name: percentage pairs (percentages must sum to <= 100%)"
+                    }
+                },
+                "output": {
+                    "success": "boolean",
+                    "message": "string (optional)",
+                    "data": "object (optional) - contains preference update details",
+                    "error": "string (optional)"
+                }
             }
         }
         

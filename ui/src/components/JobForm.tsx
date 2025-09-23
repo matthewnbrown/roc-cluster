@@ -166,12 +166,28 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
         description: data.description || undefined,
         parallel_execution: data.parallel_execution,
         steps: data.steps.map((step) => {
-          // Filter out empty parameters
+          // Filter out empty parameters and parse JSON objects
           const filteredParameters = step.parameters 
             ? Object.fromEntries(
-                Object.entries(step.parameters).filter(([_, value]) => 
-                  value !== undefined && value !== null && value !== ''
-                )
+                Object.entries(step.parameters)
+                  .filter(([_, value]) => 
+                    value !== undefined && value !== null && value !== ''
+                  )
+                  .map(([key, value]) => {
+                    // Check if this parameter should be parsed as JSON
+                    const actionInfo = getActionTypeInfo(step.action_type);
+                    const paramInfo = actionInfo?.parameter_details?.[key];
+                    
+                    if (paramInfo?.type === 'object' && typeof value === 'string') {
+                      try {
+                        return [key, JSON.parse(value)];
+                      } catch (e) {
+                        console.warn(`Failed to parse JSON for parameter ${key}:`, e);
+                        return [key, value];
+                      }
+                    }
+                    return [key, value];
+                  })
               )
             : {};
 
@@ -874,6 +890,51 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
                                           </select>
                                         )}
                                         
+                                        {paramInfo.type === 'object' && (
+                                          <div className="space-y-2">
+                                            <textarea
+                                              {...register(`steps.${index}.parameters.${paramName}`, {
+                                                required: isRequired ? `${paramName} is required` : false,
+                                                validate: (value) => {
+                                                  if (!value) return isRequired ? `${paramName} is required` : true;
+                                                  try {
+                                                    const parsed = JSON.parse(value);
+                                                    if (typeof parsed !== 'object' || Array.isArray(parsed)) {
+                                                      return 'Must be a valid JSON object';
+                                                    }
+                                                    return true;
+                                                  } catch {
+                                                    return 'Must be valid JSON';
+                                                  }
+                                                }
+                                              })}
+                                              className={`block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm font-mono text-sm ${
+                                                errors.steps?.[index]?.parameters?.[paramName] 
+                                                  ? 'border-red-300 focus:ring-red-500 focus:border-red-500' 
+                                                  : 'border-gray-300'
+                                              }`}
+                                              placeholder={paramInfo.description || `Enter ${paramName} as JSON object`}
+                                              rows={4}
+                                            />
+                                            <div className="text-xs text-gray-500">
+                                              <p>Enter as JSON object, e.g.:</p>
+                                              <p className="font-mono bg-gray-100 p-1 rounded">
+                                                {paramName.includes('weapon') 
+                                                  ? '{"dagger": 30, "blade": 25, "shield": 20, "excalibur": 15, "maul": 10}'
+                                                  : paramName.includes('soldier')
+                                                  ? '{"infantry": 40, "archer": 35, "cavalry": 25}'
+                                                  : '{"key1": "value1", "key2": "value2"}'
+                                                }
+                                              </p>
+                                              {paramName.includes('weapon') && (
+                                                <p className="mt-1 text-xs text-blue-600">
+                                                  Available weapons: dagger, maul, blade, excalibur, sai, shield, mithril, dragonskin, cloak, hook, pickaxe, horn, guard_dog, torch
+                                                </p>
+                                              )}
+                                            </div>
+                                          </div>
+                                        )}
+                                        
                                         {paramInfo.description && (
                                           <p className="text-xs text-gray-500">{paramInfo.description}</p>
                                         )}
@@ -1149,6 +1210,51 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
                                   </option>
                                 ))}
                               </select>
+                            )}
+                            
+                            {paramInfo.type === 'object' && (
+                              <div className="space-y-2">
+                                <textarea
+                                  {...register(`steps.${index}.parameters.${paramName}`, {
+                                    required: isRequired ? `${paramName} is required` : false,
+                                    validate: (value) => {
+                                      if (!value) return isRequired ? `${paramName} is required` : true;
+                                      try {
+                                        const parsed = JSON.parse(value);
+                                        if (typeof parsed !== 'object' || Array.isArray(parsed)) {
+                                          return 'Must be a valid JSON object';
+                                        }
+                                        return true;
+                                      } catch {
+                                        return 'Must be valid JSON';
+                                      }
+                                    }
+                                  })}
+                                  className={`block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm font-mono text-sm ${
+                                    errors.steps?.[index]?.parameters?.[paramName] 
+                                      ? 'border-red-300 focus:ring-red-500 focus:border-red-500' 
+                                      : 'border-gray-300'
+                                  }`}
+                                  placeholder={paramInfo.description || `Enter ${paramName} as JSON object`}
+                                  rows={4}
+                                />
+                                <div className="text-xs text-gray-500">
+                                  <p>Enter as JSON object, e.g.:</p>
+                                  <p className="font-mono bg-gray-100 p-1 rounded">
+                                    {paramName.includes('weapon') 
+                                      ? '{"dagger": 30, "blade": 25, "shield": 20, "excalibur": 15, "maul": 10}'
+                                      : paramName.includes('soldier')
+                                      ? '{"infantry": 40, "archer": 35, "cavalry": 25}'
+                                      : '{"key1": "value1", "key2": "value2"}'
+                                    }
+                                  </p>
+                                  {paramName.includes('weapon') && (
+                                    <p className="mt-1 text-xs text-blue-600">
+                                      Available weapons: dagger, maul, blade, excalibur, sai, shield, mithril, dragonskin, cloak, hook, pickaxe, horn, guard_dog, torch
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
                             )}
                             
                             {paramInfo.description && (

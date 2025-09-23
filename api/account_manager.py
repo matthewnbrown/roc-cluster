@@ -39,6 +39,8 @@ class AccountManager:
         BUY_UPGRADE = "buy_upgrade"
         GET_METADATA = "get_metadata"
         GET_SOLVED_CAPTCHAS = "get_solved_captchas"
+        UPDATE_ARMORY_PREFERENCES = "update_armory_preferences"
+        UPDATE_TRAINING_PREFERENCES = "update_training_preferences"
 
 
     def __init__(self):
@@ -101,6 +103,8 @@ class AccountManager:
                     "buy_upgrade": roc_account.buy_upgrade,
                     "get_metadata": roc_account.get_metadata,
                     "get_solved_captchas": roc_account.get_solved_captchas,
+                    "update_armory_preferences": roc_account.update_armory_preferences,
+                    "update_training_preferences": roc_account.update_training_preferences,
                 }
                 
                 if action.value not in action_map:
