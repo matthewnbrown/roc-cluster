@@ -186,8 +186,7 @@ class ArmoryPurchaseRequest(SelfActionRequest):
 
 class TrainingPurchaseRequest(SelfActionRequest):
     """Purchase training"""
-    training_type: str
-    count: int
+    training_orders: Dict[str, Any]  # Dictionary of training orders
 
 
 class SetCreditSavingRequest(SelfActionRequest):

@@ -196,18 +196,14 @@ class JobManager:
                 }
             },
             "purchase_training": {
-                "description": "Purchase training for the account",
+                "description": "Purchase training for soldiers and mercenaries",
                 "category": "self_action",
-                "required_parameters": ["training_type", "count"],
+                "required_parameters": ["training_orders"],
                 "optional_parameters": [],
                 "parameter_details": {
-                    "training_type": {
-                        "type": "string",
-                        "description": "Type of training to purchase"
-                    },
-                    "count": {
-                        "type": "integer",
-                        "description": "Number of training sessions to purchase"
+                    "training_orders": {
+                        "type": "object",
+                        "description": "Dictionary of training orders with keys like 'buy[attack_soldiers]', 'train[defense_soldiers]', 'untrain[spies]', etc. Values should be strings or numbers representing quantities."
                     }
                 },
                 "output": {

@@ -205,8 +205,10 @@ async def main():
                     "account_ids": [account_id],
                     "action_type": "purchase_training",
                     "parameters": {
-                        "training_type": "defense_soldiers",
-                        "count": 20
+                        "training_orders": {
+                            "train[defense_soldiers]": "20",
+                            "buy[attack_mercs]": "10"
+                        }
                     }
                 }]
             )
@@ -299,8 +301,10 @@ async def main():
                         "cluster_ids": [1, 2],  # Multiple clusters
                         "action_type": "purchase_training",
                         "parameters": {
-                            "training_type": "defense_soldiers",
-                            "count": 25
+                            "training_orders": {
+                                "train[defense_soldiers]": "25",
+                                "buy[attack_mercs]": "15"
+                            }
                         }
                     }
                 ]
@@ -348,8 +352,10 @@ async def main():
                         "account_ids": [account_id],
                         "action_type": "purchase_training",
                         "parameters": {
-                            "training_type": "defense_soldiers",
-                            "count": 10
+                            "training_orders": {
+                                "train[defense_soldiers]": "10",
+                                "untrain[attack_soldiers]": "5"
+                            }
                         },
                         "is_async": True  # Another async step
                     }

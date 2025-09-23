@@ -160,8 +160,10 @@ curl -X POST "http://localhost:8000/api/v1/jobs/" \
         "account_ids": [1],
         "action_type": "purchase_training",
         "parameters": {
-          "training_type": "attack_soldiers",
-          "count": 50
+          "training_orders": {
+            "train[attack_soldiers]": "50",
+            "buy[defense_mercs]": "25"
+          }
         }
       }
     ]
@@ -187,8 +189,10 @@ curl -X POST "http://localhost:8000/api/v1/jobs/" \
         "account_ids": [2],
         "action_type": "purchase_training",
         "parameters": {
-          "training_type": "attack_soldiers",
-          "count": 50
+          "training_orders": {
+            "train[attack_soldiers]": "50",
+            "buy[defense_mercs]": "25"
+          }
         }
       }
     ]
@@ -228,8 +232,10 @@ curl -X POST "http://localhost:8000/api/v1/jobs/" \
         "cluster_ids": [1, 2, 3],
         "action_type": "purchase_training",
         "parameters": {
-          "training_type": "defense_soldiers",
-          "count": 50
+          "training_orders": {
+            "train[defense_soldiers]": "50",
+            "buy[attack_mercs]": "30"
+          }
         }
       }
     ]
@@ -268,8 +274,10 @@ curl -X POST "http://localhost:8000/api/v1/jobs/" \
         "cluster_ids": [1, 2, 3],
         "action_type": "purchase_training",
         "parameters": {
-          "training_type": "defense_soldiers",
-          "count": 25
+          "training_orders": {
+            "train[defense_soldiers]": "25",
+            "untrain[attack_soldiers]": "10"
+          }
         }
       }
     ]

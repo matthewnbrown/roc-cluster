@@ -237,8 +237,7 @@ async def purchase_training(
             id=request.acting_user.id,
             action=AccountManager.ActionType.PURCHASE_TRAINING,
             max_retries=request.max_retries,
-            training_type=request.training_type,
-            count=request.count
+            training_orders=request.training_orders
         )
         
         return ActionResponse(

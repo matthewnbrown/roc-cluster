@@ -804,13 +804,85 @@ class GameAccountManager:
             logger.error(f"Error updating training preferences for {self.account.username}: {e}")
             return {"success": False, "error": str(e)}
     
-    # not implemented
-    async def purchase_training(self, training_type: str, count: int) -> Dict[str, Any]:
-        """Purchase training"""
+    async def purchase_training(self, training_orders: Dict[str, Any]) -> Dict[str, Any]:
+        """Purchase training for soldiers and mercenaries
+        
+        Args:
+            training_orders: Dictionary with training orders in format:
+                {
+                    "buy[attack_soldiers]": "10",
+                    "buy[defense_soldiers]": "5",
+                    "buy[spies]": "3",
+                    "buy[sentries]": "2",
+                    "buy[attack_mercs]": "8",
+                    "buy[defense_mercs]": "4",
+                    "buy[untrained_mercs]": "6",
+                    "train[attack_soldiers]": "15",
+                    "train[defense_soldiers]": "10",
+                    "train[spies]": "5",
+                    "train[sentries]": "3",
+                    "untrain[attack_soldiers]": "2",
+                    "untrain[defense_soldiers]": "1",
+                    "untrain[attack_mercs]": "1",
+                    "untrain[defense_mercs]": "1",
+                    "untrain[untrained_mercs]": "1"
+                }
+        
+        Returns:
+            Dict containing success status and training result or error message
+        """
         try:
-            # Implement training purchase logic
-            return {"success": True, "message": f"Purchased {count} {training_type} training"}
+            training_url = self.url_generator.training()
+            
+            # Build form data with all possible training fields
+            form_data = {
+                "train[attack_soldiers]": "",
+                "train[defense_soldiers]": "",
+                "train[spies]": "",
+                "train[sentries]": "",
+                "buy[attack_mercs]": "",
+                "buy[defense_mercs]": "",
+                "buy[untrained_mercs]": "",
+                "untrain[attack_soldiers]": "",
+                "untrain[defense_soldiers]": "",
+                "untrain[attack_mercs]": "",
+                "untrain[defense_mercs]": "",
+                "untrain[untrained_mercs]": "",
+                "submit": "Train+Soldiers"
+            }
+            
+            # Update form data with user-provided values
+            for key, value in training_orders.items():
+                if key in form_data:
+                    form_data[key] = str(value) if value is not None else ""
+                else:
+                    logger.warning(f"Unknown training field: {key}")
+            
+            # Submit the training form
+            async def _submit_training():
+                return await self.__submit_page(training_url, form_data, PageSubmit.TRAINING)
+            
+            for i in range(self.max_retries + 1):
+                result = await self.__retry_login_wrapper(_submit_training)
+                
+                page_text = await result.text()
+                
+                # Check if training was successful by looking for success indicators
+                # This could be enhanced with more specific success/failure detection
+                return {"success": True, "message": "Training purchase completed. Validation not implemented yet", "data": training_orders}
+                
+                # if "Train Soldiers" in page_text or "training" in page_text.lower():
+                #     return {"success": True, "message": "Training purchase completed", "data": training_orders}
+                # else:
+                #     # If we don't see expected content, it might still be successful
+                #     # but we should log this for debugging
+                #     logger.info(f"Training submission completed for {self.account.username}, but success status unclear")
+                #     return {"success": True, "message": "Training purchase submitted", "data": training_orders}
+            
+            return {"success": False, "error": "Failed to complete training purchase after retries"}
+            
         except Exception as e:
+            logger.error(f"Error purchasing training for {self.account.username}: {e}")
             return {"success": False, "error": str(e)}
     
     async def set_credit_saving(self, value: str) -> Dict[str, Any]:
