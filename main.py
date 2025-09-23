@@ -16,7 +16,7 @@ from api.database import init_db, get_db
 from api.db_models import Account, Cluster, ClusterUser
 from api.schemas import AccountCreate, AccountResponse
 from api.account_manager import AccountManager
-from api.endpoints import accounts, actions, clusters, jobs, armory, reference_data, page_queue
+from api.endpoints import accounts, actions, clusters, jobs, armory, reference_data, page_queue, favorite_jobs
 from api.async_logger import async_logger
 from api.captcha_feedback_service import captcha_feedback_service
 from api.page_data_service import page_data_service
@@ -168,6 +168,7 @@ app.include_router(jobs.router, prefix="/api/v1/jobs", tags=["jobs"])
 app.include_router(armory.router, prefix="/api/v1/armory", tags=["armory"])
 app.include_router(reference_data.router, prefix="/api/v1/reference-data", tags=["reference-data"])
 app.include_router(page_queue.router, prefix="/api/v1/page-queue", tags=["page-queue"])
+app.include_router(favorite_jobs.router, prefix="/api/v1/favorite-jobs", tags=["favorite-jobs"])
 
 @app.get("/")
 async def root():

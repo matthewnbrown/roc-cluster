@@ -426,6 +426,37 @@ class JobCancelRequest(BaseModel):
     reason: Optional[str] = None
 
 
+# Favorite Job Schemas
+class FavoriteJobCreateRequest(BaseModel):
+    """Request for creating a favorite job"""
+    name: str
+    description: Optional[str] = None
+    job_config: Dict[str, Any]  # Complete job configuration
+
+
+class FavoriteJobResponse(BaseModel):
+    """Response for a favorite job"""
+    id: int
+    name: str
+    description: Optional[str] = None
+    job_config: Dict[str, Any]
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    usage_count: int
+    last_used_at: Optional[datetime] = None
+
+    class Config:
+        json_encoders = {
+            datetime: datetime_encoder
+        }
+
+
+class FavoriteJobListResponse(BaseModel):
+    """Response for listing favorite jobs"""
+    favorite_jobs: List[FavoriteJobResponse]
+    total: int
+
+
 # Weapon Schemas
 class WeaponResponse(BaseModel):
     """Response schema for weapons"""

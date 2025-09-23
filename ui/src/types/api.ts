@@ -162,6 +162,7 @@ export interface JobStepResponse {
   error_message?: string;
   started_at?: string;
   completed_at?: string;
+  cluster_ids?: number[]; // Added to support cluster selection in favorites
 }
 
 export interface JobResponse {
@@ -190,6 +191,29 @@ export interface JobListResponse {
 
 export interface JobCancelRequest {
   reason?: string;
+}
+
+// Favorite Job Types
+export interface FavoriteJobCreateRequest {
+  name: string;
+  description?: string;
+  job_config: Record<string, any>;
+}
+
+export interface FavoriteJobResponse {
+  id: number;
+  name: string;
+  description?: string;
+  job_config: Record<string, any>;
+  created_at: string;
+  updated_at?: string;
+  usage_count: number;
+  last_used_at?: string;
+}
+
+export interface FavoriteJobListResponse {
+  favorite_jobs: FavoriteJobResponse[];
+  total: number;
 }
 
 export interface ActionType {

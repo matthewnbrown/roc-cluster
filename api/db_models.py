@@ -393,3 +393,17 @@ class PageQueue(Base):
     
     # Relationships
     account = relationship("Account")
+
+
+class FavoriteJob(Base):
+    """Favorite job model for storing frequently used job configurations"""
+    __tablename__ = "favorite_jobs"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), nullable=False)  # User-friendly name for the favorite
+    description = Column(Text, nullable=True)  # Optional description
+    job_config = Column(Text, nullable=False)  # JSON string of the complete job configuration
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    usage_count = Column(Integer, default=0, nullable=False)  # Track how often it's used
+    last_used_at = Column(DateTime(timezone=True), nullable=True)  # When it was last used

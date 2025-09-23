@@ -3,11 +3,12 @@ import { useForm, useFieldArray } from 'react-hook-form';
 import { useCreateJob, useValidActionTypes, useJob } from '../hooks/useJobs';
 import { useClusters } from '../hooks/useClusters';
 import { useAccounts } from '../hooks/useAccounts';
+import { useFavoriteJobs } from '../hooks/useFavoriteJobs';
 import { JobCreateRequest, JobStepRequest, ActionType, JobResponse } from '../types/api';
 import Button from './ui/Button';
 import Input from './ui/Input';
 import Modal from './ui/Modal';
-import { Plus, Trash2, Users, User, ChevronDown, ChevronRight, EyeOff, Search, X } from 'lucide-react';
+import { Plus, Trash2, Users, User, ChevronDown, ChevronRight, EyeOff, Search, X, Star } from 'lucide-react';
 
 interface JobFormProps {
   isOpen: boolean;
@@ -33,6 +34,7 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
   const { data: actionTypesData } = useValidActionTypes();
   const { data: clustersData } = useClusters(1, 1000);
   const { data: accountsData } = useAccounts(1, 1000);
+  const { createFavoriteJob } = useFavoriteJobs();
   const [editingStepIndex, setEditingStepIndex] = useState<number | null>(null);
   const [searchTerms, setSearchTerms] = useState<{ [stepIndex: number]: string }>({});
   const [showSuggestions, setShowSuggestions] = useState<{ [stepIndex: number]: boolean }>({});
@@ -40,6 +42,9 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
   const [clusterSearchTerms, setClusterSearchTerms] = useState<{ [stepIndex: number]: string }>({});
   const [showClusterSuggestions, setShowClusterSuggestions] = useState<{ [stepIndex: number]: boolean }>({});
   const [selectedClusterSuggestionIndex, setSelectedClusterSuggestionIndex] = useState<{ [stepIndex: number]: number }>({});
+  const [showFavoriteModal, setShowFavoriteModal] = useState(false);
+  const [favoriteName, setFavoriteName] = useState('');
+  const [favoriteDescription, setFavoriteDescription] = useState('');
 
   const {
     register,
@@ -139,7 +144,7 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
           acc.push({
             action_type: step.action_type,
             account_ids: step.account_id ? [step.account_id] : [],
-            cluster_ids: [], // JobStepResponse doesn't have cluster_ids, so we'll leave it empty
+            cluster_ids: step.cluster_ids || [], // Preserve cluster_ids from the job being cloned
             max_retries: step.max_retries || 0,
             parameters: formParameters,
             originalParameters: step.parameters || {}, // Keep original parameters for comparison
@@ -251,6 +256,62 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
 
   const getActionTypeInfo = (actionType: string): ActionType | undefined => {
     return actionTypesData?.action_types.find((at) => at.action_type === actionType);
+  };
+
+  const handleSaveAsFavorite = async (data: FormData) => {
+    try {
+      const jobData: JobCreateRequest = {
+        name: data.name,
+        description: data.description || undefined,
+        parallel_execution: data.parallel_execution,
+        steps: data.steps.map((step) => {
+          // Filter out empty parameters and parse JSON objects
+          const filteredParameters = step.parameters 
+            ? Object.fromEntries(
+                Object.entries(step.parameters)
+                  .filter(([_, value]) => 
+                    value !== undefined && value !== null && value !== ''
+                  )
+                  .map(([key, value]) => {
+                    // Check if this parameter should be parsed as JSON
+                    const actionInfo = getActionTypeInfo(step.action_type);
+                    const paramInfo = actionInfo?.parameter_details?.[key];
+                    
+                    if (paramInfo?.type === 'object' && typeof value === 'string') {
+                      try {
+                        return [key, JSON.parse(value)];
+                      } catch (e) {
+                        console.warn(`Failed to parse JSON for parameter ${key}:`, e);
+                        return [key, value];
+                      }
+                    }
+                    return [key, value];
+                  })
+              )
+            : {};
+
+          return {
+            action_type: step.action_type,
+            account_ids: step.account_ids || [],
+            cluster_ids: step.cluster_ids || [],
+            parameters: filteredParameters,
+            max_retries: step.max_retries,
+          };
+        }),
+      };
+
+      await createFavoriteJob({
+        name: favoriteName,
+        description: favoriteDescription || undefined,
+        job_config: jobData,
+      });
+
+      setShowFavoriteModal(false);
+      setFavoriteName('');
+      setFavoriteDescription('');
+    } catch (error) {
+      console.error('Error saving as favorite:', error);
+    }
   };
 
   // Account search and selection helpers
@@ -1321,24 +1382,90 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
         </div>
 
         {/* Form Actions */}
-        <div className="flex justify-end space-x-3 pt-4 border-t">
+        <div className="flex justify-between pt-4 border-t">
           <Button
             type="button"
             variant="secondary"
-            onClick={onClose}
+            onClick={() => setShowFavoriteModal(true)}
             disabled={isLoading}
+            className="flex items-center gap-2"
           >
-            Cancel
+            <Star className="h-4 w-4" />
+            Save as Favorite
           </Button>
-          <Button
-            type="submit"
-            loading={isLoading}
-            disabled={isLoading}
-          >
-            Create Job
-          </Button>
+          
+          <div className="flex gap-3">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={onClose}
+              disabled={isLoading}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              loading={isLoading}
+              disabled={isLoading}
+            >
+              Create Job
+            </Button>
+          </div>
         </div>
       </form>
+
+      {/* Favorite Job Modal */}
+      <Modal
+        isOpen={showFavoriteModal}
+        onClose={() => setShowFavoriteModal(false)}
+        title="Save as Favorite Job"
+      >
+        <form onSubmit={handleSubmit(handleSaveAsFavorite)} className="space-y-4">
+          <div>
+            <label htmlFor="favoriteName" className="block text-sm font-medium text-gray-700 mb-1">
+              Favorite Name *
+            </label>
+            <Input
+              id="favoriteName"
+              type="text"
+              value={favoriteName}
+              onChange={(e) => setFavoriteName(e.target.value)}
+              placeholder="Enter a name for this favorite job"
+              required
+            />
+          </div>
+
+          <div>
+            <label htmlFor="favoriteDescription" className="block text-sm font-medium text-gray-700 mb-1">
+              Description
+            </label>
+            <textarea
+              id="favoriteDescription"
+              value={favoriteDescription}
+              onChange={(e) => setFavoriteDescription(e.target.value)}
+              placeholder="Enter a description (optional)"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              rows={3}
+            />
+          </div>
+
+          <div className="flex justify-end gap-3 pt-4">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setShowFavoriteModal(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              disabled={!favoriteName.trim()}
+            >
+              Save Favorite
+            </Button>
+          </div>
+        </form>
+      </Modal>
     </Modal>
   );
 };

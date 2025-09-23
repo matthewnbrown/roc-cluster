@@ -29,6 +29,9 @@ import {
   TrainingPreferences,
   TrainingPreferencesCreate,
   TrainingPreferencesUpdate,
+  FavoriteJobCreateRequest,
+  FavoriteJobResponse,
+  FavoriteJobListResponse,
 } from '../types/api';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000/api/v1';
@@ -358,6 +361,68 @@ export const armoryApi = {
   // Delete training preferences
   deleteTrainingPreferences: async (accountId: number): Promise<void> => {
     await api.delete(`/armory/training-preferences/${accountId}`);
+  },
+
+  // Favorite Jobs API
+  favoriteJobs: {
+    async list(): Promise<FavoriteJobListResponse> {
+      const response: AxiosResponse<FavoriteJobListResponse> = await api.get('/favorite-jobs/');
+      return response.data;
+    },
+
+    async get(id: number): Promise<FavoriteJobResponse> {
+      const response: AxiosResponse<FavoriteJobResponse> = await api.get(`/favorite-jobs/${id}`);
+      return response.data;
+    },
+
+    async create(data: FavoriteJobCreateRequest): Promise<FavoriteJobResponse> {
+      const response: AxiosResponse<FavoriteJobResponse> = await api.post('/favorite-jobs/', data);
+      return response.data;
+    },
+
+    async update(id: number, data: FavoriteJobCreateRequest): Promise<FavoriteJobResponse> {
+      const response: AxiosResponse<FavoriteJobResponse> = await api.put(`/favorite-jobs/${id}`, data);
+      return response.data;
+    },
+
+    async delete(id: number): Promise<void> {
+      await api.delete(`/favorite-jobs/${id}`);
+    },
+
+    async markAsUsed(id: number): Promise<void> {
+      await api.post(`/favorite-jobs/${id}/use`);
+    },
+  },
+};
+
+// Export individual API objects for use in hooks
+export const favoriteJobsApi = {
+  async list(): Promise<FavoriteJobListResponse> {
+    const response: AxiosResponse<FavoriteJobListResponse> = await api.get('/favorite-jobs/');
+    return response.data;
+  },
+
+  async get(id: number): Promise<FavoriteJobResponse> {
+    const response: AxiosResponse<FavoriteJobResponse> = await api.get(`/favorite-jobs/${id}`);
+    return response.data;
+  },
+
+  async create(data: FavoriteJobCreateRequest): Promise<FavoriteJobResponse> {
+    const response: AxiosResponse<FavoriteJobResponse> = await api.post('/favorite-jobs/', data);
+    return response.data;
+  },
+
+  async update(id: number, data: FavoriteJobCreateRequest): Promise<FavoriteJobResponse> {
+    const response: AxiosResponse<FavoriteJobResponse> = await api.put(`/favorite-jobs/${id}`, data);
+    return response.data;
+  },
+
+  async delete(id: number): Promise<void> {
+    await api.delete(`/favorite-jobs/${id}`);
+  },
+
+  async markAsUsed(id: number): Promise<void> {
+    await api.post(`/favorite-jobs/${id}/use`);
   },
 };
 

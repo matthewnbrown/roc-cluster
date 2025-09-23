@@ -12,6 +12,7 @@ import ClusterCloneForm from './components/ClusterCloneForm';
 import JobList from './components/JobList';
 import JobForm from './components/JobForm';
 import JobDetails from './components/JobDetails';
+import FavoriteJobsManager from './components/FavoriteJobsManager';
 
 // Create a client
 const queryClient = new QueryClient({
@@ -32,6 +33,7 @@ const AppContent: React.FC = () => {
   const [clusterCloneModalOpen, setClusterCloneModalOpen] = useState(false);
   const [jobFormModalOpen, setJobFormModalOpen] = useState(false);
   const [jobToClone, setJobToClone] = useState<JobResponse | null>(null);
+  const [showFavoriteJobs, setShowFavoriteJobs] = useState(false);
   const [selectedAccount, setSelectedAccount] = useState<Account | undefined>(undefined);
   const [selectedCluster, setSelectedCluster] = useState<ClusterListResponse | ClusterResponse | undefined>(undefined);
 
@@ -83,6 +85,50 @@ const AppContent: React.FC = () => {
   const handleCloneJob = (job: JobResponse) => {
     setJobFormModalOpen(true);
     setJobToClone(job);
+  };
+
+  // Favorite job handlers
+  const handleUseFavorite = (favorite: any) => {
+    // Convert favorite job config to JobResponse format and clone it
+    const jobToClone: JobResponse = {
+      id: 0, // Temporary ID for cloning
+      name: favorite.name,
+      description: favorite.description,
+      status: 'pending' as any,
+      parallel_execution: favorite.job_config.parallel_execution,
+      created_at: new Date().toISOString(),
+      started_at: undefined,
+      completed_at: undefined,
+      total_steps: favorite.job_config.steps?.length || 0,
+      completed_steps: 0,
+      failed_steps: 0,
+      error_message: undefined,
+      steps: favorite.job_config.steps?.map((step: any, index: number) => ({
+        id: index,
+        step_order: index + 1,
+        action_type: step.action_type,
+        account_id: step.account_ids?.[0] || 0,
+        target_id: step.parameters?.target_id,
+        parameters: step.parameters,
+        max_retries: step.max_retries,
+        is_async: false,
+        status: 'pending' as any,
+        result: undefined,
+        error_message: undefined,
+        started_at: undefined,
+        completed_at: undefined,
+        // Preserve cluster_ids from the saved configuration
+        cluster_ids: step.cluster_ids || [],
+      })) || [],
+    };
+    
+    setJobToClone(jobToClone);
+    setJobFormModalOpen(true);
+    setShowFavoriteJobs(false);
+  };
+
+  const handleCreateFromFavorite = (favorite: any) => {
+    handleUseFavorite(favorite);
   };
 
   // Navigation handlers
@@ -187,7 +233,36 @@ const AppContent: React.FC = () => {
             <Route path="/accounts/:id" element={<AccountDetailsWrapper onBack={handleBackToAccounts} onEditAccount={handleEditAccount} />} />
             <Route path="/clusters" element={<ClusterList onViewCluster={handleViewCluster} onEditCluster={handleEditCluster} onCreateCluster={handleCreateCluster} onCloneCluster={handleCloneCluster} />} />
             <Route path="/clusters/:id" element={<ClusterDetailsWrapper onBack={handleBackToClusters} onEditCluster={handleEditCluster} onCloneCluster={handleCloneCluster} />} />
-            <Route path="/jobs" element={<JobList onViewJob={handleViewJob} onCreateJob={handleCreateJob} onCloneJob={handleCloneJob} />} />
+            <Route path="/jobs" element={
+              <div className="space-y-6">
+                <div className="flex items-center justify-between">
+                  <h1 className="text-2xl font-bold text-gray-900">Jobs</h1>
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => setShowFavoriteJobs(!showFavoriteJobs)}
+                      className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      {showFavoriteJobs ? 'Hide' : 'Show'} Favorites
+                    </button>
+                  </div>
+                </div>
+                
+                {showFavoriteJobs && (
+                  <div className="bg-gray-50 rounded-lg p-6">
+                    <FavoriteJobsManager
+                      onUseFavorite={handleUseFavorite}
+                      onCreateFromFavorite={handleCreateFromFavorite}
+                    />
+                  </div>
+                )}
+                
+                <JobList 
+                  onViewJob={handleViewJob} 
+                  onCreateJob={handleCreateJob} 
+                  onCloneJob={handleCloneJob} 
+                />
+              </div>
+            } />
             <Route path="/jobs/:id" element={<JobDetailsWrapper onBack={handleBackToJobs} />} />
           </Routes>
         </div>
