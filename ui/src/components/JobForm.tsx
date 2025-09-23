@@ -99,7 +99,7 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
         
         // Find existing step with same key
         const existingStepIndex = acc.findIndex(existingStep => {
-          const existingKey = `${existingStep.action_type}-${JSON.stringify(existingStep.parameters || {})}-${existingStep.max_retries || 0}`;
+          const existingKey = `${existingStep.action_type}-${JSON.stringify(existingStep.originalParameters || {})}-${existingStep.max_retries || 0}`;
           return existingKey === stepKey;
         });
         
@@ -111,14 +111,38 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
           if (newAccountId && !existingAccountIds.includes(newAccountId)) {
             acc[existingStepIndex].account_ids = [...existingAccountIds, newAccountId];
           }
+          
+          // No need to update parameters for existing steps since they're already formatted
         } else {
           // Add new step
+          // Convert object parameters to JSON strings for form display
+          const formParameters: Record<string, any> = {};
+          if (step.parameters) {
+            Object.entries(step.parameters).forEach(([key, value]) => {
+              // Check if this parameter should be displayed as JSON string
+              const actionInfo = getActionTypeInfo(step.action_type);
+              const paramInfo = actionInfo?.parameter_details?.[key];
+              
+              if (paramInfo?.type === 'object' && typeof value === 'object' && value !== null) {
+                // Convert object to JSON string for form display
+                formParameters[key] = JSON.stringify(value, null, 2);
+              } else if (key === 'weapon_percentages' && typeof value === 'object' && value !== null) {
+                // Special case for weapon_percentages - always convert to JSON string
+                formParameters[key] = JSON.stringify(value, null, 2);
+              } else {
+                // Keep other parameters as-is
+                formParameters[key] = value;
+              }
+            });
+          }
+          
           acc.push({
             action_type: step.action_type,
             account_ids: step.account_id ? [step.account_id] : [],
             cluster_ids: [], // JobStepResponse doesn't have cluster_ids, so we'll leave it empty
             max_retries: step.max_retries || 0,
-            parameters: step.parameters || {},
+            parameters: formParameters,
+            originalParameters: step.parameters || {}, // Keep original parameters for comparison
           });
         }
         

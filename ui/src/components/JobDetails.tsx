@@ -339,7 +339,7 @@ const JobDetails: React.FC<JobDetailsProps> = ({ jobId, onBack }) => {
                             <div className="text-sm text-gray-500 truncate">
                               {Object.entries(step.parameters).slice(0, 2).map(([key, value]) => (
                                 <span key={key} className="mr-2">
-                                  {key}: {String(value)}
+                                  {key}: {typeof value === 'object' && value !== null ? JSON.stringify(value) : String(value)}
                                 </span>
                               ))}
                               {Object.keys(step.parameters).length > 2 && (
@@ -451,7 +451,7 @@ const JobDetails: React.FC<JobDetailsProps> = ({ jobId, onBack }) => {
                             <div className="space-y-1 text-sm">
                               {Object.entries(step.parameters).map(([key, value]) => (
                                 <div key={key}>
-                                  <span className="font-medium">{key}:</span> {String(value)}
+                                  <span className="font-medium">{key}:</span> {typeof value === 'object' && value !== null ? JSON.stringify(value, null, 2) : String(value)}
                                 </div>
                               ))}
                             </div>
