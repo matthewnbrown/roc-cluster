@@ -33,6 +33,7 @@ class AccountManager:
         SEND_CREDITS = "send_credits"
         RECRUIT = "recruit"
         PURCHASE_ARMORY = "purchase_armory"
+        PURCHASE_ARMORY_BY_PREFERENCES = "purchase_armory_by_preferences"
         PURCHASE_TRAINING = "purchase_training"
         SET_CREDIT_SAVING = "set_credit_saving"
         BUY_UPGRADE = "buy_upgrade"
@@ -94,6 +95,7 @@ class AccountManager:
                     "send_credits": roc_account.send_credits,
                     "recruit": roc_account.recruit,
                     "purchase_armory": roc_account.purchase_armory,
+                    "purchase_armory_by_preferences": roc_account.purchase_armory_by_preferences,
                     "purchase_training": roc_account.purchase_training,
                     "set_credit_saving": roc_account.set_credit_saving,
                     "buy_upgrade": roc_account.buy_upgrade,

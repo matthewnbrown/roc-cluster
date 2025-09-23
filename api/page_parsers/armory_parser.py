@@ -2,32 +2,16 @@ from bs4 import BeautifulSoup
 import re
 from .common import get_clockbar_stats, parse_stats_table, parse_weapon_troop_distribution
 
-def parse_armory_data(armory_file, repair_file=None):
+def parse_armory_data(armory_page: str | BeautifulSoup):
     """Parse armory data from both files"""
-    # Parse main armory file
-    with open(armory_file, 'r', encoding='utf-8') as file:
-        armory_content = file.read()
     
-    armory_soup = BeautifulSoup(armory_content, 'html.parser')
+    if isinstance(armory_page, BeautifulSoup):
+        armory_soup = armory_page
+    else:
+        armory_soup = BeautifulSoup(armory_page, 'html.parser')
     
     # Parse weapons from main armory file
     weapons = __parse_weapon_data(armory_soup, is_repair_page=False)
-    
-    # Parse repair data if repair file is provided
-    if repair_file:
-        with open(repair_file, 'r', encoding='utf-8') as file:
-            repair_content = file.read()
-        
-        repair_soup = BeautifulSoup(repair_content, 'html.parser')
-        repair_weapons = __parse_weapon_data(repair_soup, is_repair_page=True)
-        
-        # Merge repair data with main weapons data
-        for repair_weapon in repair_weapons:
-            for weapon in weapons:
-                if weapon['id'] == repair_weapon['id']:
-                    weapon['repair_cost'] = repair_weapon['repair_cost']
-                    weapon['repair_value'] = repair_weapon['repair_value']
-                    break
     
     # Parse stats and distribution from main armory file
     stats = parse_stats_table(armory_soup)

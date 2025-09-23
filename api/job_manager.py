@@ -182,6 +182,19 @@ class JobManager:
                     "error": "string (optional)"
                 }
             },
+            "purchase_armory_by_preferences": {
+                "description": "Purchase items from the armory based on user preferences",
+                "category": "self_action",
+                "required_parameters": [],
+                "optional_parameters": [],
+                "parameter_details": {},
+                "output": {
+                    "success": "boolean",
+                    "message": "string (optional)",
+                    "data": "object (optional) - contains purchase details",
+                    "error": "string (optional)"
+                }
+            },
             "purchase_training": {
                 "description": "Purchase training for the account",
                 "category": "self_action",

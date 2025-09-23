@@ -56,15 +56,10 @@ class GameAccountManager:
         self.session: Optional[aiohttp.ClientSession] = None
         self._connector: Optional[aiohttp.TCPConnector] = None
         self.url_generator = ROCDecryptUrlGenerator()
-        self._is_logged_in = False
         self.captcha_solver = CaptchaSolver(solver_url=settings.CAPTCHA_SOLVER_URL, report_url=settings.CAPTCHA_REPORT_URL, max_retries=max_retries)
         self.max_retries = max_retries
         self.use_captcha = False
 
-    @property
-    def is_logged_in(self) -> bool:
-        """Check if the account is logged in"""
-        return self._is_logged_in and self.session is not None
 
     def parse_roc_number(self, number: str) -> int:
         """Parse a ROC number"""
@@ -211,8 +206,10 @@ class GameAccountManager:
     
     async def __get_page(self, url: str) -> aiohttp.ClientResponse:
         async with self.session.get(url) as response:
-            _ = await response.read()
+            pagetext = await response.read()
+            self._push_page_to_queue(pagetext, url, response.url, "GET", None, datetime.now(timezone.utc))
             return response
+        
     
     async def __submit_page(self, url: str, data: Dict[str, Any], page_submit: PageSubmit) -> aiohttp.ClientResponse:
         """Submits a page"""
@@ -536,9 +533,6 @@ class GameAccountManager:
     # not implemented
     async def become_officer(self, target_id: str) -> Dict[str, Any]:
         """Become an officer of another user"""
-        if not self.is_logged_in:
-            return {"success": False, "error": "Not logged in"}
-            
         try:
             # Implement become officer logic
             return {"success": True, "message": f"Became officer of user {target_id}"}
@@ -670,21 +664,161 @@ class GameAccountManager:
     # not implemented
     async def purchase_armory(self, items: Dict[str, int]) -> Dict[str, Any]:
         """Purchase items from armory"""
-        if not self.is_logged_in:
-            return {"success": False, "error": "Not logged in"}
-            
+       
         try:
             # Implement armory purchase logic
             return {"success": True, "message": f"Purchased armory items: {items}"}
         except Exception as e:
             return {"success": False, "error": str(e)}
     
+    async def purchase_armory_by_preferences(self) -> Dict[str, Any]:
+        """Purchase armory items based on user preferences"""
+        #TODO: Login check
+        try:
+            from api.database import SessionLocal
+            from api.db_models import ArmoryPreferences, Weapon
+            
+            # Get user preferences from database
+            db = SessionLocal()
+            try:
+                preferences = db.query(ArmoryPreferences).filter(
+                    ArmoryPreferences.account_id == self.account.id
+                ).first()
+                
+                if not preferences:
+                    return {"success": False, "error": "No armory preferences found for this account"}
+                
+                # Get current gold from metadata
+                metadata_result = await self.get_metadata()
+                if not metadata_result or not metadata_result.get("success"):
+                    return {"success": False, "error": "Failed to get account metadata"}
+                
+                current_gold = metadata_result["data"].gold
+                
+                # Load armory page
+                armory_url = self.url_generator.armory()
+                request_time = datetime.now(timezone.utc)
+                
+                armory_text = await self.__get_page(armory_url)
+
+                # Parse armory data
+                from api.page_parsers.armory_parser import parse_armory_data
+
+                armory_data = parse_armory_data(armory_text)
+                
+                # Calculate weapon portions based on preferences and available gold
+                weapon_purchases = self._calculate_weapon_purchases(
+                    armory_data, preferences, current_gold, db
+                )
+                
+                if not weapon_purchases:
+                    return {"success": True, "message": "No weapons to purchase based on current gold and preferences"}
+                
+                # Submit purchase form
+                purchase_result = await self._submit_armory_purchase(weapon_purchases)
+                
+                purchase_result_data = parse_armory_data(await purchase_result.text())
+                
+                if armory_data["current_user"]["gold"] != purchase_result_data["current_user"]["gold"]:
+                    return {"success": False, "error": "Failed to purchase armory items"}
+                
+                else:
+                    return {"success": True, "data": weapon_purchases}
+                        
+            finally:
+                db.close()
+                
+        except Exception as e:
+            logger.error(f"Error purchasing armory by preferences for {self.account.username}: {e}")
+            return {"success": False, "error": str(e)}
+    
+    def _calculate_weapon_purchases(self, armory_data: Dict[str, Any], preferences, current_gold: int, db) -> Dict[str, int]:
+        """Calculate weapon purchases based on preferences and available gold"""
+        from api.db_models import Weapon
+        
+        weapon_purchases = {}
+        
+        # Get weapon preferences sorted by percentage (highest first)
+        weapon_prefs = sorted(preferences.weapon_preferences, key=lambda x: x.percentage, reverse=True)
+        
+        for weapon_pref in weapon_prefs:
+            if weapon_pref.percentage <= 0:
+                continue
+                
+            # Find weapon in armory data
+            weapon_data = None
+            for weapon in armory_data.get('weapons', []):
+                if str(weapon['id']) == str(weapon_pref.weapon.roc_weapon_id):
+                    weapon_data = weapon
+                    break
+            
+            if not weapon_data or weapon_data.get('cost', 0) <= 0:
+                continue
+            
+            # Calculate gold allocation for this weapon based on original gold amount
+            gold_for_weapon = int(current_gold * (weapon_pref.percentage / 100.0))
+            
+            # Calculate how many weapons we can buy
+            weapon_cost = weapon_data['cost']
+            max_weapons = gold_for_weapon // weapon_cost
+            
+            if max_weapons > 0:
+                weapon_purchases[str(weapon_pref.weapon.roc_weapon_id)] = max_weapons
+        
+        return weapon_purchases
+    
+    async def _submit_armory_purchase(self, weapon_purchases: Dict[str, int]) -> Dict[str, Any]:
+        """Submit armory purchase form with calculated weapon amounts"""
+        try:
+            armory_url = self.url_generator.armory()
+            
+            # Build form data
+            form_data = {
+                "email": self.account.email,
+                "password": self.account.password,
+                "submit": "Sell/Buy+Weapons"
+            }
+            
+            # Initialize all sell fields to empty
+            for i in range(3, 15):  # sell[3] to sell[14]
+                form_data[f"sell[{i}]"] = ""
+            
+            # Initialize all buy fields to empty
+            for i in range(1, 15):  # buy[1] to buy[14]
+                form_data[f"buy[{i}]"] = ""
+            
+            # Set the weapon purchases
+            for weapon_id, quantity in weapon_purchases.items():
+                form_data[f"buy[{weapon_id}]"] = str(quantity)
+            
+            # Submit the form
+            async def _submit():
+                return await self.__submit_page(armory_url, form_data, PageSubmit.ARMORY)
+            
+            result = await self.__retry_login_wrapper(_submit)
+            page_text = await result.text()
+            
+            # Check if purchase was successful
+            if "successfully" in page_text.lower() or "purchased" in page_text.lower():
+                return {
+                    "success": True, 
+                    "message": f"Successfully purchased weapons: {weapon_purchases}",
+                    "data": {"purchases": weapon_purchases}
+                }
+            else:
+                return {
+                    "success": False, 
+                    "error": "Purchase may have failed - check armory page",
+                    "data": {"purchases": weapon_purchases}
+                }
+                
+        except Exception as e:
+            logger.error(f"Error submitting armory purchase: {e}")
+            return {"success": False, "error": str(e)}
+    
     # not implemented
     async def purchase_training(self, training_type: str, count: int) -> Dict[str, Any]:
         """Purchase training"""
-        if not self.is_logged_in:
-            return {"success": False, "error": "Not logged in"}
-            
         try:
             # Implement training purchase logic
             return {"success": True, "message": f"Purchased {count} {training_type} training"}

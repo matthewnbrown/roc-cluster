@@ -542,3 +542,61 @@ async def delete_training_preferences(
     db.commit()
     
     logger.info(f"Deleted training preferences for account {account_id}")
+
+
+@router.post("/purchase/{account_id}")
+async def purchase_armory_by_preferences(
+    account_id: int,
+    db: Session = Depends(get_db)
+):
+    """Purchase armory items based on user preferences"""
+    from api.account_manager import AccountManager
+    from api.schemas import AccountIdentifierType
+    
+    # Check if account exists
+    account = db.query(Account).filter(Account.id == account_id).first()
+    if not account:
+        raise HTTPException(
+            status_code=404,
+            detail="Account not found"
+        )
+    
+    # Get armory preferences
+    preferences = db.query(ArmoryPreferences).filter(
+        ArmoryPreferences.account_id == account_id
+    ).first()
+    
+    if not preferences:
+        raise HTTPException(
+            status_code=404,
+            detail="Armory preferences not found for this account"
+        )
+
+    # check if preferences add to a number greater than 0
+    total_percentage = sum(preferences.weapon_percentages.values())
+    if total_percentage <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Armory preferences do not add to a number greater than 0"
+        )
+    
+    # Create account manager and execute armory purchase
+    try:
+        account_manager = AccountManager()
+        result = await account_manager.execute_action(
+            id_type=AccountIdentifierType.ID,
+            id=account_id,
+            action=AccountManager.ActionType.PURCHASE_ARMORY_BY_PREFERENCES,
+            max_retries=0
+        )
+        
+        return {
+            "success": result.get("success", False),
+            "message": result.get("message"),
+            "data": result.get("data"),
+            "error": result.get("error")
+        }
+        
+    except Exception as e:
+        logger.error(f"Error purchasing armory for account {account_id}: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
