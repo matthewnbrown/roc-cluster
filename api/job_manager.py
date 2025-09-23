@@ -561,29 +561,18 @@ class JobManager:
             # Update final job status
             db.refresh(job)
             if job.status != JobStatus.CANCELLED:
-                completed_steps = db.query(JobStep).filter(
-                    and_(JobStep.job_id == job_id, JobStep.status == JobStatus.COMPLETED)
-                ).count()
-                
-                failed_steps = db.query(JobStep).filter(
-                    and_(JobStep.job_id == job_id, JobStep.status == JobStatus.FAILED)
-                ).count()
-                
                 # Count async steps for logging
                 async_steps = db.query(JobStep).filter(
                     and_(JobStep.job_id == job_id, JobStep.is_async == True)
                 ).count()
                 
-                job.completed_steps = completed_steps
-                job.failed_steps = failed_steps
+                logger.info(f"Job {job_id} completed: {job.completed_steps} completed, {job.failed_steps} failed, {async_steps} async steps")
                 
-                logger.info(f"Job {job_id} completed: {completed_steps} completed, {failed_steps} failed, {async_steps} async steps")
-                
-                if failed_steps == 0:
+                if job.failed_steps == 0:
                     job.status = JobStatus.COMPLETED
                 else:
                     job.status = JobStatus.FAILED
-                    job.error_message = f"{failed_steps} steps failed"
+                    job.error_message = f"{job.failed_steps} steps failed"
                 
                 job.completed_at = datetime.now(timezone.utc)
                 db.commit()
@@ -641,12 +630,20 @@ class JobManager:
             step.result = json.dumps(result)
             step.error_message = result.get("error") if not result.get("success", False) else None
             step.completed_at = datetime.now(timezone.utc)
+            
+            # Update job progress counters immediately
+            await self._update_job_progress(step.job_id, db)
+            
             db.commit()
             
         except Exception as e:
             step.status = JobStatus.FAILED
             step.error_message = str(e)
             step.completed_at = datetime.now(timezone.utc)
+            
+            # Update job progress counters immediately even for failed steps
+            await self._update_job_progress(step.job_id, db)
+            
             db.commit()
             raise
     
@@ -704,6 +701,27 @@ class JobManager:
             # If not an exception, the step status was already updated in _execute_step_safe
             db.commit()
     
+    async def _update_job_progress(self, job_id: int, db: Session):
+        """Update job progress counters based on current step statuses"""
+        job = db.query(Job).filter(Job.id == job_id).first()
+        if not job:
+            return
+        
+        # Count completed and failed steps
+        completed_steps = db.query(JobStep).filter(
+            and_(JobStep.job_id == job_id, JobStep.status == JobStatus.COMPLETED)
+        ).count()
+        
+        failed_steps = db.query(JobStep).filter(
+            and_(JobStep.job_id == job_id, JobStep.status == JobStatus.FAILED)
+        ).count()
+        
+        # Update job counters
+        job.completed_steps = completed_steps
+        job.failed_steps = failed_steps
+        
+        logger.debug(f"Updated job {job_id} progress: {completed_steps} completed, {failed_steps} failed")
+
     async def _execute_step_safe(self, step: JobStep, db: Session):
         """Safely execute a single step with proper error handling"""
         try:
@@ -713,6 +731,10 @@ class JobManager:
             step.status = JobStatus.FAILED
             step.error_message = str(e)
             step.completed_at = datetime.now(timezone.utc)
+            
+            # Update job progress counters immediately even for failed steps
+            await self._update_job_progress(step.job_id, db)
+            
             db.commit()
             raise  # Re-raise to be caught by gather()
     
