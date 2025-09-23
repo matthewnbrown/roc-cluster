@@ -558,9 +558,22 @@ class JobManager:
                         
                         
             
-            # Update final job status
+            # Update final job status - ensure all steps are actually completed
             db.refresh(job)
             if job.status != JobStatus.CANCELLED:
+                # Wait a moment for any async steps to complete and update their status
+                await asyncio.sleep(0.1)
+                
+                # Update progress counters one final time
+                await self._update_job_progress(job_id, db)
+                db.commit()  # Ensure progress updates are committed
+                
+                # Re-query the job to get the latest values
+                job = db.query(Job).filter(Job.id == job_id).first()
+                if not job:
+                    logger.error(f"Job {job_id} not found after progress update")
+                    return
+                
                 # Count async steps for logging
                 async_steps = db.query(JobStep).filter(
                     and_(JobStep.job_id == job_id, JobStep.is_async == True)
@@ -568,11 +581,24 @@ class JobManager:
                 
                 logger.info(f"Job {job_id} completed: {job.completed_steps} completed, {job.failed_steps} failed, {async_steps} async steps")
                 
-                if job.failed_steps == 0:
+                # Check if all steps are actually completed (not just that none failed)
+                total_actual_steps = job.completed_steps + job.failed_steps
+                
+                # Debug logging
+                logger.info(f"Job {job_id} completion check: total_steps={job.total_steps}, completed_steps={job.completed_steps}, failed_steps={job.failed_steps}, total_actual_steps={total_actual_steps}")
+                
+                if total_actual_steps == job.total_steps and job.failed_steps == 0:
                     job.status = JobStatus.COMPLETED
-                else:
+                    logger.info(f"Job {job_id} marked as COMPLETED")
+                elif total_actual_steps == job.total_steps and job.failed_steps > 0:
                     job.status = JobStatus.FAILED
                     job.error_message = f"{job.failed_steps} steps failed"
+                    logger.info(f"Job {job_id} marked as FAILED due to {job.failed_steps} failed steps")
+                else:
+                    # This shouldn't happen, but if it does, mark as failed
+                    job.status = JobStatus.FAILED
+                    job.error_message = f"Job execution incomplete: {total_actual_steps}/{job.total_steps} steps finished"
+                    logger.warning(f"Job {job_id} marked as FAILED due to incomplete execution: {total_actual_steps}/{job.total_steps} steps finished")
                 
                 job.completed_at = datetime.now(timezone.utc)
                 db.commit()
@@ -716,11 +742,20 @@ class JobManager:
             and_(JobStep.job_id == job_id, JobStep.status == JobStatus.FAILED)
         ).count()
         
+        # Also count pending and running steps for debugging
+        pending_steps = db.query(JobStep).filter(
+            and_(JobStep.job_id == job_id, JobStep.status == JobStatus.PENDING)
+        ).count()
+        
+        running_steps = db.query(JobStep).filter(
+            and_(JobStep.job_id == job_id, JobStep.status == JobStatus.RUNNING)
+        ).count()
+        
         # Update job counters
         job.completed_steps = completed_steps
         job.failed_steps = failed_steps
         
-        logger.debug(f"Updated job {job_id} progress: {completed_steps} completed, {failed_steps} failed")
+        logger.info(f"Updated job {job_id} progress: {completed_steps} completed, {failed_steps} failed, {pending_steps} pending, {running_steps} running")
 
     async def _execute_step_safe(self, step: JobStep, db: Session):
         """Safely execute a single step with proper error handling"""
