@@ -289,6 +289,10 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
     setValue(`steps.${stepIndex}.account_ids`, newAccountIds);
   };
 
+  const removeAllAccountsFromStep = (stepIndex: number) => {
+    setValue(`steps.${stepIndex}.account_ids`, []);
+  };
+
   const getAccountById = (accountId: number) => {
     return accountsData?.data.find((account: any) => account.id === accountId);
   };
@@ -652,9 +656,23 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
                             
                             {/* Individual Accounts */}
                             <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-2">
-                                Individual Accounts
-                              </label>
+                              <div className="flex items-center justify-between mb-2">
+                                <label className="block text-sm font-medium text-gray-700">
+                                  Individual Accounts
+                                </label>
+                                {watchedSteps[index]?.account_ids?.length > 0 && (
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => removeAllAccountsFromStep(index)}
+                                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                  >
+                                    <Trash2 className="h-4 w-4 mr-1" />
+                                    Remove All
+                                  </Button>
+                                )}
+                              </div>
                               
                               {/* Selected Accounts */}
                               <div className="mb-3">
