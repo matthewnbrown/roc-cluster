@@ -20,6 +20,14 @@ import {
   ActionType,
   SetCreditSavingRequest,
   ActionResponse,
+  Weapon,
+  ArmoryPreferences,
+  ArmoryPreferencesCreate,
+  ArmoryPreferencesUpdate,
+  SoldierType,
+  TrainingPreferences,
+  TrainingPreferencesCreate,
+  TrainingPreferencesUpdate,
 } from '../types/api';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000/api/v1';
@@ -274,6 +282,73 @@ export const actionsApi = {
   setCreditSaving: async (request: SetCreditSavingRequest): Promise<ActionResponse> => {
     const response: AxiosResponse<ActionResponse> = await api.post('/actions/set-credit-saving', request);
     return response.data;
+  },
+};
+
+// Armory API functions
+export const armoryApi = {
+  // Get all weapons
+  getWeapons: async (): Promise<Weapon[]> => {
+    const response: AxiosResponse<Weapon[]> = await api.get('/armory/weapons');
+    return response.data;
+  },
+
+  // Get armory preferences for account
+  getArmoryPreferences: async (accountId: number): Promise<ArmoryPreferences> => {
+    const response: AxiosResponse<ArmoryPreferences> = await api.get(`/armory/preferences/${accountId}`);
+    return response.data;
+  },
+
+  // Create armory preferences
+  createArmoryPreferences: async (preferencesData: ArmoryPreferencesCreate): Promise<ArmoryPreferences> => {
+    const response: AxiosResponse<ArmoryPreferences> = await api.post('/armory/preferences', preferencesData);
+    return response.data;
+  },
+
+  // Update armory preferences
+  updateArmoryPreferences: async (accountId: number, preferencesData: ArmoryPreferencesUpdate): Promise<ArmoryPreferences> => {
+    const response: AxiosResponse<ArmoryPreferences> = await api.put(`/armory/preferences/${accountId}`, preferencesData);
+    return response.data;
+  },
+
+  // Delete armory preferences
+  deleteArmoryPreferences: async (accountId: number): Promise<void> => {
+    await api.delete(`/armory/preferences/${accountId}`);
+  },
+
+  // Purchase armory by preferences
+  purchaseArmoryByPreferences: async (accountId: number): Promise<ActionResponse> => {
+    const response: AxiosResponse<ActionResponse> = await api.post(`/armory/purchase/${accountId}`);
+    return response.data;
+  },
+
+  // Get all soldier types
+  getSoldierTypes: async (): Promise<SoldierType[]> => {
+    const response: AxiosResponse<SoldierType[]> = await api.get('/armory/soldier-types');
+    return response.data;
+  },
+
+  // Get training preferences for account
+  getTrainingPreferences: async (accountId: number): Promise<TrainingPreferences> => {
+    const response: AxiosResponse<TrainingPreferences> = await api.get(`/armory/training-preferences/${accountId}`);
+    return response.data;
+  },
+
+  // Create training preferences
+  createTrainingPreferences: async (preferencesData: TrainingPreferencesCreate): Promise<TrainingPreferences> => {
+    const response: AxiosResponse<TrainingPreferences> = await api.post('/armory/training-preferences', preferencesData);
+    return response.data;
+  },
+
+  // Update training preferences
+  updateTrainingPreferences: async (accountId: number, preferencesData: TrainingPreferencesUpdate): Promise<TrainingPreferences> => {
+    const response: AxiosResponse<TrainingPreferences> = await api.put(`/armory/training-preferences/${accountId}`, preferencesData);
+    return response.data;
+  },
+
+  // Delete training preferences
+  deleteTrainingPreferences: async (accountId: number): Promise<void> => {
+    await api.delete(`/armory/training-preferences/${accountId}`);
   },
 };
 

@@ -14,6 +14,9 @@ from abc import ABC, abstractmethod
 from api.database import SessionLocal
 from api.db_models import PageQueue, PageQueueStatus, Account
 from api.page_parsers.spy_parser import parse_recon_data
+from api.page_parsers.armory_parser import parse_armory_data
+from api.page_parsers.battlefield_parser import parse_battlefield_data
+from api.page_parsers.armory_parser import parse_armory_data
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +39,7 @@ class SpyPageParser(PageParser):
     """Parser for spy/recon pages"""
     
     def can_parse(self, page_type: str, page_content: str) -> bool:
-        return page_type == "spy" and "inteldetail" in page_content
+        return page_type == "spy"
     
     async def parse(self, page_content: str, account_id: int, metadata: Dict[str, Any]) -> Dict[str, Any]:
         """Parse spy page data"""
@@ -58,7 +61,7 @@ class AttackPageParser(PageParser):
     """Parser for attack result pages"""
     
     def can_parse(self, page_type: str, page_content: str) -> bool:
-        return page_type == "attack" and "detail.php" in page_content
+        return page_type == "attack"
     
     async def parse(self, page_content: str, account_id: int, metadata: Dict[str, Any]) -> Dict[str, Any]:
         """Parse attack result data"""
@@ -75,7 +78,7 @@ class MetadataPageParser(PageParser):
     """Parser for metadata pages"""
     
     def can_parse(self, page_type: str, page_content: str) -> bool:
-        return page_type == "metadata" and "s_rank" in page_content
+        return page_type == "metadata"
     
     async def parse(self, page_content: str, account_id: int, metadata: Dict[str, Any]) -> Dict[str, Any]:
         """Parse metadata page data"""
@@ -130,11 +133,18 @@ class PageDataService:
         if response_url:
             if "inteldetail" in response_url:
                 return "spy"
-            elif "detail.php" in response_url:
+            elif "detail.php?attack_id" in response_url:
                 return "attack"
             elif "metadata" in response_url or "s_rank" in page_content:
                 return "metadata"
-        
+            elif "base.php" in response_url:
+                return "base"
+            elif "armory.php" in response_url:
+                return "armory"
+            elif "train.php" in response_url:
+                return "train"
+            elif "upgrades.php" in response_url:
+                return "upgrades"
         # Fall back to request URL
         if request_url:
             if "spy" in request_url or "recon" in request_url:

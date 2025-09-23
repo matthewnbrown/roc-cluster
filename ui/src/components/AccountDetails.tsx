@@ -11,7 +11,8 @@ import { Table, TableHeader, TableBody, TableRow, TableCell } from './ui/Table';
 import Pagination from './ui/Pagination';
 import { ArrowLeft, Edit, Trash2, Cookie, CreditCard, User, Mail, Calendar, Shield, Users, Plus, X, Settings } from 'lucide-react';
 import ClusterTag from './ui/ClusterTag';
-import Input from './ui/Input';
+// Input import removed as it's not used in this component
+import AccountPreferences from './AccountPreferences';
 
 interface AccountDetailsProps {
   accountId: number;
@@ -24,12 +25,13 @@ const AccountDetails: React.FC<AccountDetailsProps> = ({
   onBack,
   onEditAccount,
 }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'cookies' | 'credit-logs' | 'clusters'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'cookies' | 'credit-logs' | 'clusters' | 'preferences'>('overview');
   const [creditLogsPage, setCreditLogsPage] = useState(1);
   const [cookiesModalOpen, setCookiesModalOpen] = useState(false);
   const [cookiesText, setCookiesText] = useState('');
   const [addToClusterModalOpen, setAddToClusterModalOpen] = useState(false);
   const [creditSavingLoading, setCreditSavingLoading] = useState(false);
+  const [preferencesModalOpen, setPreferencesModalOpen] = useState(false);
 
   const { data: account, isLoading: accountLoading, error: accountError } = useAccount(accountId);
   const { data: cookies, isLoading: cookiesLoading, error: cookiesError } = useCookiesHook(accountId);
@@ -165,6 +167,7 @@ const AccountDetails: React.FC<AccountDetailsProps> = ({
     { id: 'cookies', label: 'Cookies', icon: Cookie },
     { id: 'credit-logs', label: 'Credit Logs', icon: CreditCard },
     { id: 'clusters', label: 'Clusters', icon: Users },
+    { id: 'preferences', label: 'Preferences', icon: Settings },
   ];
 
   return (
@@ -502,6 +505,26 @@ const AccountDetails: React.FC<AccountDetailsProps> = ({
             )}
           </div>
         )}
+
+        {activeTab === 'preferences' && (
+          <div className="p-6">
+            <div className="text-center">
+              <Settings className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+              <h3 className="text-lg font-medium text-gray-900 mb-2">Account Preferences</h3>
+              <p className="text-gray-600 mb-6">
+                Configure armory and training preferences for this account.
+              </p>
+              <Button
+                onClick={() => setPreferencesModalOpen(true)}
+                variant="primary"
+                className="flex items-center gap-2 mx-auto"
+              >
+                <Settings className="h-4 w-4" />
+                Manage Preferences
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Cookies Modal */}
@@ -603,6 +626,14 @@ const AccountDetails: React.FC<AccountDetailsProps> = ({
           </div>
         </div>
       </Modal>
+
+      {/* Account Preferences Modal */}
+      {account && preferencesModalOpen && (
+        <AccountPreferences
+          account={account}
+          onClose={() => setPreferencesModalOpen(false)}
+        />
+      )}
     </div>
   );
 };

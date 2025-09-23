@@ -20,6 +20,7 @@ from bs4 import BeautifulSoup
 from sqlalchemy import false
 
 from api.db_models import Account, UserCookies
+from api.page_parsers.metadata_parser import parse_metadata_data
 from api.page_parsers.spy_parser import parse_recon_data
 from api.schemas import AccountMetadata, CaptchaSolutionItem
 from api.captcha import Captcha, CaptchaSolver, CaptchaKeypadSelector
@@ -47,12 +48,8 @@ class PageSubmit(Enum):
 class GameAccountManager:
     """Manages a single ROC account session"""
 
-
-    
     def __init__(self, account: Account, max_retries: int = 0):
         self.account = account
-        self.last_metadata_update = None
-        self._metadata_cache: Optional[AccountMetadata] = None
         self.session: Optional[aiohttp.ClientSession] = None
         self._connector: Optional[aiohttp.TCPConnector] = None
         self.url_generator = ROCDecryptUrlGenerator()
@@ -79,8 +76,8 @@ class GameAccountManager:
             await page_data_service.add_page_to_queue(
                 account_id=self.account.id,
                 page_content=page_content,
-                request_url=request_url,
-                response_url=response_url,
+                request_url=str(request_url),
+                response_url=str(response_url),
                 request_method=request_method,
                 request_data=request_data,
                 request_time=request_time
@@ -207,7 +204,7 @@ class GameAccountManager:
     async def __get_page(self, url: str) -> aiohttp.ClientResponse:
         async with self.session.get(url) as response:
             pagetext = await response.read()
-            self._push_page_to_queue(pagetext, url, response.url, "GET", None, datetime.now(timezone.utc))
+            await self._push_page_to_queue(pagetext, url, response.url, "GET", None, datetime.now(timezone.utc))
             return response
         
     
@@ -313,73 +310,31 @@ class GameAccountManager:
                 request_method="GET",
                 request_time=request_time
             )
-
-            soup = BeautifulSoup(page_text, 'html.parser')
-            rank = soup.find('new', {'id': 's_rank'}).text
-            turns = soup.find('new', {'id': 's_turns'}).text
-            next_turn = soup.find('new', {'id': 's_next'}).text
-            gold = soup.find('new', {'id': 's_gold'}).text
-            last_hit = soup.find('new', {'id': 's_hit'})
-
-            if last_hit:
-                last_hit = last_hit.find('span').get('data-timestamp')
-            else:
-                last_hit = 'unknown'
             
-            last_sabbed = soup.find('new', {'id': 's_sabbed'})
-
-            if last_sabbed:
-
-                last_sabbed = last_sabbed.find('span').get('data-timestamp')
-            else:
-                last_sabbed = 'unknown'
-            
-            mail = soup.find('new', {'id': 's_mail'}).text
-            credits = soup.find('new', {'id': 's_credits'}).text
-            username = soup.find('new', {'id': 's_username'}).text
-            lastclicked = soup.find('new', {'id': 's_lastclicked'}).text
-            
-            saving = soup.find('saving')
-            if saving:
-                if saving.get('status') == '0':
-                    saving = 'disabled'
-                else:
-                    saving = 'enabled'
-            else:
-                saving = 'unknown'
-            
-            credits = soup.find('new', {'id': 'credits'}).text
-            gets = soup.find('new', {'id': 'gets'}).text
-            credits_given = soup.find('new', {'id': 't_gives'}).text
-            credits_received = soup.find('new', {'id': 't_gets'}).text
-            userid = soup.find('new', {'id': 'userid'}).text
-            allianceid = soup.find('new', {'id': 'allianceid'}).text
-            servertime = soup.find('new', {'id': 'servertime'}).text
+            metadata_data = parse_metadata_data(page_text)
         
             metadata = AccountMetadata(
-                gold=self.parse_roc_number(gold),
-                rank=self.parse_roc_number(rank),
-                turns=self.parse_roc_number(turns),
+                gold=metadata_data["gold"],
+                rank=metadata_data["rank"],
+                turns=metadata_data["turns"],
                 # Using UTC time for consistency
-                next_turn=datetime.now(timezone.utc) + timedelta(minutes=int(next_turn.split(':')[0]), seconds=int(next_turn.split(':')[1])),
-                last_hit=datetime.fromtimestamp(int(last_hit), timezone.utc),
-                last_sabbed=datetime.fromtimestamp(int(last_sabbed), timezone.utc),
-                mail=mail,
-                credits=self.parse_roc_number(credits),
-                username=username,
+                next_turn=metadata_data["next_turn"],
+                last_hit=metadata_data["last_hit"],
+                last_sabbed=metadata_data["last_sabbed"],
+                mail=metadata_data["mail"],
+                credits=metadata_data["credits"],
+                username=metadata_data["username"],
                 # last clicked is an roc_num, number of mins since last click
-                lastclicked=datetime.now(timezone.utc) - timedelta(minutes=self.parse_roc_number(lastclicked)),
-                saving=saving,
-                gets=self.parse_roc_number(gets),
-                credits_given=self.parse_roc_number(credits_given),
-                credits_received=self.parse_roc_number(credits_received),
-                userid=userid,
-                allianceid=allianceid,
-                servertime=servertime
+                lastclicked=metadata_data["lastclicked"],
+                saving=metadata_data["saving"],
+                gets=metadata_data["gets"],
+                credits_given=metadata_data["credits_given"],
+                credits_received=metadata_data["credits_received"],
+                userid=metadata_data["userid"],
+                allianceid=metadata_data["allianceid"],
+                servertime=metadata_data["servertime"]
             )
             
-            self._metadata_cache = metadata
-            self.last_metadata_update = datetime.now(timezone.utc)
             return { "success": True, "data": metadata }
             
         except Exception as e:
@@ -671,22 +626,27 @@ class GameAccountManager:
         except Exception as e:
             return {"success": False, "error": str(e)}
     
-    async def purchase_armory_by_preferences(self) -> Dict[str, Any]:
+    async def purchase_armory_by_preferences(self, preference_id = -1) -> Dict[str, Any]:
         """Purchase armory items based on user preferences"""
-        #TODO: Login check
+        #TODO: Login check, preference_id check get default if -1
         try:
             from api.database import SessionLocal
-            from api.db_models import ArmoryPreferences, Weapon
+            from api.db_models import ArmoryPreferences, ArmoryWeaponPreference, Weapon
             
-            # Get user preferences from database
+            # Get user preferences from database with relationships loaded
             db = SessionLocal()
             try:
-                preferences = db.query(ArmoryPreferences).filter(
+                from sqlalchemy.orm import joinedload
+                preferences = db.query(ArmoryPreferences).options(
+                    joinedload(ArmoryPreferences.weapon_preferences).joinedload(ArmoryWeaponPreference.weapon)
+                ).filter(
                     ArmoryPreferences.account_id == self.account.id
                 ).first()
                 
                 if not preferences:
                     return {"success": False, "error": "No armory preferences found for this account"}
+                
+                logger.info(f"Found {len(preferences.weapon_preferences)} weapon preferences for account {self.account.id}")
                 
                 # Get current gold from metadata
                 metadata_result = await self.get_metadata()
@@ -697,14 +657,16 @@ class GameAccountManager:
                 
                 # Load armory page
                 armory_url = self.url_generator.armory()
-                request_time = datetime.now(timezone.utc)
                 
-                armory_text = await self.__get_page(armory_url)
-
+                armory_resp = await self.__get_page(armory_url)
+                armory_text = await armory_resp.text()
                 # Parse armory data
                 from api.page_parsers.armory_parser import parse_armory_data
 
                 armory_data = parse_armory_data(armory_text)
+                
+                # Log available weapons in armory
+                logger.info(f"Available weapons in armory: {[w.get('id') for w in armory_data.get('weapons', [])]}")
                 
                 # Calculate weapon portions based on preferences and available gold
                 weapon_purchases = self._calculate_weapon_purchases(
@@ -717,9 +679,10 @@ class GameAccountManager:
                 # Submit purchase form
                 purchase_result = await self._submit_armory_purchase(weapon_purchases)
                 
-                purchase_result_data = parse_armory_data(await purchase_result.text())
+                purchase_result_text = await purchase_result.text()
+                purchase_result_data = parse_armory_data(purchase_result_text)
                 
-                if armory_data["current_user"]["gold"] != purchase_result_data["current_user"]["gold"]:
+                if armory_data["current_user"]["gold"] <= purchase_result_data["current_user"]["gold"]:
                     return {"success": False, "error": "Failed to purchase armory items"}
                 
                 else:
@@ -745,14 +708,21 @@ class GameAccountManager:
             if weapon_pref.percentage <= 0:
                 continue
                 
-            # Find weapon in armory data
+            logger.info(f"Processing weapon preference: {weapon_pref.weapon.display_name} (ROC ID: {weapon_pref.weapon.roc_weapon_id}, Percentage: {weapon_pref.percentage}%)")
+                
+            # Find weapon in armory data using the roc_weapon_id
             weapon_data = None
             for weapon in armory_data.get('weapons', []):
                 if str(weapon['id']) == str(weapon_pref.weapon.roc_weapon_id):
                     weapon_data = weapon
                     break
             
-            if not weapon_data or weapon_data.get('cost', 0) <= 0:
+            if not weapon_data:
+                logger.warning(f"Weapon {weapon_pref.weapon.display_name} (ROC ID: {weapon_pref.weapon.roc_weapon_id}) not found in armory data")
+                continue
+                
+            if weapon_data.get('cost', 0) <= 0:
+                logger.warning(f"Weapon {weapon_pref.weapon.display_name} has no cost or cost is 0")
                 continue
             
             # Calculate gold allocation for this weapon based on original gold amount
@@ -761,6 +731,8 @@ class GameAccountManager:
             # Calculate how many weapons we can buy
             weapon_cost = weapon_data['cost']
             max_weapons = gold_for_weapon // weapon_cost
+            
+            logger.info(f"Weapon {weapon_pref.weapon.display_name}: Gold allocated: {gold_for_weapon}, Cost: {weapon_cost}, Max weapons: {max_weapons}")
             
             if max_weapons > 0:
                 weapon_purchases[str(weapon_pref.weapon.roc_weapon_id)] = max_weapons
@@ -774,8 +746,8 @@ class GameAccountManager:
             
             # Build form data
             form_data = {
-                "email": self.account.email,
-                "password": self.account.password,
+                "email": "self.account.email",
+                "password": "",
                 "submit": "Sell/Buy+Weapons"
             }
             
@@ -795,23 +767,7 @@ class GameAccountManager:
             async def _submit():
                 return await self.__submit_page(armory_url, form_data, PageSubmit.ARMORY)
             
-            result = await self.__retry_login_wrapper(_submit)
-            page_text = await result.text()
-            
-            # Check if purchase was successful
-            if "successfully" in page_text.lower() or "purchased" in page_text.lower():
-                return {
-                    "success": True, 
-                    "message": f"Successfully purchased weapons: {weapon_purchases}",
-                    "data": {"purchases": weapon_purchases}
-                }
-            else:
-                return {
-                    "success": False, 
-                    "error": "Purchase may have failed - check armory page",
-                    "data": {"purchases": weapon_purchases}
-                }
-                
+            return await self.__retry_login_wrapper(_submit)
         except Exception as e:
             logger.error(f"Error submitting armory purchase: {e}")
             return {"success": False, "error": str(e)}

@@ -198,5 +198,76 @@ export interface ActionResponse {
   success: boolean;
   message?: string;
   error?: string;
+  data?: Record<string, number>; // weapon_id -> purchase_amount for armory purchases
   timestamp: string;
+}
+
+// Weapon Types
+export interface Weapon {
+  id: number;
+  roc_weapon_id: number;
+  name: string;
+  display_name: string;
+  created_at: string;
+}
+
+// Armory Preferences Types
+export interface ArmoryWeaponPreference {
+  weapon_id: number;
+  weapon_name: string;
+  weapon_display_name: string;
+  percentage: number;
+}
+
+export interface ArmoryPreferences {
+  id: number;
+  account_id: number;
+  created_at: string;
+  updated_at?: string;
+  weapon_preferences: ArmoryWeaponPreference[];
+}
+
+export interface ArmoryPreferencesCreate {
+  account_id: number;
+  weapon_percentages: Record<string, number>; // weapon_name -> percentage
+}
+
+export interface ArmoryPreferencesUpdate {
+  weapon_percentages: Record<string, number>; // weapon_name -> percentage
+}
+
+// Soldier Types
+export interface SoldierType {
+  id: number;
+  roc_soldier_type_id: string;
+  name: string;
+  display_name: string;
+  costs_soldiers: boolean;
+  created_at: string;
+}
+
+// Training Preferences Types
+export interface TrainingSoldierTypePreference {
+  soldier_type_id: number;
+  soldier_type_name: string;
+  soldier_type_display_name: string;
+  soldier_type_costs_soldiers: boolean;
+  percentage: number;
+}
+
+export interface TrainingPreferences {
+  id: number;
+  account_id: number;
+  created_at: string;
+  updated_at?: string;
+  soldier_type_preferences: TrainingSoldierTypePreference[];
+}
+
+export interface TrainingPreferencesCreate {
+  account_id: number;
+  soldier_type_percentages: Record<string, number>; // soldier_type_name -> percentage
+}
+
+export interface TrainingPreferencesUpdate {
+  soldier_type_percentages: Record<string, number>; // soldier_type_name -> percentage
 }

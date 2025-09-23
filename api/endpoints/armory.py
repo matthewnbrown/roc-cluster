@@ -121,6 +121,14 @@ async def create_armory_preferences(
             detail=f"Invalid weapon names: {', '.join(invalid_weapons)}"
         )
     
+    # Check for duplicate weapon names in the request
+    weapon_names = list(preferences_data.weapon_percentages.keys())
+    if len(weapon_names) != len(set(weapon_names)):
+        raise HTTPException(
+            status_code=400,
+            detail="Duplicate weapon names found in preferences"
+        )
+    
     # Validate that percentages sum to <= 100%
     total_percentage = sum(preferences_data.weapon_percentages.values())
     
@@ -137,18 +145,30 @@ async def create_armory_preferences(
     db.refresh(preferences)
     
     # Create weapon preferences
-    for weapon_name, percentage in preferences_data.weapon_percentages.items():
-        if percentage > 0:  # Only create entries for weapons with > 0%
-            weapon = weapon_by_name[weapon_name]
-            weapon_preference = ArmoryWeaponPreference(
-                preferences_id=preferences.id,
-                weapon_id=weapon.id,
-                percentage=percentage
+    try:
+        for weapon_name, percentage in preferences_data.weapon_percentages.items():
+            if percentage > 0:  # Only create entries for weapons with > 0%
+                weapon = weapon_by_name[weapon_name]
+                weapon_preference = ArmoryWeaponPreference(
+                    preferences_id=preferences.id,
+                    weapon_id=weapon.id,
+                    percentage=percentage
+                )
+                db.add(weapon_preference)
+        
+        db.commit()
+        db.refresh(preferences)
+    except Exception as e:
+        db.rollback()
+        if "unique_preference_weapon" in str(e):
+            raise HTTPException(
+                status_code=400,
+                detail="Duplicate weapon preference detected. Each weapon can only have one preference per account."
             )
-            db.add(weapon_preference)
-    
-    db.commit()
-    db.refresh(preferences)
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to create weapon preferences"
+        )
     
     # Build response
     weapon_preferences = []
@@ -213,6 +233,14 @@ async def update_armory_preferences(
             detail=f"Invalid weapon names: {', '.join(invalid_weapons)}"
         )
     
+    # Check for duplicate weapon names in the request
+    weapon_names = list(preferences_data.weapon_percentages.keys())
+    if len(weapon_names) != len(set(weapon_names)):
+        raise HTTPException(
+            status_code=400,
+            detail="Duplicate weapon names found in preferences"
+        )
+    
     # Validate that percentages sum to <= 100%
     total_percentage = sum(preferences_data.weapon_percentages.values())
     
@@ -228,18 +256,30 @@ async def update_armory_preferences(
     ).delete()
     
     # Create new weapon preferences
-    for weapon_name, percentage in preferences_data.weapon_percentages.items():
-        if percentage > 0:  # Only create entries for weapons with > 0%
-            weapon = weapon_by_name[weapon_name]
-            weapon_preference = ArmoryWeaponPreference(
-                preferences_id=preferences.id,
-                weapon_id=weapon.id,
-                percentage=percentage
+    try:
+        for weapon_name, percentage in preferences_data.weapon_percentages.items():
+            if percentage > 0:  # Only create entries for weapons with > 0%
+                weapon = weapon_by_name[weapon_name]
+                weapon_preference = ArmoryWeaponPreference(
+                    preferences_id=preferences.id,
+                    weapon_id=weapon.id,
+                    percentage=percentage
+                )
+                db.add(weapon_preference)
+        
+        db.commit()
+        db.refresh(preferences)
+    except Exception as e:
+        db.rollback()
+        if "unique_preference_weapon" in str(e):
+            raise HTTPException(
+                status_code=400,
+                detail="Duplicate weapon preference detected. Each weapon can only have one preference per account."
             )
-            db.add(weapon_preference)
-    
-    db.commit()
-    db.refresh(preferences)
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to update weapon preferences"
+        )
     
     # Build response
     weapon_preferences = []
@@ -572,14 +612,6 @@ async def purchase_armory_by_preferences(
             detail="Armory preferences not found for this account"
         )
 
-    # check if preferences add to a number greater than 0
-    total_percentage = sum(preferences.weapon_percentages.values())
-    if total_percentage <= 0:
-        raise HTTPException(
-            status_code=400,
-            detail="Armory preferences do not add to a number greater than 0"
-        )
-    
     # Create account manager and execute armory purchase
     try:
         account_manager = AccountManager()

@@ -41,7 +41,7 @@ def get_clockbar_stats(page_soup: BeautifulSoup | str) -> dict[str, str] | None:
     # Get rank
     rank_span = clock_bar.find('span', id='s_rank')
     if rank_span:
-        current_user['rank'] = int(rank_span.get_text().strip())
+        current_user['rank'] = int(rank_span.get_text().replace(',', '').strip())
     else:
         current_user['rank'] = -1
     
