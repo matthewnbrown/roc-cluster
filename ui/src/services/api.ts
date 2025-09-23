@@ -3,6 +3,7 @@ import {
   Account,
   AccountCreate,
   AccountUpdate,
+  AccountMetadata,
   UserCookies,
   UserCookiesCreate,
   UserCookiesUpdate,
@@ -281,6 +282,14 @@ export const actionsApi = {
   // Set credit saving
   setCreditSaving: async (request: SetCreditSavingRequest): Promise<ActionResponse> => {
     const response: AxiosResponse<ActionResponse> = await api.post('/actions/set-credit-saving', request);
+    return response.data;
+  },
+
+  // Get account metadata
+  getAccountMetadata: async (accountId: number, maxRetries: number = 0): Promise<AccountMetadata> => {
+    const response: AxiosResponse<AccountMetadata> = await api.get(`/actions/account/${accountId}/metadata`, {
+      params: { max_retries: maxRetries },
+    });
     return response.data;
   },
 };

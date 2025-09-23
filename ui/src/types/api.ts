@@ -23,6 +23,26 @@ export interface AccountUpdate {
   is_active?: boolean;
 }
 
+export interface AccountMetadata {
+  rank: number;
+  turns: number;
+  next_turn: string;
+  gold: number;
+  last_hit: string;
+  last_sabbed: string;
+  mail: string;
+  credits: number;
+  username: string;
+  lastclicked: string;
+  saving: string;
+  gets: number;
+  credits_given: number;
+  credits_received: number;
+  userid: string;
+  allianceid: string;
+  servertime: string;
+}
+
 export interface UserCookies {
   id: number;
   account_id: number;
