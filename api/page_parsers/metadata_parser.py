@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict
 from bs4 import BeautifulSoup
+import warnings
 
 
 def __parse_roc_number(number: str) -> int:
@@ -11,7 +12,10 @@ def parse_metadata_data(metadata_page: str | BeautifulSoup) -> Dict[str, Any]:
     if isinstance(metadata_page, BeautifulSoup):
         soup = metadata_page
     else:
-        soup = BeautifulSoup(metadata_page, 'lxml')
+        # Suppress the XML parsing warning since ROC pages are HTML with XML-like structure
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=UserWarning, message=".*XMLParsedAsHTMLWarning.*")
+            soup = BeautifulSoup(metadata_page, 'html.parser')
     
     rank = soup.find('new', {'id': 's_rank'}).text
     turns = soup.find('new', {'id': 's_turns'}).text
