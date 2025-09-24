@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useForm, useFieldArray } from 'react-hook-form';
-import { useCreateJob, useValidActionTypes, useJob } from '../hooks/useJobs';
+import { useQueryClient } from 'react-query';
+import { useCreateJob, useValidActionTypes, useJob, useJobs, jobKeys } from '../hooks/useJobs';
 import { useClusters } from '../hooks/useClusters';
 import { useAccounts } from '../hooks/useAccounts';
 import { useFavoriteJobs } from '../hooks/useFavoriteJobs';
@@ -30,11 +31,13 @@ interface FormData {
 }
 
 const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
+  const queryClient = useQueryClient();
   const createJobMutation = useCreateJob();
   const { data: actionTypesData } = useValidActionTypes();
   const { data: clustersData } = useClusters(1, 1000);
   const { data: accountsData } = useAccounts(1, 1000);
   const { createFavoriteJob } = useFavoriteJobs();
+  const { data: jobsData, isLoading: jobsLoading, refetch: refetchJobs } = useJobs(1, 100); // Fetch jobs for smart numbering
   const [editingStepIndex, setEditingStepIndex] = useState<number | null>(null);
   const [searchTerms, setSearchTerms] = useState<{ [stepIndex: number]: string }>({});
   const [showSuggestions, setShowSuggestions] = useState<{ [stepIndex: number]: boolean }>({});
@@ -90,6 +93,64 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
     shouldFetchJob ? (jobToClone?.id || 0) : 0, 
     true // include steps
   );
+
+  // Function to generate the next available job name with smart numbering
+  const generateNextJobName = async (originalName: string): Promise<string> => {
+    // Extract the base name (without any existing numbers)
+    const baseName = originalName.replace(/\s*\(\d+\)\s*$/, '').trim();
+    
+    // Try to get fresh data from the query cache first
+    const cachedJobsData = queryClient.getQueryData(jobKeys.list({ page: 1, perPage: 100, status: undefined })) as any;
+    
+    // If no data is available, try to fetch it
+    let existingJobNames: string[] = [];
+    if (cachedJobsData?.jobs) {
+      existingJobNames = cachedJobsData.jobs.map((job: any) => job.name);
+    } else if (jobsData?.jobs) {
+      existingJobNames = jobsData.jobs.map((job: any) => job.name);
+    } else {
+      // No data available, try to refetch
+      try {
+        const freshData = await refetchJobs();
+        if (freshData.data?.jobs) {
+          existingJobNames = freshData.data.jobs.map((job: any) => job.name);
+        }
+      } catch (error) {
+        console.error('Failed to fetch jobs data:', error);
+      }
+    }
+    
+    // Find all jobs that start with the base name (including exact matches and numbered variants)
+    const escapedBaseName = baseName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const baseNamePattern = new RegExp(`^${escapedBaseName}(?:\\s*\\((\\d+)\\))?\\s*$`);
+    
+    // Collect all numbers from jobs that match the base name pattern
+    const numbers = existingJobNames
+      .map((name: string) => {
+        const match = name.match(baseNamePattern);
+        if (match) {
+          // If no number in parentheses, treat as 0 (the base name itself)
+          const num = match[1] ? parseInt(match[1], 10) : 0;
+          return num;
+        }
+        return null;
+      })
+      .filter((num: number | null): num is number => num !== null)
+      .sort((a: number, b: number) => a - b);
+    
+    // Find the next available number starting from 1
+    let nextNumber = 1;
+    for (const num of numbers) {
+      if (num === nextNumber) {
+        nextNumber++;
+      } else if (num > nextNumber) {
+        // Found a gap, use the next number
+        break;
+      }
+    }
+    
+    return `${baseName} (${nextNumber})`;
+  };
 
   // Prefill form when cloning a job
   useEffect(() => {
@@ -160,17 +221,24 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
         console.log(`Step consolidation: ${originalStepCount} steps → ${consolidatedStepCount} steps (${originalStepCount - consolidatedStepCount} steps combined)`);
       }
 
-      // Reset form with the complete cloned data
-      const formData = {
-        name: `${jobData.name} (Copy)`,
-        description: jobData.description || '',
-        parallel_execution: jobData.parallel_execution || false,
-        steps: consolidatedSteps
+      // Generate smart job name with proper numbering
+      const generateName = async () => {
+        const smartJobName = await generateNextJobName(jobData.name);
+
+        // Reset form with the complete cloned data
+        const formData = {
+          name: smartJobName,
+          description: jobData.description || '',
+          parallel_execution: jobData.parallel_execution || false,
+          steps: consolidatedSteps
+        };
+        
+        reset(formData);
       };
-      
-      reset(formData);
+
+      generateName();
     }
-  }, [isOpen, jobToClone, fullJobData, reset]);
+  }, [isOpen, jobToClone, fullJobData, reset, jobsData]);
 
   // Close suggestions when clicking outside
   useEffect(() => {
