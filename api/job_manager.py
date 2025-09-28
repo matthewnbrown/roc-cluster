@@ -682,20 +682,11 @@ class JobManager:
             step.error_message = result.get("error") if not result.get("success", False) else None
             step.completed_at = datetime.now(timezone.utc)
             
-            # Update job progress counters immediately
-            await self._update_job_progress(step.job_id, db)
-            
-            db.commit()
-            
         except Exception as e:
             step.status = JobStatus.FAILED
             step.error_message = str(e)
             step.completed_at = datetime.now(timezone.utc)
-            
-            # Update job progress counters immediately even for failed steps
-            await self._update_job_progress(step.job_id, db)
-            
-            db.commit()
+
             raise
     
     async def _execute_steps_sequential(self, steps: List[JobStep], db: Session, job: Job, bulk_cookies: Optional[Dict[int, Dict[str, Any]]] = None, bulk_accounts: Optional[Dict[int, Account]] = None):
@@ -723,7 +714,14 @@ class JobManager:
                 step.status = JobStatus.FAILED
                 step.error_message = str(e)
                 step.completed_at = datetime.now(timezone.utc)
-                db.commit()
+                # Don't commit here - batch commits for better performance
+        
+        # Batch commit for all sequential steps
+        db.commit()
+        
+        # Update job progress once after all sequential steps are processed
+        if steps:
+            await self._update_job_progress(steps[0].job_id, db)
         
         # Wait for all async tasks to complete
         if async_tasks:
@@ -750,7 +748,13 @@ class JobManager:
                 step.error_message = str(result)
                 step.completed_at = datetime.now(timezone.utc)
             # If not an exception, the step status was already updated in _execute_step_safe
-            db.commit()
+        
+        # Single commit for all step updates (much faster!)
+        db.commit()
+        
+        # Update job progress once after all steps are processed
+        if steps:
+            await self._update_job_progress(steps[0].job_id, db)
     
     async def _update_job_progress(self, job_id: int, db: Session):
         """Update job progress counters based on current step statuses"""
@@ -798,10 +802,8 @@ class JobManager:
             step.error_message = str(e)
             step.completed_at = datetime.now(timezone.utc)
             
-            # Update job progress counters immediately even for failed steps
-            await self._update_job_progress(step.job_id, db)
-            
-            db.commit()
+            # Don't update progress or commit here - let the main loop handle it
+            # This avoids database contention in parallel execution
             raise  # Re-raise to be caught by gather()
         finally:
             # Close own database session if we created it
