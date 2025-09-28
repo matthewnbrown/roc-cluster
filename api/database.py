@@ -9,7 +9,10 @@ from sqlalchemy.sql import func
 import os
 import asyncio
 import logging
-from typing import Generator
+import threading
+import pickle
+import tempfile
+from typing import Generator, Dict, Any, List
 from config import settings
 
 logger = logging.getLogger(__name__)
@@ -345,6 +348,231 @@ def save_memory_to_file():
     except Exception as e:
         print(f"❌ Error saving in-memory data to file: {e}")
 
+def save_critical_data_only():
+    """Save only critical data (accounts, jobs, steps, cookies) - much faster"""
+    if not settings.USE_IN_MEMORY_DB:
+        return  # Not using in-memory database
+    
+    try:
+        from sqlalchemy import create_engine as create_engine_func
+        from sqlalchemy.orm import sessionmaker as sessionmaker_func
+        
+        # Create connection to file-based database
+        if "sqlite" in settings.DATABASE_URL:
+            file_engine = create_engine_func(
+                settings.DATABASE_URL,
+                connect_args={"check_same_thread": False}
+            )
+        else:
+            file_engine = create_engine_func(settings.DATABASE_URL)
+        FileSessionLocal = sessionmaker_func(autocommit=False, autoflush=False, bind=file_engine)
+        
+        # Import only critical models
+        from api.db_models import Account, Job, JobStep, UserCookies, Cluster, ClusterUser
+        
+        # Copy only critical data from memory to file
+        with SessionLocal() as memory_db:
+            with FileSessionLocal() as file_db:
+                # Clear only critical data
+                file_db.query(JobStep).delete()
+                file_db.query(Job).delete()
+                file_db.query(ClusterUser).delete()
+                file_db.query(Cluster).delete()
+                file_db.query(UserCookies).delete()
+                file_db.query(Account).delete()
+                
+                # Copy only critical data
+                accounts = memory_db.query(Account).all()
+                for account in accounts:
+                    file_db.merge(account)
+                
+                jobs = memory_db.query(Job).all()
+                for job in jobs:
+                    file_db.merge(job)
+                
+                job_steps = memory_db.query(JobStep).all()
+                for step in job_steps:
+                    file_db.merge(step)
+                
+                user_cookies = memory_db.query(UserCookies).all()
+                for cookie in user_cookies:
+                    file_db.merge(cookie)
+                
+                clusters = memory_db.query(Cluster).all()
+                for cluster in clusters:
+                    file_db.merge(cluster)
+                
+                cluster_users = memory_db.query(ClusterUser).all()
+                for cluster_user in cluster_users:
+                    file_db.merge(cluster_user)
+                
+                file_db.commit()
+                logger.info(f"✅ Auto-saved critical data: {len(accounts)} accounts, {len(jobs)} jobs, {len(job_steps)} steps, {len(user_cookies)} cookies")
+        
+        file_engine.dispose()
+        
+    except Exception as e:
+        logger.error(f"❌ Error auto-saving critical data: {e}")
+
+def create_memory_snapshot() -> Dict[str, Any]:
+    """Create a fast memory snapshot of all database data"""
+    if not settings.USE_IN_MEMORY_DB:
+        return {}
+    
+    try:
+        # Import all models
+        from api.db_models import (
+            Account, Job, JobStep, Weapon, Race, SoldierType, RocStat,
+            AccountLog, AccountAction, UserCookies, SentCreditLog,
+            Cluster, ClusterUser, ArmoryPreferences, ArmoryWeaponPreference,
+            TrainingPreferences, TrainingSoldierTypePreference,
+            RocUser, RocUserStats, RocUserSoldiers, RocUserWeapons,
+            PageQueue, FavoriteJob
+        )
+        
+        snapshot = {}
+        
+        with SessionLocal() as db:
+            # Create snapshot of all data
+            snapshot['accounts'] = [obj.__dict__.copy() for obj in db.query(Account).all()]
+            snapshot['jobs'] = [obj.__dict__.copy() for obj in db.query(Job).all()]
+            snapshot['job_steps'] = [obj.__dict__.copy() for obj in db.query(JobStep).all()]
+            snapshot['weapons'] = [obj.__dict__.copy() for obj in db.query(Weapon).all()]
+            snapshot['races'] = [obj.__dict__.copy() for obj in db.query(Race).all()]
+            snapshot['soldier_types'] = [obj.__dict__.copy() for obj in db.query(SoldierType).all()]
+            snapshot['roc_stats'] = [obj.__dict__.copy() for obj in db.query(RocStat).all()]
+            snapshot['account_logs'] = [obj.__dict__.copy() for obj in db.query(AccountLog).all()]
+            snapshot['account_actions'] = [obj.__dict__.copy() for obj in db.query(AccountAction).all()]
+            snapshot['user_cookies'] = [obj.__dict__.copy() for obj in db.query(UserCookies).all()]
+            snapshot['sent_credit_logs'] = [obj.__dict__.copy() for obj in db.query(SentCreditLog).all()]
+            snapshot['clusters'] = [obj.__dict__.copy() for obj in db.query(Cluster).all()]
+            snapshot['cluster_users'] = [obj.__dict__.copy() for obj in db.query(ClusterUser).all()]
+            snapshot['armory_preferences'] = [obj.__dict__.copy() for obj in db.query(ArmoryPreferences).all()]
+            snapshot['armory_weapon_preferences'] = [obj.__dict__.copy() for obj in db.query(ArmoryWeaponPreference).all()]
+            snapshot['training_preferences'] = [obj.__dict__.copy() for obj in db.query(TrainingPreferences).all()]
+            snapshot['training_soldier_type_preferences'] = [obj.__dict__.copy() for obj in db.query(TrainingSoldierTypePreference).all()]
+            snapshot['roc_users'] = [obj.__dict__.copy() for obj in db.query(RocUser).all()]
+            snapshot['roc_user_stats'] = [obj.__dict__.copy() for obj in db.query(RocUserStats).all()]
+            snapshot['roc_user_soldiers'] = [obj.__dict__.copy() for obj in db.query(RocUserSoldiers).all()]
+            snapshot['roc_user_weapons'] = [obj.__dict__.copy() for obj in db.query(RocUserWeapons).all()]
+            snapshot['page_queues'] = [obj.__dict__.copy() for obj in db.query(PageQueue).all()]
+            snapshot['favorite_jobs'] = [obj.__dict__.copy() for obj in db.query(FavoriteJob).all()]
+            
+            # Clean up SQLAlchemy internal state
+            for table_name, records in snapshot.items():
+                for record in records:
+                    if '_sa_instance_state' in record:
+                        del record['_sa_instance_state']
+        
+        logger.info(f"✅ Created memory snapshot: {sum(len(records) for records in snapshot.values())} total records")
+        return snapshot
+        
+    except Exception as e:
+        logger.error(f"❌ Error creating memory snapshot: {e}")
+        return {}
+
+def save_snapshot_to_file(snapshot: Dict[str, Any]):
+    """Save memory snapshot to file database in background"""
+    if not settings.USE_IN_MEMORY_DB or not snapshot:
+        return
+    
+    try:
+        from sqlalchemy import create_engine as create_engine_func
+        from sqlalchemy.orm import sessionmaker as sessionmaker_func
+        
+        # Create connection to file-based database
+        if "sqlite" in settings.DATABASE_URL:
+            file_engine = create_engine_func(
+                settings.DATABASE_URL,
+                connect_args={"check_same_thread": False}
+            )
+        else:
+            file_engine = create_engine_func(settings.DATABASE_URL)
+        FileSessionLocal = sessionmaker_func(autocommit=False, autoflush=False, bind=file_engine)
+        
+        # Import all models
+        from api.db_models import (
+            Account, Job, JobStep, Weapon, Race, SoldierType, RocStat,
+            AccountLog, AccountAction, UserCookies, SentCreditLog,
+            Cluster, ClusterUser, ArmoryPreferences, ArmoryWeaponPreference,
+            TrainingPreferences, TrainingSoldierTypePreference,
+            RocUser, RocUserStats, RocUserSoldiers, RocUserWeapons,
+            PageQueue, FavoriteJob
+        )
+        
+        with FileSessionLocal() as file_db:
+            # Clear existing data
+            file_db.query(JobStep).delete()
+            file_db.query(Job).delete()
+            file_db.query(FavoriteJob).delete()
+            file_db.query(PageQueue).delete()
+            file_db.query(RocUserWeapons).delete()
+            file_db.query(RocUserSoldiers).delete()
+            file_db.query(RocUserStats).delete()
+            file_db.query(RocUser).delete()
+            file_db.query(TrainingSoldierTypePreference).delete()
+            file_db.query(TrainingPreferences).delete()
+            file_db.query(ArmoryWeaponPreference).delete()
+            file_db.query(ArmoryPreferences).delete()
+            file_db.query(ClusterUser).delete()
+            file_db.query(Cluster).delete()
+            file_db.query(SentCreditLog).delete()
+            file_db.query(UserCookies).delete()
+            file_db.query(AccountAction).delete()
+            file_db.query(AccountLog).delete()
+            file_db.query(Account).delete()
+            file_db.query(Weapon).delete()
+            file_db.query(Race).delete()
+            file_db.query(SoldierType).delete()
+            file_db.query(RocStat).delete()
+            
+            # Restore data from snapshot
+            model_mapping = {
+                'accounts': Account,
+                'jobs': Job,
+                'job_steps': JobStep,
+                'weapons': Weapon,
+                'races': Race,
+                'soldier_types': SoldierType,
+                'roc_stats': RocStat,
+                'account_logs': AccountLog,
+                'account_actions': AccountAction,
+                'user_cookies': UserCookies,
+                'sent_credit_logs': SentCreditLog,
+                'clusters': Cluster,
+                'cluster_users': ClusterUser,
+                'armory_preferences': ArmoryPreferences,
+                'armory_weapon_preferences': ArmoryWeaponPreference,
+                'training_preferences': TrainingPreferences,
+                'training_soldier_type_preferences': TrainingSoldierTypePreference,
+                'roc_users': RocUser,
+                'roc_user_stats': RocUserStats,
+                'roc_user_soldiers': RocUserSoldiers,
+                'roc_user_weapons': RocUserWeapons,
+                'page_queues': PageQueue,
+                'favorite_jobs': FavoriteJob
+            }
+            
+            # Restore data in dependency order
+            for table_name, model_class in model_mapping.items():
+                if table_name in snapshot:
+                    for record_data in snapshot[table_name]:
+                        # Create new instance without SQLAlchemy state
+                        instance = model_class()
+                        for key, value in record_data.items():
+                            if hasattr(instance, key):
+                                setattr(instance, key, value)
+                        file_db.add(instance)
+            
+            file_db.commit()
+            total_records = sum(len(records) for records in snapshot.values())
+            logger.info(f"✅ Saved snapshot to file: {total_records} total records")
+        
+        file_engine.dispose()
+        
+    except Exception as e:
+        logger.error(f"❌ Error saving snapshot to file: {e}")
+
 class AutoSaveService:
     """Service for automatically saving in-memory database to file"""
     
@@ -401,7 +629,54 @@ class AutoSaveService:
         """Save in-memory database to file"""
         try:
             start_time = asyncio.get_event_loop().time()
-            save_memory_to_file()
+            
+            # Use memory snapshot approach for minimal performance impact
+            if settings.AUTO_SAVE_MEMORY_SNAPSHOT:
+                # Create snapshot quickly (minimal impact)
+                snapshot = create_memory_snapshot()
+                
+                if settings.AUTO_SAVE_BACKGROUND:
+                    # Save snapshot in background thread (zero impact on main system)
+                    def background_save():
+                        try:
+                            save_snapshot_to_file(snapshot)
+                        except Exception as e:
+                            logger.error(f"Background snapshot save failed: {e}")
+                    
+                    # Run in background thread
+                    thread = threading.Thread(target=background_save, daemon=True)
+                    thread.start()
+                    # Don't wait - let it run completely in background
+                    logger.info("Auto-save snapshot started in background")
+                else:
+                    # Save snapshot synchronously
+                    save_snapshot_to_file(snapshot)
+            else:
+                # Use traditional approach
+                if settings.AUTO_SAVE_BACKGROUND:
+                    def background_save():
+                        try:
+                            if settings.AUTO_SAVE_ONLY_CRITICAL:
+                                save_critical_data_only()
+                            else:
+                                save_memory_to_file()
+                        except Exception as e:
+                            logger.error(f"Background auto-save failed: {e}")
+                    
+                    # Run in background thread
+                    thread = threading.Thread(target=background_save, daemon=True)
+                    thread.start()
+                    thread.join(timeout=30)  # Wait max 30 seconds
+                    
+                    if thread.is_alive():
+                        logger.warning("Auto-save taking longer than expected, continuing in background")
+                else:
+                    # Use optimized critical data saving for auto-save
+                    if settings.AUTO_SAVE_ONLY_CRITICAL:
+                        save_critical_data_only()
+                    else:
+                        save_memory_to_file()
+            
             end_time = asyncio.get_event_loop().time()
             logger.info(f"Auto-save completed in {end_time - start_time:.2f}s")
         except Exception as e:

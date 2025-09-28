@@ -27,7 +27,10 @@ def main():
         "LOG_FILE": "",
         "USE_IN_MEMORY_DB": "True",
         "AUTO_SAVE_ENABLED": "True",
-        "AUTO_SAVE_INTERVAL": "300"
+        "AUTO_SAVE_INTERVAL": "300",
+        "AUTO_SAVE_ONLY_CRITICAL": "False",
+        "AUTO_SAVE_BACKGROUND": "True",
+        "AUTO_SAVE_MEMORY_SNAPSHOT": "True"
     }
     
     for key, default_value in env_vars.items():
@@ -47,6 +50,8 @@ def main():
     print(f"In-Memory DB: {os.environ['USE_IN_MEMORY_DB']}")
     if os.environ['USE_IN_MEMORY_DB'].lower() == 'true':
         print(f"Auto-Save: {os.environ['AUTO_SAVE_ENABLED']} (every {os.environ['AUTO_SAVE_INTERVAL']}s)")
+        print(f"Critical-Only: {os.environ['AUTO_SAVE_ONLY_CRITICAL']}, Background: {os.environ['AUTO_SAVE_BACKGROUND']}")
+        print(f"Memory Snapshot: {os.environ['AUTO_SAVE_MEMORY_SNAPSHOT']}")
     print("=" * 50)
     print("📚 API Documentation will be available at:")
     print(f"   - Swagger UI: http://{os.environ['HOST']}:{os.environ['PORT']}/docs")

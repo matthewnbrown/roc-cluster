@@ -34,12 +34,15 @@ class Settings:
     IN_MEMORY_DB_URL: str = "sqlite:///:memory:"
     
     # Auto-save settings for in-memory database
-    AUTO_SAVE_INTERVAL: int = int(os.getenv("AUTO_SAVE_INTERVAL", "300"))  # 5 minutes default
+    AUTO_SAVE_INTERVAL: int = int(os.getenv("AUTO_SAVE_INTERVAL", "300"))
     AUTO_SAVE_ENABLED: bool = os.getenv("AUTO_SAVE_ENABLED", "True").lower() == "true"
+    AUTO_SAVE_ONLY_CRITICAL: bool = os.getenv("AUTO_SAVE_ONLY_CRITICAL", "False").lower() == "true" 
+    AUTO_SAVE_BACKGROUND: bool = os.getenv("AUTO_SAVE_BACKGROUND", "True").lower() == "true"
+    AUTO_SAVE_MEMORY_SNAPSHOT: bool = os.getenv("AUTO_SAVE_MEMORY_SNAPSHOT", "True").lower() == "true" 
     
     # Database Connection Pooling
     DB_POOL_SIZE: int = int(os.getenv("DB_POOL_SIZE", "1000"))
-    DB_MAX_OVERFLOW: int = int(os.getenv("DB_MAX_OVERFLOW", "250"))
+    DB_MAX_OVERFLOW: int = int(os.getenv("DB_MAX_OVERFLOW", "-1"))
     DB_POOL_RECYCLE: int = int(os.getenv("DB_POOL_RECYCLE", "3600"))  # 1 hour
     
     # Concurrency Control
