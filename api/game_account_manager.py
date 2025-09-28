@@ -48,14 +48,20 @@ class PageSubmit(Enum):
 class GameAccountManager:
     """Manages a single ROC account session"""
 
-    def __init__(self, account: Account, max_retries: int = 0):
+    def __init__(self, account: Account, max_retries: int = 0, use_page_data_service: bool = false):
         self.account = account
         self.session: Optional[aiohttp.ClientSession] = None
         self._connector: Optional[aiohttp.TCPConnector] = None
         self.url_generator = ROCDecryptUrlGenerator()
-        self.captcha_solver = CaptchaSolver(solver_url=settings.CAPTCHA_SOLVER_URL, report_url=settings.CAPTCHA_REPORT_URL, max_retries=max_retries)
         self.max_retries = max_retries
         self.use_captcha = False
+        
+        if self.use_captcha:
+            self.captcha_solver = CaptchaSolver(solver_url=settings.CAPTCHA_SOLVER_URL, report_url=settings.CAPTCHA_REPORT_URL, max_retries=max_retries)
+        else:
+            self.captcha_solver = None
+            
+        self.use_page_data_service = use_page_data_service
 
 
     def parse_roc_number(self, number: str) -> int:
@@ -72,6 +78,9 @@ class GameAccountManager:
         request_time: datetime = None
     ):
         """Push a page to the processing queue"""
+        
+        if not self.use_page_data_service:
+            return
         try:
             await page_data_service.add_page_to_queue(
                 account_id=self.account.id,
@@ -354,7 +363,6 @@ class GameAccountManager:
 
         try:
             attack_url = self.url_generator.attack(target_id)
-            request_time = datetime.now(timezone.utc)
             
             payload = {
                 "defender_id": target_id,
@@ -1001,7 +1009,7 @@ class GameAccountManager:
         """Check if the account is logged in"""
         return page_text.find('<form action="login.php" method="post">') == -1
     
-    async def initialize(self) -> bool:
+    async def initialize(self, preloaded_cookies: Optional[Dict[str, Any]] = None) -> bool:
         """Initialize the account login"""
         try:
             # Create aiohttp session with connection limits
@@ -1017,22 +1025,27 @@ class GameAccountManager:
                 timeout=timeout
             )
             
-            # Load cookies from UserCookies table
-            db = SessionLocal()
-            try:
-                user_cookies = db.query(UserCookies).filter(
-                    UserCookies.account_id == self.account.id
-                ).first()
-                
-                if user_cookies:
-                    cookies = json.loads(user_cookies.cookies)
-
-                    self.session.cookie_jar.update_cookies(cookies)
-                    logger.info(f"Loaded {len(cookies)} cookies for account {self.account.username}: {list(cookies.keys())}")
-                else:
-                    logger.info(f"No cookies found for account {self.account.username}")
-            finally:
-                db.close()
+            # Load cookies - either from preloaded data or from database
+            if preloaded_cookies is not None:
+                # Use preloaded cookies
+                self.session.cookie_jar.update_cookies(preloaded_cookies)
+                logger.info(f"Loaded {len(preloaded_cookies)} preloaded cookies for account {self.account.username}: {list(preloaded_cookies.keys())}")
+            else:
+                # Load cookies from UserCookies table (fallback to original behavior)
+                db = SessionLocal()
+                try:
+                    user_cookies = db.query(UserCookies).filter(
+                        UserCookies.account_id == self.account.id
+                    ).first()
+                    
+                    if user_cookies:
+                        cookies = json.loads(user_cookies.cookies)
+                        self.session.cookie_jar.update_cookies(cookies)
+                        logger.info(f"Loaded {len(cookies)} cookies for account {self.account.username}: {list(cookies.keys())}")
+                    else:
+                        logger.info(f"No cookies found for account {self.account.username}")
+                finally:
+                    db.close()
             
             return True
             
@@ -1063,7 +1076,8 @@ class GameAccountManager:
                 self._connector = None
         
         # Also cleanup the captcha solver
-        try:
-            await self.captcha_solver.close()
-        except Exception as e:
-            logger.warning(f"Error closing captcha solver for {self.account.username}: {e}")
+        if self.captcha_solver:
+            try:
+                await self.captcha_solver.close()
+            except Exception as e:
+                logger.warning(f"Error closing captcha solver for {self.account.username}: {e}")

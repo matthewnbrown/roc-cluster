@@ -12,7 +12,7 @@ import uvicorn
 from typing import List, Dict, Any, Optional
 import logging
 
-from api.database import init_db, get_db
+from api.database import init_db, get_db, auto_save_service
 from api.db_models import Account, Cluster, ClusterUser
 from api.schemas import AccountCreate, AccountResponse
 from api.account_manager import AccountManager
@@ -23,12 +23,56 @@ from api.page_data_service import page_data_service
 from api.job_pruning_service import job_pruning_service
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+from config import settings
+import logging.config
+
+# Configure logging with file support if LOG_FILE is specified
+log_config = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'default': {
+            'format': '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'level': settings.LOG_LEVEL.upper(),
+            'formatter': 'default',
+            'stream': 'ext://sys.stdout',
+        },
+    },
+    'root': {
+        'level': settings.LOG_LEVEL.upper(),
+        'handlers': ['console'],
+    },
+}
+
+# Add file handler if LOG_FILE is specified
+if settings.LOG_FILE:
+    log_config['handlers']['file'] = {
+        'class': 'logging.FileHandler',
+        'level': settings.LOG_LEVEL.upper(),
+        'formatter': 'default',
+        'filename': settings.LOG_FILE,
+        'mode': 'a',
+    }
+    log_config['root']['handlers'].append('file')
+
+logging.config.dictConfig(log_config)
 logger = logging.getLogger(__name__)
+
+# Log the logging configuration
+logger.info(f"Logging configured - Level: {settings.LOG_LEVEL.upper()}")
+if settings.LOG_FILE:
+    logger.info(f"Logging to file: {settings.LOG_FILE}")
+else:
+    logger.info("Logging to console only")
 
 # Global instances
 account_manager: Optional[AccountManager] = None
-job_manager: Optional["JobManager"] = None
+job_manager: Optional[Any] = None
 
 async def create_initial_all_users_cluster():
     """Create the initial all_users cluster and add all existing users to it"""
@@ -129,7 +173,15 @@ async def lifespan(app: FastAPI):
     await job_pruning_service.start()
     logger.info("Job pruning service started")
     
+    # Start auto-save service for in-memory database
+    await auto_save_service.start()
+    logger.info("Auto-save service started")
+    
     yield
+    
+    # Stop auto-save service
+    await auto_save_service.stop()
+    logger.info("Auto-save service stopped")
     
     # Stop job pruning service
     await job_pruning_service.stop()

@@ -22,12 +22,17 @@ def main():
         "DATABASE_URL": "sqlite:///./data/roc_cluster.db",
         "HOST": "0.0.0.0",
         "PORT": "8000",
-        "DEBUG": "True",
-        "LOG_LEVEL": "INFO"
+        "DEBUG": "False",
+        "LOG_LEVEL": "INFO",
+        "LOG_FILE": "",
+        "USE_IN_MEMORY_DB": "True",
+        "AUTO_SAVE_ENABLED": "True",
+        "AUTO_SAVE_INTERVAL": "300"
     }
     
     for key, default_value in env_vars.items():
         if key not in os.environ:
+            print(f"Setting {key} to {default_value}")
             os.environ[key] = default_value
     
     # Print startup information
@@ -36,7 +41,12 @@ def main():
     print(f"Host: {os.environ['HOST']}")
     print(f"Port: {os.environ['PORT']}")
     print(f"Debug: {os.environ['DEBUG']}")
+    print(f"Log Level: {os.environ['LOG_LEVEL']}")
+    print(f"Log File: {os.environ['LOG_FILE'] or 'Console only'}")
     print(f"Database: {os.environ['DATABASE_URL']}")
+    print(f"In-Memory DB: {os.environ['USE_IN_MEMORY_DB']}")
+    if os.environ['USE_IN_MEMORY_DB'].lower() == 'true':
+        print(f"Auto-Save: {os.environ['AUTO_SAVE_ENABLED']} (every {os.environ['AUTO_SAVE_INTERVAL']}s)")
     print("=" * 50)
     print("📚 API Documentation will be available at:")
     print(f"   - Swagger UI: http://{os.environ['HOST']}:{os.environ['PORT']}/docs")

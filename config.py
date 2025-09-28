@@ -18,6 +18,11 @@ class Settings:
     PORT: int = int(os.getenv("PORT", "8000"))
     DEBUG: bool = os.getenv("DEBUG", "False").lower() == "true"
     
+    # Logging
+    LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
+    LOG_FILE: Optional[str] = os.getenv("LOG_FILE")
+
+    
     # ROC Website Settings
     ROC_BASE_URL: str = os.getenv("ROC_BASE_URL", "https://rocgame.com")
     ROC_LOGIN_URL: str = os.getenv("ROC_LOGIN_URL", f"{ROC_BASE_URL}/login")
@@ -25,22 +30,24 @@ class Settings:
     
     # Database Settings
     DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./data/roc_cluster.db")
+    USE_IN_MEMORY_DB: bool = os.getenv("USE_IN_MEMORY_DB", "False").lower() == "true"
+    IN_MEMORY_DB_URL: str = "sqlite:///:memory:"
+    
+    # Auto-save settings for in-memory database
+    AUTO_SAVE_INTERVAL: int = int(os.getenv("AUTO_SAVE_INTERVAL", "300"))  # 5 minutes default
+    AUTO_SAVE_ENABLED: bool = os.getenv("AUTO_SAVE_ENABLED", "True").lower() == "true"
     
     # Database Connection Pooling
-    DB_POOL_SIZE: int = int(os.getenv("DB_POOL_SIZE", "20"))
-    DB_MAX_OVERFLOW: int = int(os.getenv("DB_MAX_OVERFLOW", "30"))
+    DB_POOL_SIZE: int = int(os.getenv("DB_POOL_SIZE", "1000"))
+    DB_MAX_OVERFLOW: int = int(os.getenv("DB_MAX_OVERFLOW", "250"))
     DB_POOL_RECYCLE: int = int(os.getenv("DB_POOL_RECYCLE", "3600"))  # 1 hour
     
-    # Logging
-    LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
-    LOG_FILE: Optional[str] = os.getenv("LOG_FILE")
-
     # Concurrency Control
-    MAX_CONCURRENT_OPERATIONS: int = int(os.getenv("MAX_CONCURRENT_OPERATIONS", "20"))
+    MAX_CONCURRENT_OPERATIONS: int = int(os.getenv("MAX_CONCURRENT_OPERATIONS", "1000"))
     
-    # HTTP Connection Limits
-    HTTP_CONNECTION_LIMIT: int = int(os.getenv("HTTP_CONNECTION_LIMIT", "30"))
-    HTTP_CONNECTION_LIMIT_PER_HOST: int = int(os.getenv("HTTP_CONNECTION_LIMIT_PER_HOST", "20"))
+    # HTTP Connection Limits - Optimized for high concurrency
+    HTTP_CONNECTION_LIMIT: int = int(os.getenv("HTTP_CONNECTION_LIMIT", "40"))
+    HTTP_CONNECTION_LIMIT_PER_HOST: int = int(os.getenv("HTTP_CONNECTION_LIMIT_PER_HOST", "40"))
     HTTP_DNS_CACHE_TTL: int = int(os.getenv("HTTP_DNS_CACHE_TTL", "300"))  # 5 minutes
     HTTP_TIMEOUT: int = int(os.getenv("HTTP_TIMEOUT", "30"))  # seconds
     
@@ -59,6 +66,9 @@ class Settings:
     
     # CORS Settings
     CORS_ORIGINS: list = os.getenv("CORS_ORIGINS", "*").split(",")
+    
+    # Page Data Service
+    USE_PAGE_DATA_SERVICE: bool = os.getenv("USE_PAGE_DATA_SERVICE", "False").lower() == "false"
     
     @classmethod
     def get_database_url(cls) -> str:

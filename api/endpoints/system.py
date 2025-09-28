@@ -8,9 +8,10 @@ import logging
 from datetime import datetime, timedelta
 
 from api.job_pruning_service import job_pruning_service
-from api.database import SessionLocal
+from api.database import SessionLocal, auto_save_service
 from api.db_models import AccountLog
 from api.async_logger import async_logger
+from config import settings
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -285,3 +286,39 @@ async def detailed_health_check():
             "error": str(e),
             "timestamp": datetime.now().isoformat()
         }
+
+
+@router.get("/auto-save/status")
+async def get_auto_save_status():
+    """Get auto-save service status"""
+    try:
+        return {
+            "success": True,
+            "data": {
+                "enabled": settings.USE_IN_MEMORY_DB and settings.AUTO_SAVE_ENABLED,
+                "in_memory_db": settings.USE_IN_MEMORY_DB,
+                "auto_save_enabled": settings.AUTO_SAVE_ENABLED,
+                "auto_save_interval": settings.AUTO_SAVE_INTERVAL,
+                "running": auto_save_service._running
+            }
+        }
+    except Exception as e:
+        logger.error(f"Error getting auto-save status: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.post("/auto-save/force")
+async def force_auto_save():
+    """Force an immediate save of in-memory database to file"""
+    try:
+        if not settings.USE_IN_MEMORY_DB:
+            raise HTTPException(status_code=400, detail="Not using in-memory database")
+        
+        await auto_save_service.force_save()
+        return {
+            "success": True,
+            "message": "Database saved to file successfully"
+        }
+    except Exception as e:
+        logger.error(f"Error forcing auto-save: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")

@@ -545,12 +545,26 @@ class JobManager:
                 JobStep.job_id == job_id
             ).order_by(JobStep.step_order).all()
             
+            # Bulk load accounts and cookies for all accounts in this job to optimize performance
+            account_ids = [step.account_id for step in steps]
+            
+            # Load both accounts and cookies in parallel for maximum performance
+            bulk_accounts_task = self.account_manager.bulk_load_accounts(account_ids)
+            bulk_cookies_task = self.account_manager.bulk_load_cookies(account_ids)
+            
+            bulk_accounts, bulk_cookies = await asyncio.gather(
+                bulk_accounts_task,
+                bulk_cookies_task
+            )
+            
+            logger.info(f"Pre-loaded {len(bulk_accounts)} accounts and {len(bulk_cookies)} cookie sets for job {job_id}")
+            
             if job.parallel_execution:
                 # Execute all steps in parallel
-                await self._execute_steps_parallel(steps, db)
+                await self._execute_steps_parallel(steps, db, bulk_cookies, bulk_accounts)
             else:
                 # Execute steps sequentially with async step support
-                await self._execute_steps_sequential(steps, db, job)
+                await self._execute_steps_sequential(steps, db, job, bulk_cookies, bulk_accounts)
                         
                         
             
@@ -613,15 +627,21 @@ class JobManager:
         finally:
             db.close()
     
-    async def _execute_step(self, step: JobStep, db: Session):
+    async def _execute_step(self, step: JobStep, db: Session, bulk_cookies: Optional[Dict[int, Dict[str, Any]]] = None, bulk_accounts: Optional[Dict[int, Account]] = None):
         """Execute a single job step"""
         step.status = JobStatus.RUNNING
         step.started_at = datetime.now(timezone.utc)
         db.commit()
         
         try:
-            # Get account
-            account = db.query(Account).filter(Account.id == step.account_id).first()
+            # Get account from preloaded data or fallback to database
+            account = None
+            if bulk_accounts and step.account_id in bulk_accounts:
+                account = bulk_accounts[step.account_id]
+            else:
+                # Fallback to database query (should rarely happen now)
+                account = db.query(Account).filter(Account.id == step.account_id).first()
+            
             if not account:
                 raise ValueError(f"Account {step.account_id} not found")
             
@@ -633,17 +653,26 @@ class JobManager:
             # Convert string action_type to ActionType enum
             action_type_enum = self.account_manager.ActionType(step.action_type)
             
+            # Get preloaded cookies for this account if available
+            preloaded_cookies = None
+            if bulk_cookies and step.account_id in bulk_cookies:
+                preloaded_cookies = bulk_cookies[step.account_id]
+            
             # Prepare action parameters
             action_params = {
                 "max_retries": step.max_retries,
+                "preloaded_cookies": preloaded_cookies,
+                "preloaded_account": account,
                 **parameters
             }
             
             # Execute action using account manager
+            # Use bypass_semaphore=True for parallel execution to avoid semaphore bottleneck
             result = await self.account_manager.execute_action(
                 id_type=AccountIdentifierType.ID,
                 id=step.account_id,
                 action=action_type_enum,
+                bypass_semaphore=False,  # Bypass semaphore for true parallel execution
                 **action_params
             )
             
@@ -669,7 +698,7 @@ class JobManager:
             db.commit()
             raise
     
-    async def _execute_steps_sequential(self, steps: List[JobStep], db: Session, job: Job):
+    async def _execute_steps_sequential(self, steps: List[JobStep], db: Session, job: Job, bulk_cookies: Optional[Dict[int, Dict[str, Any]]] = None, bulk_accounts: Optional[Dict[int, Account]] = None):
         """Execute steps sequentially with support for async steps"""
         async_tasks = []  # Track async tasks that are running
         
@@ -682,12 +711,12 @@ class JobManager:
             try:
                 if step.is_async:
                     # Launch async step without waiting
-                    task = asyncio.create_task(self._execute_step_safe(step, db))
+                    task = asyncio.create_task(self._execute_step_safe(step, db, bulk_cookies, bulk_accounts))
                     async_tasks.append(task)
                     logger.info(f"Launched async step {step.id} for job {job.id}")
                 else:
                     # Execute sync step and wait for completion
-                    await self._execute_step(step, db)
+                    await self._execute_step(step, db, bulk_cookies, bulk_accounts)
                     
             except Exception as e:
                 logger.error(f"Error executing step {step.id}: {e}")
@@ -702,18 +731,18 @@ class JobManager:
             await asyncio.gather(*async_tasks, return_exceptions=True)
             logger.info(f"All async tasks completed for job {job.id}")
 
-    async def _execute_steps_parallel(self, steps: List[JobStep], db: Session):
+    async def _execute_steps_parallel(self, steps: List[JobStep], db: Session, bulk_cookies: Optional[Dict[int, Dict[str, Any]]] = None, bulk_accounts: Optional[Dict[int, Account]] = None):
         """Execute multiple steps in parallel"""
-        # Create tasks for all steps
+        # Create tasks for all steps - each gets its own database session
         tasks = []
         for step in steps:
-            task = asyncio.create_task(self._execute_step_safe(step, db))
+            task = asyncio.create_task(self._execute_step_safe(step, None, bulk_cookies, bulk_accounts))
             tasks.append(task)
         
         # Wait for all tasks to complete
         results = await asyncio.gather(*tasks, return_exceptions=True)
         
-        # Update step statuses based on results
+        # Update step statuses based on results - use the main db session for final updates
         for i, result in enumerate(results):
             step = steps[i]
             if isinstance(result, Exception):
@@ -753,10 +782,16 @@ class JobManager:
         
         logger.info(f"Updated job {job_id} progress: {completed_steps} completed, {failed_steps} failed, {pending_steps} pending, {running_steps} running")
 
-    async def _execute_step_safe(self, step: JobStep, db: Session):
+    async def _execute_step_safe(self, step: JobStep, db: Session, bulk_cookies: Optional[Dict[int, Dict[str, Any]]] = None, bulk_accounts: Optional[Dict[int, Account]] = None):
         """Safely execute a single step with proper error handling"""
+        # Create own database session if none provided (for parallel execution)
+        own_db = None
+        if db is None:
+            own_db = SessionLocal()
+            db = own_db
+        
         try:
-            await self._execute_step(step, db)
+            await self._execute_step(step, db, bulk_cookies, bulk_accounts)
         except Exception as e:
             logger.error(f"Error executing step {step.id}: {e}")
             step.status = JobStatus.FAILED
@@ -768,6 +803,10 @@ class JobManager:
             
             db.commit()
             raise  # Re-raise to be caught by gather()
+        finally:
+            # Close own database session if we created it
+            if own_db:
+                own_db.close()
     
     async def _job_to_response(self, job_id: int, db: Session, include_steps: bool = False) -> JobResponse:
         """Convert a Job to JobResponse"""
