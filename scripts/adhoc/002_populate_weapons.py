@@ -82,5 +82,9 @@ def populate_weapons():
     finally:
         db.close()
 
-if __name__ == "__main__":
+def main():
+    """Main function for migration system"""
     populate_weapons()
+
+if __name__ == "__main__":
+    main()

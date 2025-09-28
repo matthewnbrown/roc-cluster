@@ -76,116 +76,130 @@ def copy_data_to_memory_db():
             Cluster, ClusterUser, ArmoryPreferences, ArmoryWeaponPreference,
             TrainingPreferences, TrainingSoldierTypePreference,
             RocUser, RocUserStats, RocUserSoldiers, RocUserWeapons,
-            PageQueue, FavoriteJob
+            PageQueue, FavoriteJob, DatabaseMigration
         )
         
         # Copy data from file to memory
         with FileSessionLocal() as file_db:
             with SessionLocal() as memory_db:
+                # Helper function to safely query tables that might not exist
+                def safe_query_all(model_class, table_name):
+                    try:
+                        return file_db.query(model_class).all()
+                    except Exception as e:
+                        logger.info(f"No {table_name} table found in file database (this is normal for first run): {e}")
+                        return []
+                
                 # Copy accounts
-                accounts = file_db.query(Account).all()
+                accounts = safe_query_all(Account, "accounts")
                 for account in accounts:
                     memory_db.merge(account)
                 
                 # Copy jobs and steps
-                jobs = file_db.query(Job).all()
+                jobs = safe_query_all(Job, "jobs")
                 for job in jobs:
                     memory_db.merge(job)
                 
-                job_steps = file_db.query(JobStep).all()
+                job_steps = safe_query_all(JobStep, "job_steps")
                 for step in job_steps:
                     memory_db.merge(step)
                 
                 # Copy reference data
-                weapons = file_db.query(Weapon).all()
+                weapons = safe_query_all(Weapon, "weapons")
                 for weapon in weapons:
                     memory_db.merge(weapon)
                 
-                races = file_db.query(Race).all()
+                races = safe_query_all(Race, "races")
                 for race in races:
                     memory_db.merge(race)
                 
-                soldier_types = file_db.query(SoldierType).all()
+                soldier_types = safe_query_all(SoldierType, "soldier_types")
                 for soldier_type in soldier_types:
                     memory_db.merge(soldier_type)
                 
-                roc_stats = file_db.query(RocStat).all()
+                roc_stats = safe_query_all(RocStat, "roc_stats")
                 for stats in roc_stats:
                     memory_db.merge(stats)
                 
                 # Copy additional models
-                account_logs = file_db.query(AccountLog).all()
+                account_logs = safe_query_all(AccountLog, "account_logs")
                 for log in account_logs:
                     memory_db.merge(log)
                 
-                account_actions = file_db.query(AccountAction).all()
+                account_actions = safe_query_all(AccountAction, "account_actions")
                 for action in account_actions:
                     memory_db.merge(action)
                 
-                user_cookies = file_db.query(UserCookies).all()
+                user_cookies = safe_query_all(UserCookies, "user_cookies")
                 for cookie in user_cookies:
                     memory_db.merge(cookie)
                 
-                sent_credit_logs = file_db.query(SentCreditLog).all()
+                sent_credit_logs = safe_query_all(SentCreditLog, "sent_credit_logs")
                 for log in sent_credit_logs:
                     memory_db.merge(log)
                 
-                clusters = file_db.query(Cluster).all()
+                clusters = safe_query_all(Cluster, "clusters")
                 for cluster in clusters:
                     memory_db.merge(cluster)
                 
-                cluster_users = file_db.query(ClusterUser).all()
+                cluster_users = safe_query_all(ClusterUser, "cluster_users")
                 for cluster_user in cluster_users:
                     memory_db.merge(cluster_user)
                 
-                armory_preferences = file_db.query(ArmoryPreferences).all()
+                armory_preferences = safe_query_all(ArmoryPreferences, "armory_preferences")
                 for pref in armory_preferences:
                     memory_db.merge(pref)
                 
-                armory_weapon_preferences = file_db.query(ArmoryWeaponPreference).all()
+                armory_weapon_preferences = safe_query_all(ArmoryWeaponPreference, "armory_weapon_preferences")
                 for pref in armory_weapon_preferences:
                     memory_db.merge(pref)
                 
-                training_preferences = file_db.query(TrainingPreferences).all()
+                training_preferences = safe_query_all(TrainingPreferences, "training_preferences")
                 for pref in training_preferences:
                     memory_db.merge(pref)
                 
-                training_soldier_type_preferences = file_db.query(TrainingSoldierTypePreference).all()
+                training_soldier_type_preferences = safe_query_all(TrainingSoldierTypePreference, "training_soldier_type_preferences")
                 for pref in training_soldier_type_preferences:
                     memory_db.merge(pref)
                 
-                roc_users = file_db.query(RocUser).all()
+                roc_users = safe_query_all(RocUser, "roc_users")
                 for user in roc_users:
                     memory_db.merge(user)
                 
-                roc_user_stats = file_db.query(RocUserStats).all()
+                roc_user_stats = safe_query_all(RocUserStats, "roc_user_stats")
                 for stats in roc_user_stats:
                     memory_db.merge(stats)
                 
-                roc_user_soldiers = file_db.query(RocUserSoldiers).all()
+                roc_user_soldiers = safe_query_all(RocUserSoldiers, "roc_user_soldiers")
                 for soldiers in roc_user_soldiers:
                     memory_db.merge(soldiers)
                 
-                roc_user_weapons = file_db.query(RocUserWeapons).all()
+                roc_user_weapons = safe_query_all(RocUserWeapons, "roc_user_weapons")
                 for weapons in roc_user_weapons:
                     memory_db.merge(weapons)
                 
-                page_queues = file_db.query(PageQueue).all()
+                page_queues = safe_query_all(PageQueue, "page_queues")
                 for queue in page_queues:
                     memory_db.merge(queue)
                 
-                favorite_jobs = file_db.query(FavoriteJob).all()
+                favorite_jobs = safe_query_all(FavoriteJob, "favorite_jobs")
                 for job in favorite_jobs:
                     memory_db.merge(job)
                 
+                # Copy database migrations
+                database_migrations = safe_query_all(DatabaseMigration, "database_migrations")
+                for migration in database_migrations:
+                    memory_db.merge(migration)
+                
                 memory_db.commit()
-                print(f"✅ Copied {len(accounts)} accounts, {len(jobs)} jobs, {len(job_steps)} steps, {len(account_logs)} logs, {len(clusters)} clusters to in-memory database")
+                print(f"✅ Copied {len(accounts)} accounts, {len(jobs)} jobs, {len(job_steps)} steps, {len(account_logs)} logs, {len(clusters)} clusters, {len(database_migrations)} migrations to in-memory database")
         
         file_engine.dispose()
         
     except Exception as e:
         print(f"⚠️  Warning: Could not copy data to in-memory database: {e}")
         print("Starting with empty in-memory database")
+        raise
 
 def save_memory_to_file():
     """Save in-memory database data back to file-based database"""
@@ -206,6 +220,10 @@ def save_memory_to_file():
             file_engine = create_engine_func(settings.DATABASE_URL)
         FileSessionLocal = sessionmaker_func(autocommit=False, autoflush=False, bind=file_engine)
         
+        # Ensure file database has all tables (including database_migrations)
+        from api.database import Base
+        Base.metadata.create_all(bind=file_engine)
+        
         # Import models
         from api.db_models import (
             Account, Job, JobStep, Weapon, Race, SoldierType, RocStat,
@@ -213,7 +231,7 @@ def save_memory_to_file():
             Cluster, ClusterUser, ArmoryPreferences, ArmoryWeaponPreference,
             TrainingPreferences, TrainingSoldierTypePreference,
             RocUser, RocUserStats, RocUserSoldiers, RocUserWeapons,
-            PageQueue, FavoriteJob
+            PageQueue, FavoriteJob, DatabaseMigration
         )
         
         # Copy data from memory to file
@@ -243,6 +261,7 @@ def save_memory_to_file():
                 file_db.query(Race).delete()
                 file_db.query(SoldierType).delete()
                 file_db.query(RocStat).delete()
+                file_db.query(DatabaseMigration).delete()
                 
                 # Copy accounts
                 accounts = memory_db.query(Account).all()
@@ -340,8 +359,12 @@ def save_memory_to_file():
                 for job in favorite_jobs:
                     file_db.merge(job)
                 
+                database_migrations = memory_db.query(DatabaseMigration).all()
+                for migration in database_migrations:
+                    file_db.merge(migration)
+                
                 file_db.commit()
-                print(f"✅ Saved {len(accounts)} accounts, {len(jobs)} jobs, {len(job_steps)} steps, {len(account_logs)} logs, {len(clusters)} clusters to file database")
+                print(f"✅ Saved {len(accounts)} accounts, {len(jobs)} jobs, {len(job_steps)} steps, {len(account_logs)} logs, {len(clusters)} clusters, {len(database_migrations)} migrations to file database")
         
         file_engine.dispose()
         
@@ -427,7 +450,7 @@ def create_memory_snapshot() -> Dict[str, Any]:
             Cluster, ClusterUser, ArmoryPreferences, ArmoryWeaponPreference,
             TrainingPreferences, TrainingSoldierTypePreference,
             RocUser, RocUserStats, RocUserSoldiers, RocUserWeapons,
-            PageQueue, FavoriteJob
+            PageQueue, FavoriteJob, DatabaseMigration
         )
         
         snapshot = {}
@@ -457,6 +480,7 @@ def create_memory_snapshot() -> Dict[str, Any]:
             snapshot['roc_user_weapons'] = [obj.__dict__.copy() for obj in db.query(RocUserWeapons).all()]
             snapshot['page_queues'] = [obj.__dict__.copy() for obj in db.query(PageQueue).all()]
             snapshot['favorite_jobs'] = [obj.__dict__.copy() for obj in db.query(FavoriteJob).all()]
+            snapshot['database_migrations'] = [obj.__dict__.copy() for obj in db.query(DatabaseMigration).all()]
             
             # Clean up SQLAlchemy internal state
             for table_name, records in snapshot.items():
@@ -490,6 +514,10 @@ def save_snapshot_to_file(snapshot: Dict[str, Any]):
             file_engine = create_engine_func(settings.DATABASE_URL)
         FileSessionLocal = sessionmaker_func(autocommit=False, autoflush=False, bind=file_engine)
         
+        # Ensure file database has all tables (including database_migrations)
+        from api.database import Base
+        Base.metadata.create_all(bind=file_engine)
+        
         # Import all models
         from api.db_models import (
             Account, Job, JobStep, Weapon, Race, SoldierType, RocStat,
@@ -497,7 +525,7 @@ def save_snapshot_to_file(snapshot: Dict[str, Any]):
             Cluster, ClusterUser, ArmoryPreferences, ArmoryWeaponPreference,
             TrainingPreferences, TrainingSoldierTypePreference,
             RocUser, RocUserStats, RocUserSoldiers, RocUserWeapons,
-            PageQueue, FavoriteJob
+            PageQueue, FavoriteJob, DatabaseMigration
         )
         
         with FileSessionLocal() as file_db:
@@ -525,6 +553,7 @@ def save_snapshot_to_file(snapshot: Dict[str, Any]):
             file_db.query(Race).delete()
             file_db.query(SoldierType).delete()
             file_db.query(RocStat).delete()
+            file_db.query(DatabaseMigration).delete()
             
             # Restore data from snapshot
             model_mapping = {
@@ -550,7 +579,8 @@ def save_snapshot_to_file(snapshot: Dict[str, Any]):
                 'roc_user_soldiers': RocUserSoldiers,
                 'roc_user_weapons': RocUserWeapons,
                 'page_queues': PageQueue,
-                'favorite_jobs': FavoriteJob
+                'favorite_jobs': FavoriteJob,
+                'database_migrations': DatabaseMigration
             }
             
             # Restore data in dependency order
@@ -607,8 +637,8 @@ class AutoSaveService:
             except asyncio.CancelledError:
                 pass
         
-        # Final save before stopping
-        await self._save_to_file()
+        # Final save before stopping - force synchronous save for shutdown
+        await self._force_save_on_shutdown()
         logger.info("Auto-save service stopped")
     
     async def _auto_save_loop(self):
@@ -686,6 +716,60 @@ class AutoSaveService:
         """Force an immediate save"""
         if settings.USE_IN_MEMORY_DB:
             await self._save_to_file()
+    
+    async def _force_save_on_shutdown(self):
+        """Force a synchronous save during shutdown to ensure data persistence"""
+        if not settings.USE_IN_MEMORY_DB:
+            return
+        
+        try:
+            logger.info("Performing final synchronous save on shutdown...")
+            start_time = asyncio.get_event_loop().time()
+            
+            # Use memory snapshot approach but save synchronously (not in background)
+            if settings.AUTO_SAVE_MEMORY_SNAPSHOT:
+                # Create snapshot quickly
+                snapshot = create_memory_snapshot()
+                
+                # Save snapshot synchronously (wait for completion)
+                def synchronous_save():
+                    try:
+                        save_snapshot_to_file(snapshot)
+                        return True
+                    except Exception as e:
+                        logger.error(f"Synchronous snapshot save failed: {e}")
+                        return False
+                
+                # Run in thread but wait for completion
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    future = executor.submit(synchronous_save)
+                    success = future.result(timeout=60)  # Wait up to 60 seconds
+                    
+                    if success:
+                        logger.info("✅ Final shutdown save completed successfully")
+                    else:
+                        logger.error("❌ Final shutdown save failed")
+            else:
+                # Use traditional synchronous approach
+                if settings.AUTO_SAVE_ONLY_CRITICAL:
+                    save_critical_data_only()
+                else:
+                    save_memory_to_file()
+                logger.info("✅ Final shutdown save completed successfully")
+            
+            end_time = asyncio.get_event_loop().time()
+            logger.info(f"Final shutdown save completed in {end_time - start_time:.2f}s")
+            
+        except Exception as e:
+            logger.error(f"❌ Final shutdown save failed: {e}")
+            # Try one more time with the simplest approach
+            try:
+                logger.info("Attempting fallback save...")
+                save_memory_to_file()
+                logger.info("✅ Fallback save completed successfully")
+            except Exception as fallback_error:
+                logger.error(f"❌ Fallback save also failed: {fallback_error}")
 
 # Global auto-save service instance
 auto_save_service = AutoSaveService()

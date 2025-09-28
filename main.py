@@ -134,7 +134,8 @@ async def lifespan(app: FastAPI):
     logger.info("Database initialized")
     
     # Run adhoc scripts (migrations, setup, etc.)
-    from scripts.adhoc import run_adhoc_scripts
+    from scripts.adhoc import run_adhoc_scripts, migrate_legacy_executed_scripts
+    migrate_legacy_executed_scripts()  # Migrate legacy file-based tracking to database
     run_adhoc_scripts()
     logger.info("Adhoc scripts completed")
     

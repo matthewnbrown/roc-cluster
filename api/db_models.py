@@ -408,3 +408,17 @@ class FavoriteJob(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     usage_count = Column(Integer, default=0, nullable=False)  # Track how often it's used
     last_used_at = Column(DateTime(timezone=True), nullable=True)  # When it was last used
+
+
+class DatabaseMigration(Base):
+    """Track executed database migration scripts"""
+    __tablename__ = "database_migrations"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    script_name = Column(String(255), unique=True, nullable=False, index=True)
+    version = Column(String(50), nullable=True)  # Version identifier (e.g., "001", "1.0.0")
+    executed_at = Column(DateTime(timezone=True), server_default=func.now())
+    success = Column(Boolean, default=True, nullable=False)
+    error_message = Column(Text, nullable=True)
+    checksum = Column(String(64), nullable=True)  # Optional: file checksum for integrity
+    execution_order = Column(Integer, nullable=True)  # Order in which script was executed
