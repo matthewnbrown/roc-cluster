@@ -181,13 +181,27 @@ async def get_job_status(
         if not job:
             raise HTTPException(status_code=404, detail="Job not found")
         
+        # Get real-time progress from in-memory tracking if available
+        real_time_progress = manager.get_job_progress(job_id)
+        
+        # Use in-memory progress if available, otherwise fall back to database values
+        if real_time_progress["total"] > 0:
+            completed_steps = real_time_progress["completed"]
+            failed_steps = real_time_progress["failed"]
+            total_steps = real_time_progress["total"]
+        else:
+            completed_steps = job.completed_steps
+            failed_steps = job.failed_steps
+            total_steps = job.total_steps
+        
         return {
             "job_id": job.id,
             "status": job.status,
             "progress": {
-                "total_steps": job.total_steps,
-                "completed_steps": job.completed_steps,
-                "failed_steps": job.failed_steps
+                "total_steps": total_steps,
+                "completed_steps": completed_steps,
+                "failed_steps": failed_steps,
+                "percentage": round((completed_steps / total_steps * 100) if total_steps > 0 else 0, 2)
             },
             "created_at": job.created_at,
             "started_at": job.started_at,

@@ -24,6 +24,39 @@ class JobManager:
     def __init__(self, account_manager: AccountManager):
         self.account_manager = account_manager
         self._running_jobs: Dict[int, asyncio.Task] = {}
+        # In-memory job progress tracking for real-time updates
+        self._job_progress = {}  # {job_id: {"completed": int, "failed": int, "total": int}}
+    
+    def _init_job_progress(self, job_id: int, total_steps: int):
+        """Initialize in-memory progress tracking for a job"""
+        self._job_progress[job_id] = {
+            "completed": 0,
+            "failed": 0,
+            "total": total_steps
+        }
+    
+    def _update_step_progress(self, job_id: int, step_status: JobStatus):
+        """Update in-memory progress when a step completes"""
+        if job_id not in self._job_progress:
+            return
+        
+        if step_status == JobStatus.COMPLETED:
+            self._job_progress[job_id]["completed"] += 1
+        elif step_status == JobStatus.FAILED:
+            self._job_progress[job_id]["failed"] += 1
+    
+    def _get_job_progress(self, job_id: int) -> Dict[str, int]:
+        """Get current job progress from memory"""
+        return self._job_progress.get(job_id, {"completed": 0, "failed": 0, "total": 0})
+    
+    def _cleanup_job_progress(self, job_id: int):
+        """Clean up in-memory progress when job is complete"""
+        if job_id in self._job_progress:
+            del self._job_progress[job_id]
+    
+    def get_job_progress(self, job_id: int) -> Dict[str, int]:
+        """Get current job progress for API endpoints"""
+        return self._get_job_progress(job_id)
     
     def _validate_action_type(self, action_type: str) -> bool:
         """Validate that action_type is a valid AccountManager.ActionType"""
@@ -545,6 +578,9 @@ class JobManager:
                 JobStep.job_id == job_id
             ).order_by(JobStep.step_order).all()
             
+            # Initialize in-memory progress tracking for real-time updates
+            self._init_job_progress(job_id, len(steps))
+            
             # Bulk load accounts and cookies for all accounts in this job to optimize performance
             account_ids = [step.account_id for step in steps]
             
@@ -616,6 +652,9 @@ class JobManager:
             # Remove from running jobs
             if job_id in self._running_jobs:
                 del self._running_jobs[job_id]
+            
+            # Clean up in-memory progress tracking
+            self._cleanup_job_progress(job_id)
                 
         except Exception as e:
             logger.error(f"Error executing job {job_id}: {e}")
@@ -624,6 +663,9 @@ class JobManager:
                 job.error_message = str(e)
                 job.completed_at = datetime.now(timezone.utc)
                 db.commit()
+            
+            # Clean up in-memory progress tracking even on error
+            self._cleanup_job_progress(job_id)
         finally:
             db.close()
     
@@ -682,10 +724,16 @@ class JobManager:
             step.error_message = result.get("error") if not result.get("success", False) else None
             step.completed_at = datetime.now(timezone.utc)
             
+            # Update in-memory progress for real-time tracking
+            self._update_step_progress(step.job_id, step.status)
+            
         except Exception as e:
             step.status = JobStatus.FAILED
             step.error_message = str(e)
             step.completed_at = datetime.now(timezone.utc)
+            
+            # Update in-memory progress for real-time tracking
+            self._update_step_progress(step.job_id, step.status)
 
             raise
     
@@ -762,14 +810,20 @@ class JobManager:
         if not job:
             return
         
-        # Count completed and failed steps
-        completed_steps = db.query(JobStep).filter(
-            and_(JobStep.job_id == job_id, JobStep.status == JobStatus.COMPLETED)
-        ).count()
-        
-        failed_steps = db.query(JobStep).filter(
-            and_(JobStep.job_id == job_id, JobStep.status == JobStatus.FAILED)
-        ).count()
+        # Use in-memory progress if available (for real-time updates during execution)
+        if job_id in self._job_progress:
+            progress = self._job_progress[job_id]
+            completed_steps = progress["completed"]
+            failed_steps = progress["failed"]
+        else:
+            # Fall back to database count (for completed jobs or when memory is not available)
+            completed_steps = db.query(JobStep).filter(
+                and_(JobStep.job_id == job_id, JobStep.status == JobStatus.COMPLETED)
+            ).count()
+            
+            failed_steps = db.query(JobStep).filter(
+                and_(JobStep.job_id == job_id, JobStep.status == JobStatus.FAILED)
+            ).count()
         
         # Also count pending and running steps for debugging
         pending_steps = db.query(JobStep).filter(
@@ -786,7 +840,7 @@ class JobManager:
         
         logger.info(f"Updated job {job_id} progress: {completed_steps} completed, {failed_steps} failed, {pending_steps} pending, {running_steps} running")
 
-    async def _execute_step_safe(self, step: JobStep, db: Session, bulk_cookies: Optional[Dict[int, Dict[str, Any]]] = None, bulk_accounts: Optional[Dict[int, Account]] = None):
+    async def _execute_step_safe(self, step: JobStep, db: Session | None = None, bulk_cookies: Optional[Dict[int, Dict[str, Any]]] = None, bulk_accounts: Optional[Dict[int, Account]] = None):
         """Safely execute a single step with proper error handling"""
         # Create own database session if none provided (for parallel execution)
         own_db = None
@@ -838,6 +892,19 @@ class JobManager:
                 )
                 steps.append(step_response)
         
+        # Get real-time progress from in-memory tracking if available
+        real_time_progress = self.get_job_progress(job.id)
+        
+        # Use in-memory progress if available, otherwise fall back to database values
+        if real_time_progress["total"] > 0:
+            completed_steps = real_time_progress["completed"]
+            failed_steps = real_time_progress["failed"]
+            total_steps = real_time_progress["total"]
+        else:
+            completed_steps = job.completed_steps
+            failed_steps = job.failed_steps
+            total_steps = job.total_steps
+        
         return JobResponse(
             id=job.id,
             name=job.name,
@@ -847,9 +914,9 @@ class JobManager:
             created_at=job.created_at,
             started_at=job.started_at,
             completed_at=job.completed_at,
-            total_steps=job.total_steps,
-            completed_steps=job.completed_steps,
-            failed_steps=job.failed_steps,
+            total_steps=total_steps,
+            completed_steps=completed_steps,
+            failed_steps=failed_steps,
             error_message=job.error_message,
             steps=steps
         )
