@@ -12,10 +12,14 @@ Usage:
 import csv
 import sys
 import argparse
+import os
 import logging
 from typing import List, Dict, Any, Optional
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
+
+# Add the parent directory to the Python path so we can import from api
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Import our models and database
 from api.database import SessionLocal, init_db
