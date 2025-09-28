@@ -74,7 +74,7 @@ api.interceptors.response.use(
 export const accountApi = {
   // Get all accounts with pagination
   getAccounts: async (page: number = 1, perPage: number = 100): Promise<PaginatedResponse<Account>> => {
-    const response: AxiosResponse<PaginatedResponse<Account>> = await api.get('/accounts', {
+    const response: AxiosResponse<PaginatedResponse<Account>> = await api.get('/accounts/', {
       params: { page, per_page: perPage },
     });
     return response.data;
@@ -166,7 +166,7 @@ export const creditLogsApi = {
 export const clusterApi = {
   // Get all clusters with pagination
   getClusters: async (page: number = 1, perPage: number = 100, search?: string): Promise<PaginatedResponse<ClusterListResponse>> => {
-    const response: AxiosResponse<PaginatedResponse<ClusterListResponse>> = await api.get('/clusters', {
+    const response: AxiosResponse<PaginatedResponse<ClusterListResponse>> = await api.get('/clusters/', {
       params: { page, per_page: perPage, search },
     });
     return response.data;
@@ -223,7 +223,7 @@ export const jobsApi = {
     const params: any = { page, per_page: perPage };
     if (status) params.status = status;
     
-    const response: AxiosResponse<JobListResponse> = await api.get('/jobs', { params });
+    const response: AxiosResponse<JobListResponse> = await api.get('/jobs/', { params });
     return response.data;
   },
 
