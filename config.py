@@ -36,7 +36,6 @@ class Settings:
     # Auto-save settings for in-memory database
     AUTO_SAVE_INTERVAL: int = int(os.getenv("AUTO_SAVE_INTERVAL", "300"))
     AUTO_SAVE_ENABLED: bool = os.getenv("AUTO_SAVE_ENABLED", "True").lower() == "true"
-    AUTO_SAVE_ONLY_CRITICAL: bool = os.getenv("AUTO_SAVE_ONLY_CRITICAL", "False").lower() == "true" 
     AUTO_SAVE_BACKGROUND: bool = os.getenv("AUTO_SAVE_BACKGROUND", "True").lower() == "true"
     AUTO_SAVE_MEMORY_SNAPSHOT: bool = os.getenv("AUTO_SAVE_MEMORY_SNAPSHOT", "True").lower() == "true" 
     

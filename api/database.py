@@ -371,72 +371,6 @@ def save_memory_to_file():
     except Exception as e:
         print(f"❌ Error saving in-memory data to file: {e}")
 
-def save_critical_data_only():
-    """Save only critical data (accounts, jobs, steps, cookies) - much faster"""
-    if not settings.USE_IN_MEMORY_DB:
-        return  # Not using in-memory database
-    
-    try:
-        from sqlalchemy import create_engine as create_engine_func
-        from sqlalchemy.orm import sessionmaker as sessionmaker_func
-        
-        # Create connection to file-based database
-        if "sqlite" in settings.DATABASE_URL:
-            file_engine = create_engine_func(
-                settings.DATABASE_URL,
-                connect_args={"check_same_thread": False}
-            )
-        else:
-            file_engine = create_engine_func(settings.DATABASE_URL)
-        FileSessionLocal = sessionmaker_func(autocommit=False, autoflush=False, bind=file_engine)
-        
-        # Import only critical models
-        from api.db_models import Account, Job, JobStep, UserCookies, Cluster, ClusterUser
-        
-        # Copy only critical data from memory to file
-        with SessionLocal() as memory_db:
-            with FileSessionLocal() as file_db:
-                # Clear only critical data
-                file_db.query(JobStep).delete()
-                file_db.query(Job).delete()
-                file_db.query(ClusterUser).delete()
-                file_db.query(Cluster).delete()
-                file_db.query(UserCookies).delete()
-                file_db.query(Account).delete()
-                
-                # Copy only critical data
-                accounts = memory_db.query(Account).all()
-                for account in accounts:
-                    file_db.merge(account)
-                
-                jobs = memory_db.query(Job).all()
-                for job in jobs:
-                    file_db.merge(job)
-                
-                job_steps = memory_db.query(JobStep).all()
-                for step in job_steps:
-                    file_db.merge(step)
-                
-                user_cookies = memory_db.query(UserCookies).all()
-                for cookie in user_cookies:
-                    file_db.merge(cookie)
-                
-                clusters = memory_db.query(Cluster).all()
-                for cluster in clusters:
-                    file_db.merge(cluster)
-                
-                cluster_users = memory_db.query(ClusterUser).all()
-                for cluster_user in cluster_users:
-                    file_db.merge(cluster_user)
-                
-                file_db.commit()
-                logger.info(f"✅ Auto-saved critical data: {len(accounts)} accounts, {len(jobs)} jobs, {len(job_steps)} steps, {len(user_cookies)} cookies")
-        
-        file_engine.dispose()
-        
-    except Exception as e:
-        logger.error(f"❌ Error auto-saving critical data: {e}")
-
 def create_memory_snapshot() -> Dict[str, Any]:
     """Create a fast memory snapshot of all database data"""
     if not settings.USE_IN_MEMORY_DB:
@@ -686,10 +620,7 @@ class AutoSaveService:
                 if settings.AUTO_SAVE_BACKGROUND:
                     def background_save():
                         try:
-                            if settings.AUTO_SAVE_ONLY_CRITICAL:
-                                save_critical_data_only()
-                            else:
-                                save_memory_to_file()
+                            save_memory_to_file()
                         except Exception as e:
                             logger.error(f"Background auto-save failed: {e}")
                     
@@ -701,11 +632,8 @@ class AutoSaveService:
                     if thread.is_alive():
                         logger.warning("Auto-save taking longer than expected, continuing in background")
                 else:
-                    # Use optimized critical data saving for auto-save
-                    if settings.AUTO_SAVE_ONLY_CRITICAL:
-                        save_critical_data_only()
-                    else:
-                        save_memory_to_file()
+                    # Save all data
+                    save_memory_to_file()
             
             end_time = asyncio.get_event_loop().time()
             logger.info(f"Auto-save completed in {end_time - start_time:.2f}s")
@@ -752,10 +680,7 @@ class AutoSaveService:
                         logger.error("❌ Final shutdown save failed")
             else:
                 # Use traditional synchronous approach
-                if settings.AUTO_SAVE_ONLY_CRITICAL:
-                    save_critical_data_only()
-                else:
-                    save_memory_to_file()
+                save_memory_to_file()
                 logger.info("✅ Final shutdown save completed successfully")
             
             end_time = asyncio.get_event_loop().time()
