@@ -151,7 +151,7 @@ class AttackRequest(UserActionRequest):
 class SabotageRequest(UserActionRequest):
     """Sabotage another user"""
     spy_count: int = 1
-    enemy_weapon: int = 1
+    enemy_weapon: int = -1
 
 
 class SpyRequest(UserActionRequest):

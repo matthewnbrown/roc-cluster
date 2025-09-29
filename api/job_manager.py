@@ -110,8 +110,8 @@ class JobManager:
                     },
                     "enemy_weapon": {
                         "type": "integer",
-                        "description": "Enemy weapon type to use (default: 1)",
-                        "default": 1
+                        "description": "Enemy weapon type to use (default: -1)",
+                        "default": -1
                     }
                 },
                 "output": {

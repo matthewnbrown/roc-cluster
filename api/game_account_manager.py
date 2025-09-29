@@ -407,18 +407,24 @@ class GameAccountManager:
         except Exception as e:
             return {"success": False, "error": str(e)}
     
-    async def sabotage(self, target_id: str, spy_count: int = 1, enemy_weapon: int = 1) -> Dict[str, Any]:
+    async def sabotage(self, target_id: str, spy_count: int = 1, enemy_weapon: int = -1) -> Dict[str, Any]:
         """Sabotage another user
         
         Args:
             target_id: The ID of the user to sabotage
             spy_count: Number of spies to send (default: 1)
-            enemy_weapon: Weapon ID to sabotage (default: 1)
+            enemy_weapon: Weapon ID to sabotage (default: -1)
             
         Returns:
             Dict containing success status and sabotage result or error message
         """
 
+        
+        if enemy_weapon is None or enemy_weapon == -1:
+            return {"success": False, "error": "Enemy weapon must be specified"}
+        
+        if spy_count is None or spy_count < 1 or spy_count > 25:
+            return {"success": False, "error": "Spy count must be between 1 and 25"}
         
         payload = {
             "defender_id": target_id,

@@ -45,7 +45,7 @@ class Settings:
     DB_POOL_RECYCLE: int = int(os.getenv("DB_POOL_RECYCLE", "3600"))  # 1 hour
     
     # Concurrency Control
-    MAX_CONCURRENT_OPERATIONS: int = int(os.getenv("MAX_CONCURRENT_OPERATIONS", "1000"))
+    MAX_CONCURRENT_OPERATIONS: int = int(os.getenv("MAX_CONCURRENT_OPERATIONS", "100"))
     
     # HTTP Connection Limits - Optimized for high concurrency
     HTTP_CONNECTION_LIMIT: int = int(os.getenv("HTTP_CONNECTION_LIMIT", "40"))
@@ -70,7 +70,7 @@ class Settings:
     CORS_ORIGINS: list = os.getenv("CORS_ORIGINS", "*").split(",")
     
     # Page Data Service
-    USE_PAGE_DATA_SERVICE: bool = os.getenv("USE_PAGE_DATA_SERVICE", "False").lower() == "false"
+    USE_PAGE_DATA_SERVICE: bool = os.getenv("USE_PAGE_DATA_SERVICE", "False").lower() == "true"
     
     @classmethod
     def get_database_url(cls) -> str:

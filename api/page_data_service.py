@@ -222,9 +222,8 @@ class PageDataService:
             result = await parser.parse(page.page_content, page.account_id, metadata)
             
             if result["success"]:
-                # Delete the record after successful processing
-                #db.delete(page)
-                logger.info(f"Successfully processed and deleted page {page.id} for account {page.account_id}")
+                db.delete(page)
+                #logger.info(f"Successfully processed and deleted page {page.id} for account {page.account_id}")
             else:
                 page.status = PageQueueStatus.FAILED
                 page.error_message = result.get("error", "Unknown parsing error")
