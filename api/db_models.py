@@ -165,7 +165,9 @@ class JobStep(Base):
     job_id = Column(Integer, ForeignKey("jobs.id"), nullable=False)
     step_order = Column(Integer, nullable=False)  # Order of execution within the job
     action_type = Column(String(50), nullable=False)  # attack, sabotage, spy, etc.
-    account_id = Column(Integer, ForeignKey("accounts.id"), nullable=False)
+    account_ids = Column(Text, nullable=False)  # JSON string of account IDs for multi-account execution
+    original_cluster_ids = Column(Text, nullable=True)  # JSON string of original cluster IDs for cloning
+    original_account_ids = Column(Text, nullable=True)  # JSON string of original direct account IDs for cloning
     target_id = Column(String(100), nullable=True)  # Target user ID for user actions
     parameters = Column(Text, nullable=True)  # JSON string of action parameters
     max_retries = Column(Integer, default=0, nullable=False)
@@ -178,7 +180,6 @@ class JobStep(Base):
     
     # Relationships
     job = relationship("Job", back_populates="steps")
-    account = relationship("Account")
 
 
 class Weapon(Base):

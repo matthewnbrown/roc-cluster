@@ -111,7 +111,7 @@ const AppContent: React.FC = () => {
         id: index,
         step_order: index + 1,
         action_type: step.action_type,
-        account_id: step.account_ids?.[0] || 0,
+        account_ids: step.account_ids || [],
         target_id: step.parameters?.target_id,
         parameters: step.parameters,
         max_retries: step.max_retries,

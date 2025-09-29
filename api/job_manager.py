@@ -421,12 +421,8 @@ class JobManager:
                     valid_types = self._get_valid_action_types()
                     raise ValueError(f"Invalid action_type '{action_type}'. Valid types are: {', '.join(valid_types)}")
             
-            # Calculate total steps after combining account_ids and cluster expansion
-            total_steps = 0
-            for step_data in steps:
-                # Get all account IDs from both direct account_ids and cluster expansion
-                all_account_ids = self._get_all_account_ids_for_step(step_data, db)
-                total_steps += len(all_account_ids)
+            # Calculate total steps - now one step per job step definition (combining all accounts/clusters)
+            total_steps = len(steps)
             
             # Create the job
             job = Job(
@@ -440,26 +436,27 @@ class JobManager:
             db.commit()
             db.refresh(job)
             
-            # Create job steps (combining account_ids and cluster expansion)
+            # Create job steps - one step per step definition, combining all accounts/clusters
             step_order = 1
             for step_data in steps:
                 # Get all account IDs from both direct account_ids and cluster expansion
                 all_account_ids = self._get_all_account_ids_for_step(step_data, db)
                 
-                # Create a step for each account
-                for account_id in all_account_ids:
-                    step = JobStep(
-                        job_id=job.id,
-                        step_order=step_order,
-                        action_type=step_data["action_type"],
-                        account_id=account_id,
-                        parameters=json.dumps(step_data.get("parameters", {})) if step_data.get("parameters") else None,
-                        max_retries=step_data.get("max_retries", 0),
-                        is_async=step_data.get("is_async", False),
-                        status=JobStatus.PENDING
-                    )
-                    db.add(step)
-                    step_order += 1
+                # Create one step that handles all accounts
+                step = JobStep(
+                    job_id=job.id,
+                    step_order=step_order,
+                    action_type=step_data["action_type"],
+                    account_ids=json.dumps(all_account_ids) if all_account_ids else "[]",
+                    original_cluster_ids=json.dumps(step_data.get("cluster_ids", [])) if step_data.get("cluster_ids") else None,
+                    original_account_ids=json.dumps(step_data.get("account_ids", [])) if step_data.get("account_ids") else None,
+                    parameters=json.dumps(step_data.get("parameters", {})) if step_data.get("parameters") else None,
+                    max_retries=step_data.get("max_retries", 0),
+                    is_async=step_data.get("is_async", False),
+                    status=JobStatus.PENDING
+                )
+                db.add(step)
+                step_order += 1
             
             db.commit()
             
@@ -582,7 +579,14 @@ class JobManager:
             self._init_job_progress(job_id, len(steps))
             
             # Bulk load accounts and cookies for all accounts in this job to optimize performance
-            account_ids = [step.account_id for step in steps]
+            all_account_ids = set()
+            for step in steps:
+                if step.account_ids:
+                    # Multi-account step
+                    step_account_ids = json.loads(step.account_ids)
+                    all_account_ids.update(step_account_ids)
+            
+            account_ids = list(all_account_ids)
             
             # Load both accounts and cookies in parallel for maximum performance
             bulk_accounts_task = self.account_manager.bulk_load_accounts(account_ids)
@@ -670,23 +674,12 @@ class JobManager:
             db.close()
     
     async def _execute_step(self, step: JobStep, db: Session, bulk_cookies: Optional[Dict[int, Dict[str, Any]]] = None, bulk_accounts: Optional[Dict[int, Account]] = None):
-        """Execute a single job step"""
+        """Execute a single job step - handles multiple accounts from clusters and direct account IDs"""
         step.status = JobStatus.RUNNING
         step.started_at = datetime.now(timezone.utc)
         db.commit()
         
         try:
-            # Get account from preloaded data or fallback to database
-            account = None
-            if bulk_accounts and step.account_id in bulk_accounts:
-                account = bulk_accounts[step.account_id]
-            else:
-                # Fallback to database query (should rarely happen now)
-                account = db.query(Account).filter(Account.id == step.account_id).first()
-            
-            if not account:
-                raise ValueError(f"Account {step.account_id} not found")
-            
             # Parse parameters
             parameters = {}
             if step.parameters:
@@ -695,28 +688,12 @@ class JobManager:
             # Convert string action_type to ActionType enum
             action_type_enum = self.account_manager.ActionType(step.action_type)
             
-            # Get preloaded cookies for this account if available
-            preloaded_cookies = None
-            if bulk_cookies and step.account_id in bulk_cookies:
-                preloaded_cookies = bulk_cookies[step.account_id]
+            # Get account IDs from the step
+            if not step.account_ids:
+                raise ValueError("Step must have account_ids")
             
-            # Prepare action parameters
-            action_params = {
-                "max_retries": step.max_retries,
-                "preloaded_cookies": preloaded_cookies,
-                "preloaded_account": account,
-                **parameters
-            }
-            
-            # Execute action using account manager
-            # Use bypass_semaphore=True for parallel execution to avoid semaphore bottleneck
-            result = await self.account_manager.execute_action(
-                id_type=AccountIdentifierType.ID,
-                id=step.account_id,
-                action=action_type_enum,
-                bypass_semaphore=False,  # Bypass semaphore for true parallel execution
-                **action_params
-            )
+            account_ids = json.loads(step.account_ids)
+            result = await self._execute_multi_account_step(account_ids, action_type_enum, parameters, step.max_retries, bulk_cookies, bulk_accounts)
             
             # Update step result
             step.status = JobStatus.COMPLETED if result.get("success", False) else JobStatus.FAILED
@@ -736,6 +713,113 @@ class JobManager:
             self._update_step_progress(step.job_id, step.status)
 
             raise
+    
+    async def _execute_multi_account_step(self, account_ids: List[int], action_type_enum, parameters: Dict[str, Any], max_retries: int, bulk_cookies: Optional[Dict[int, Dict[str, Any]]] = None, bulk_accounts: Optional[Dict[int, Account]] = None):
+        """Execute action for multiple accounts and consolidate results"""
+        if not account_ids:
+            return {"success": True, "message": "No accounts to process", "results": []}
+        
+        # Execute actions for all accounts in parallel
+        tasks = []
+        for account_id in account_ids:
+            task = asyncio.create_task(
+                self._execute_single_account_action(account_id, action_type_enum, parameters, max_retries, bulk_cookies, bulk_accounts)
+            )
+            tasks.append(task)
+        
+        # Wait for all tasks to complete
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # Consolidate results
+        successful_results = []
+        failed_results = []
+        total_success = 0
+        total_failed = 0
+        
+        for i, result in enumerate(results):
+            account_id = account_ids[i]
+            if isinstance(result, Exception):
+                failed_results.append({
+                    "account_id": account_id,
+                    "error": str(result),
+                    "success": False
+                })
+                total_failed += 1
+            else:
+                if result.get("success", False):
+                    successful_results.append({
+                        "account_id": account_id,
+                        "result": result,
+                        "success": True
+                    })
+                    total_success += 1
+                else:
+                    failed_results.append({
+                        "account_id": account_id,
+                        "error": result.get("error", "Unknown error"),
+                        "success": False
+                    })
+                    total_failed += 1
+        
+        # Determine overall success
+        overall_success = total_failed == 0
+        
+        # Create consolidated result
+        consolidated_result = {
+            "success": overall_success,
+            "total_accounts": len(account_ids),
+            "successful_accounts": total_success,
+            "failed_accounts": total_failed,
+            "successful_results": successful_results,
+            "failed_results": failed_results,
+            "message": f"Processed {len(account_ids)} accounts: {total_success} successful, {total_failed} failed"
+        }
+        
+        if not overall_success:
+            consolidated_result["error"] = f"{total_failed} out of {len(account_ids)} accounts failed"
+        
+        return consolidated_result
+    
+    async def _execute_single_account_action(self, account_id: int, action_type_enum, parameters: Dict[str, Any], max_retries: int, bulk_cookies: Optional[Dict[int, Dict[str, Any]]] = None, bulk_accounts: Optional[Dict[int, Account]] = None):
+        """Execute action for a single account"""
+        # Get account from preloaded data or fallback to database
+        account = None
+        if bulk_accounts and account_id in bulk_accounts:
+            account = bulk_accounts[account_id]
+        else:
+            # Fallback to database query (should rarely happen now)
+            db = SessionLocal()
+            try:
+                account = db.query(Account).filter(Account.id == account_id).first()
+            finally:
+                db.close()
+        
+        if not account:
+            raise ValueError(f"Account {account_id} not found")
+        
+        # Get preloaded cookies for this account if available
+        preloaded_cookies = None
+        if bulk_cookies and account_id in bulk_cookies:
+            preloaded_cookies = bulk_cookies[account_id]
+        
+        # Prepare action parameters
+        action_params = {
+            "max_retries": max_retries,
+            "preloaded_cookies": preloaded_cookies,
+            "preloaded_account": account,
+            **parameters
+        }
+        
+        # Execute action using account manager
+        result = await self.account_manager.execute_action(
+            id_type=AccountIdentifierType.ID,
+            id=account_id,
+            action=action_type_enum,
+            bypass_semaphore=False,
+            **action_params
+        )
+        
+        return result
     
     async def _execute_steps_sequential(self, steps: List[JobStep], db: Session, job: Job, bulk_cookies: Optional[Dict[int, Dict[str, Any]]] = None, bulk_accounts: Optional[Dict[int, Account]] = None):
         """Execute steps sequentially with support for async steps"""
@@ -875,11 +959,18 @@ class JobManager:
             db_steps = db.query(JobStep).filter(JobStep.job_id == job_id).order_by(JobStep.step_order).all()
             steps = []
             for step in db_steps:
+                # Parse account_ids and original IDs
+                account_ids = json.loads(step.account_ids) if step.account_ids else []
+                original_cluster_ids = json.loads(step.original_cluster_ids) if step.original_cluster_ids else None
+                original_account_ids = json.loads(step.original_account_ids) if step.original_account_ids else None
+                
                 step_response = JobStepResponse(
                     id=step.id,
                     step_order=step.step_order,
                     action_type=step.action_type,
-                    account_id=step.account_id,
+                    account_ids=account_ids,
+                    original_cluster_ids=original_cluster_ids,
+                    original_account_ids=original_account_ids,
                     target_id=step.target_id,
                     parameters=json.loads(step.parameters) if step.parameters else None,
                     max_retries=step.max_retries,

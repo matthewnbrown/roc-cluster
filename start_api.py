@@ -25,7 +25,7 @@ def main():
         "DEBUG": "False",
         "LOG_LEVEL": "INFO",
         "LOG_FILE": "",
-        "USE_IN_MEMORY_DB": "True",
+        "USE_IN_MEMORY_DB": "False",
         "AUTO_SAVE_ENABLED": "True",
         "AUTO_SAVE_INTERVAL": "300",
         "AUTO_SAVE_ONLY_CRITICAL": "False",

@@ -170,12 +170,22 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
         });
         
         if (existingStepIndex >= 0) {
-          // Combine account_ids if they're different
+          // Combine original account_ids and cluster_ids if they're different
           const existingAccountIds = acc[existingStepIndex].account_ids || [];
-          const newAccountId = step.account_id;
+          const existingClusterIds = acc[existingStepIndex].cluster_ids || [];
+          const newAccountIds = (step as any).original_account_ids || [];
+          const newClusterIds = (step as any).original_cluster_ids || [];
           
-          if (newAccountId && !existingAccountIds.includes(newAccountId)) {
-            acc[existingStepIndex].account_ids = [...existingAccountIds, newAccountId];
+          // Add any new account IDs that don't already exist
+          const uniqueNewAccountIds = newAccountIds.filter((id: number) => !existingAccountIds.includes(id));
+          if (uniqueNewAccountIds.length > 0) {
+            acc[existingStepIndex].account_ids = [...existingAccountIds, ...uniqueNewAccountIds];
+          }
+          
+          // Add any new cluster IDs that don't already exist
+          const uniqueNewClusterIds = newClusterIds.filter((id: number) => !existingClusterIds.includes(id));
+          if (uniqueNewClusterIds.length > 0) {
+            acc[existingStepIndex].cluster_ids = [...existingClusterIds, ...uniqueNewClusterIds];
           }
           
           // No need to update parameters for existing steps since they're already formatted
@@ -204,8 +214,8 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
           
           acc.push({
             action_type: step.action_type,
-            account_ids: step.account_id ? [step.account_id] : [],
-            cluster_ids: step.cluster_ids || [], // Preserve cluster_ids from the job being cloned
+            account_ids: (step as any).original_account_ids || [],
+            cluster_ids: (step as any).original_cluster_ids || [], // Use original cluster_ids for cloning
             max_retries: step.max_retries || 0,
             parameters: formParameters,
             originalParameters: step.parameters || {}, // Keep original parameters for comparison

@@ -369,7 +369,7 @@ const JobDetails: React.FC<JobDetailsProps> = ({ jobId, onBack }) => {
                           )}
                         </div>
                         <div className="text-sm text-gray-500 w-20 flex-shrink-0">
-                          Account {step.account_id}
+                          {step.account_ids.length} Account{step.account_ids.length !== 1 ? 's' : ''}
                         </div>
                         <div className="w-24 flex-shrink-0">
                           <span
@@ -462,7 +462,7 @@ const JobDetails: React.FC<JobDetailsProps> = ({ jobId, onBack }) => {
                           <h5 className="text-sm font-medium text-gray-900 mb-2">Step Details</h5>
                           <div className="space-y-2 text-sm">
                             <div><span className="font-medium">Action:</span> {step.action_type}</div>
-                            <div><span className="font-medium">Account:</span> {step.account_id}</div>
+                            <div><span className="font-medium">Accounts:</span> {step.account_ids.length} account{step.account_ids.length !== 1 ? 's' : ''}</div>
                             <div><span className="font-medium">Status:</span> {step.status}</div>
                             <div><span className="font-medium">Started:</span> {step.started_at ? formatDate(step.started_at) : 'Not started'}</div>
                             <div><span className="font-medium">Completed:</span> {step.completed_at ? formatDate(step.completed_at) : 'Not completed'}</div>

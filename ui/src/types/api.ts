@@ -152,7 +152,9 @@ export interface JobStepResponse {
   id: number;
   step_order: number;
   action_type: string;
-  account_id: number;
+  account_ids: number[];
+  original_cluster_ids?: number[]; // Original cluster IDs for cloning
+  original_account_ids?: number[]; // Original direct account IDs for cloning
   target_id?: string;
   parameters?: Record<string, any>;
   max_retries: number;
