@@ -11,7 +11,8 @@ import Button from './ui/Button';
 import Modal from './ui/Modal';
 import { Table, TableHeader, TableBody, TableRow, TableCell } from './ui/Table';
 import Pagination from './ui/Pagination';
-import { ArrowLeft, Edit, Trash2, Cookie, CreditCard, User, Mail, Calendar, Shield, Users, Plus, X, Settings, Info } from 'lucide-react';
+import { ArrowLeft, Edit, Trash2, Cookie, CreditCard, User, Mail, Calendar, Shield, Users, Plus, X, Settings, Info, Swords, Wrench } from 'lucide-react';
+import QuickActions from './QuickActions';
 import ClusterTag from './ui/ClusterTag';
 // Input import removed as it's not used in this component
 import AccountPreferences from './AccountPreferences';
@@ -33,6 +34,7 @@ const AccountDetails: React.FC<AccountDetailsProps> = ({
   const [cookiesText, setCookiesText] = useState('');
   const [addToClusterModalOpen, setAddToClusterModalOpen] = useState(false);
   const [creditSavingLoading, setCreditSavingLoading] = useState(false);
+  const [showQuickActions, setShowQuickActions] = useState(false);
 
   const { data: account, isLoading: accountLoading, error: accountError } = useAccount(accountId);
   const { data: cookies, isLoading: cookiesLoading, error: cookiesError } = useCookiesHook(accountId);
@@ -219,6 +221,10 @@ const AccountDetails: React.FC<AccountDetailsProps> = ({
         <Button onClick={() => onEditAccount(account)} className="flex items-center gap-2">
           <Edit className="h-4 w-4" />
           Edit Account
+        </Button>
+        <Button onClick={() => setShowQuickActions(true)} variant="secondary" className="flex items-center gap-2">
+          <Swords className="h-4 w-4" />
+          Quick Actions
         </Button>
       </div>
 
@@ -806,6 +812,16 @@ const AccountDetails: React.FC<AccountDetailsProps> = ({
             </Button>
           </div>
         </div>
+      </Modal>
+
+      {/* Quick Actions Modal */}
+      <Modal
+        isOpen={showQuickActions}
+        onClose={() => setShowQuickActions(false)}
+        title="Quick Actions"
+        size="lg"
+      >
+        <QuickActions accountId={accountId} onClose={() => setShowQuickActions(false)} />
       </Modal>
 
       {/* Add to Cluster Modal */}

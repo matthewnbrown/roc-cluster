@@ -285,6 +285,28 @@ export interface ActionResponse {
   timestamp: string;
 }
 
+// Additional Action Requests
+export interface SabotageRequest {
+  acting_user: AccountIdentifier;
+  max_retries?: number;
+  target_id: string; // enemy user id
+  spy_count: number;
+  enemy_weapon: number; // weapon id to target
+}
+
+export interface BuyUpgradeRequest {
+  acting_user: AccountIdentifier;
+  max_retries?: number;
+  upgrade_option: 'siege' | 'fortification' | 'covert' | 'recruiter';
+}
+
+export interface TrainingPurchaseRequest {
+  acting_user: AccountIdentifier;
+  max_retries?: number;
+  // Map of soldier_type_name -> quantity or structured orders
+  training_orders: Record<string, any>;
+}
+
 // Weapon Types
 export interface Weapon {
   id: number;

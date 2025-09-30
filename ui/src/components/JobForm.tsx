@@ -10,6 +10,7 @@ import Button from './ui/Button';
 import Input from './ui/Input';
 import Modal from './ui/Modal';
 import { Plus, Trash2, Users, User, ChevronDown, ChevronRight, EyeOff, Search, X, Star } from 'lucide-react';
+import FriendlyActionParameters from './FriendlyActionParameters';
 
 interface JobFormProps {
   isOpen: boolean;
@@ -277,13 +278,27 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
         parallel_execution: data.parallel_execution,
         steps: data.steps.map((step) => {
           // Filter out empty parameters and parse JSON objects
-          const filteredParameters = step.parameters 
+          let filteredParameters = step.parameters 
             ? Object.fromEntries(
                 Object.entries(step.parameters)
                   .filter(([_, value]) => 
                     value !== undefined && value !== null && value !== ''
                   )
                   .map(([key, value]) => {
+                    // Special handling for training_orders - parse from JSON string
+                    if (key === 'training_orders') {
+                      if (typeof value === 'object') {
+                        return [key, value];
+                      } else if (typeof value === 'string') {
+                        try {
+                          return [key, JSON.parse(value)];
+                        } catch (e) {
+                          console.warn('Failed to parse training_orders JSON:', e);
+                          return [key, value];
+                        }
+                      }
+                    }
+                    
                     // Check if this parameter should be parsed as JSON
                     const actionInfo = getActionTypeInfo(step.action_type);
                     const paramInfo = actionInfo?.parameter_details?.[key];
@@ -301,6 +316,25 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
               )
             : {};
 
+          // For purchase_training, only keep training_orders and remove other nested objects
+          if (step.action_type === 'purchase_training') {
+            const cleanParameters: Record<string, any> = {};
+            
+            // Keep only training_orders and other non-nested parameters
+            Object.entries(filteredParameters).forEach(([key, value]) => {
+              // Skip nested objects that are not training_orders
+              if (key === 'training_orders') {
+                cleanParameters[key] = value;
+              } else if (typeof value !== 'object' || value === null) {
+                // Keep primitive values
+                cleanParameters[key] = value;
+              }
+              // Skip nested objects like 'buy', 'train', 'untrain'
+            });
+            
+            filteredParameters = cleanParameters;
+          }
+
           return {
             action_type: step.action_type,
             account_ids: step.account_ids.length > 0 ? step.account_ids : undefined,
@@ -313,6 +347,7 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
       };
 
       console.log('Submitting job data:', jobData);
+      console.log('Raw form data:', data);
       await createJobMutation.mutateAsync(jobData);
       onClose();
     } catch (error) {
@@ -349,13 +384,27 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
         parallel_execution: data.parallel_execution,
         steps: data.steps.map((step) => {
           // Filter out empty parameters and parse JSON objects
-          const filteredParameters = step.parameters 
+          let filteredParameters = step.parameters 
             ? Object.fromEntries(
                 Object.entries(step.parameters)
                   .filter(([_, value]) => 
                     value !== undefined && value !== null && value !== ''
                   )
                   .map(([key, value]) => {
+                    // Special handling for training_orders - parse from JSON string
+                    if (key === 'training_orders') {
+                      if (typeof value === 'object') {
+                        return [key, value];
+                      } else if (typeof value === 'string') {
+                        try {
+                          return [key, JSON.parse(value)];
+                        } catch (e) {
+                          console.warn('Failed to parse training_orders JSON:', e);
+                          return [key, value];
+                        }
+                      }
+                    }
+                    
                     // Check if this parameter should be parsed as JSON
                     const actionInfo = getActionTypeInfo(step.action_type);
                     const paramInfo = actionInfo?.parameter_details?.[key];
@@ -372,6 +421,25 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
                   })
               )
             : {};
+
+          // For purchase_training, only keep training_orders and remove other nested objects
+          if (step.action_type === 'purchase_training') {
+            const cleanParameters: Record<string, any> = {};
+            
+            // Keep only training_orders and other non-nested parameters
+            Object.entries(filteredParameters).forEach(([key, value]) => {
+              // Skip nested objects that are not training_orders
+              if (key === 'training_orders') {
+                cleanParameters[key] = value;
+              } else if (typeof value !== 'object' || value === null) {
+                // Keep primitive values
+                cleanParameters[key] = value;
+              }
+              // Skip nested objects like 'buy', 'train', 'untrain'
+            });
+            
+            filteredParameters = cleanParameters;
+          }
 
           return {
             action_type: step.action_type,
@@ -1008,7 +1076,24 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
                               <h5 className="font-medium text-gray-900">Action Parameters</h5>
                               <div className="space-y-3">
                                 {(() => {
-                                  const actionInfo = getActionTypeInfo(watchedSteps[index].action_type);
+                                  const actionType = watchedSteps[index].action_type;
+                                  
+                                  // Check if we have friendly parameters for this action
+                                  const friendlyActions = ['buy_upgrade', 'sabotage', 'purchase_training', 'purchase_armory', 'set_credit_saving', 'update_armory_preferences'];
+                                  if (friendlyActions.includes(actionType)) {
+                                    return (
+                                      <FriendlyActionParameters 
+                                        actionType={actionType} 
+                                        stepIndex={index}
+                                        register={register}
+                                        setValue={setValue}
+                                        watch={watch}
+                                      />
+                                    );
+                                  }
+
+                                  // Fall back to generic parameter handling
+                                  const actionInfo = getActionTypeInfo(actionType);
                                   if (!actionInfo || !actionInfo.parameter_details) {
                                     return (
                                       <div className="text-sm text-gray-500 italic">

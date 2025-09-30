@@ -21,6 +21,9 @@ import {
   ActionType,
   SetCreditSavingRequest,
   ActionResponse,
+  SabotageRequest,
+  BuyUpgradeRequest,
+  TrainingPurchaseRequest,
   Weapon,
   ArmoryPreferences,
   ArmoryPreferencesCreate,
@@ -315,6 +318,24 @@ export const actionsApi = {
   // Set credit saving
   setCreditSaving: async (request: SetCreditSavingRequest): Promise<ActionResponse> => {
     const response: AxiosResponse<ActionResponse> = await api.post('/actions/set-credit-saving', request);
+    return response.data;
+  },
+
+  // Sabotage action
+  sabotage: async (request: SabotageRequest): Promise<ActionResponse> => {
+    const response: AxiosResponse<ActionResponse> = await api.post('/actions/sabotage', request);
+    return response.data;
+  },
+
+  // Buy upgrade action
+  buyUpgrade: async (request: BuyUpgradeRequest): Promise<ActionResponse> => {
+    const response: AxiosResponse<ActionResponse> = await api.post('/actions/buy-upgrade', request);
+    return response.data;
+  },
+
+  // Purchase training
+  purchaseTraining: async (request: TrainingPurchaseRequest): Promise<ActionResponse> => {
+    const response: AxiosResponse<ActionResponse> = await api.post('/actions/training-purchase', request);
     return response.data;
   },
 

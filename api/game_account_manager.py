@@ -826,22 +826,18 @@ class GameAccountManager:
         Args:
             training_orders: Dictionary with training orders in format:
                 {
-                    "buy[attack_soldiers]": "10",
-                    "buy[defense_soldiers]": "5",
-                    "buy[spies]": "3",
-                    "buy[sentries]": "2",
-                    "buy[attack_mercs]": "8",
-                    "buy[defense_mercs]": "4",
-                    "buy[untrained_mercs]": "6",
-                    "train[attack_soldiers]": "15",
-                    "train[defense_soldiers]": "10",
-                    "train[spies]": "5",
-                    "train[sentries]": "3",
-                    "untrain[attack_soldiers]": "2",
-                    "untrain[defense_soldiers]": "1",
-                    "untrain[attack_mercs]": "1",
-                    "untrain[defense_mercs]": "1",
-                    "untrain[untrained_mercs]": "1"
+                "train[attack_soldiers]": "",
+                "train[defense_soldiers]": "",
+                "train[spies]": "",
+                "train[sentries]": "13",
+                "buy[attack_mercs]": "",
+                "buy[defense_mercs]": "",
+                "buy[untrained_mercs]": "",
+                "untrain[attack_soldiers]": "",
+                "untrain[defense_soldiers]": "56",
+                "untrain[attack_mercs]": "",
+                "untrain[defense_mercs]": "",
+                "untrain[untrained_mercs]": "",
                 }
         
         Returns:
