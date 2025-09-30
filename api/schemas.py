@@ -383,6 +383,10 @@ class JobStepResponse(BaseModel):
     error_message: Optional[str] = None
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
+    total_accounts: int = 0
+    processed_accounts: int = 0
+    successful_accounts: int = 0
+    failed_accounts: int = 0
     
     class Config:
         exclude_none = True

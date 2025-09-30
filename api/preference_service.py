@@ -149,7 +149,7 @@ class PreferenceService:
             db.commit()
             
             logger.info(f"Updated armory preferences for account {account_id}")
-            return {"success": True, "message": "Armory preferences updated successfully"}
+            return {"success": True }
             
         except Exception as e:
             db.rollback()

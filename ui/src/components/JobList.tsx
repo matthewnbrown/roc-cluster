@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useJobs, useCancelJob } from '../hooks/useJobs';
+import { useJobs, useCancelJob, useJobProgress } from '../hooks/useJobs';
 import { JobResponse, JobStatus } from '../types/api';
 import { Table, TableHeader, TableBody, TableRow, TableCell } from './ui/Table';
 import Button from './ui/Button';
@@ -23,6 +23,26 @@ const JobList: React.FC<JobListProps> = ({ onViewJob, onCreateJob, onCloneJob })
 
   const { data: jobsData, isLoading, error } = useJobs(page, perPage, statusFilter || undefined);
   const cancelJobMutation = useCancelJob();
+
+  // Get progress data for all running/pending jobs
+  const runningJobs = jobsData?.jobs.filter(job => job.status === 'running' || job.status === 'pending') || [];
+  
+  // Create a map of job progress data
+  const jobProgressData: Record<number, any> = {};
+  
+  // Always call hooks in the same order - use enabled flag to control when they run
+  const progressQuery1 = useJobProgress(runningJobs[0]?.id || 0);
+  const progressQuery2 = useJobProgress(runningJobs[1]?.id || 0);
+  const progressQuery3 = useJobProgress(runningJobs[2]?.id || 0);
+  const progressQuery4 = useJobProgress(runningJobs[3]?.id || 0);
+  const progressQuery5 = useJobProgress(runningJobs[4]?.id || 0);
+  
+  // Populate the progress data map
+  if (progressQuery1.data && runningJobs[0]) jobProgressData[runningJobs[0].id] = progressQuery1.data;
+  if (progressQuery2.data && runningJobs[1]) jobProgressData[runningJobs[1].id] = progressQuery2.data;
+  if (progressQuery3.data && runningJobs[2]) jobProgressData[runningJobs[2].id] = progressQuery3.data;
+  if (progressQuery4.data && runningJobs[3]) jobProgressData[runningJobs[3].id] = progressQuery4.data;
+  if (progressQuery5.data && runningJobs[4]) jobProgressData[runningJobs[4].id] = progressQuery5.data;
 
   const handleCancelJob = async (job: JobResponse) => {
     if (window.confirm(`Are you sure you want to cancel job "${job.name}"?`)) {
@@ -85,6 +105,33 @@ const JobList: React.FC<JobListProps> = ({ onViewJob, onCreateJob, onCloneJob })
   const getProgressPercentage = (job: JobResponse) => {
     if (job.total_steps === 0) return 0;
     // Include both completed and failed steps as "finished" steps
+    const finishedSteps = job.completed_steps + job.failed_steps;
+    return Math.round((finishedSteps / job.total_steps) * 100);
+  };
+
+  const getAdvancedProgressPercentage = (job: JobResponse, progressData?: any) => {
+    if (job.total_steps === 0) return 0;
+    
+    // If we have progress data, calculate partial step progress
+    if (progressData?.steps && progressData.steps.length > 0) {
+      let totalProgress = 0;
+      
+      for (const step of progressData.steps) {
+        if (step.status === 'completed' || step.status === 'failed') {
+          // Completed/failed steps count as 100%
+          totalProgress += 100;
+        } else if (step.status === 'running' && step.total_accounts > 0) {
+          // Running steps count as partial progress
+          const stepProgress = (step.processed_accounts / step.total_accounts) * 100;
+          totalProgress += stepProgress;
+        }
+        // Pending steps count as 0%
+      }
+      
+      return Math.round(totalProgress / job.total_steps);
+    }
+    
+    // Fallback to simple step counting
     const finishedSteps = job.completed_steps + job.failed_steps;
     return Math.round((finishedSteps / job.total_steps) * 100);
   };
@@ -397,11 +444,11 @@ const JobList: React.FC<JobListProps> = ({ onViewJob, onCreateJob, onCloneJob })
                           <div className="flex-1 bg-gray-200 rounded-full h-2">
                             <div
                               className="bg-primary-600 h-2 rounded-full transition-all duration-300"
-                              style={{ width: `${getProgressPercentage(job)}%` }}
+                              style={{ width: `${getAdvancedProgressPercentage(job, jobProgressData[job.id])}%` }}
                             ></div>
                           </div>
                           <span className="text-xs text-gray-500 w-8">
-                            {getProgressPercentage(job)}%
+                            {getAdvancedProgressPercentage(job, jobProgressData[job.id])}%
                           </span>
                         </div>
                       </TableCell>
@@ -436,206 +483,16 @@ const JobList: React.FC<JobListProps> = ({ onViewJob, onCreateJob, onCloneJob })
                       <TableRow>
                         <TableCell colSpan={7} className="p-0">
                           <div className="bg-gray-50 border-t border-gray-200 p-6">
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                              {/* Job Overview */}
-                              <div className="space-y-4">
-                                <h4 className="font-medium text-gray-900">Job Overview</h4>
-                                <div className="space-y-2 text-sm">
-                                  <div>
-                                    <span className="font-medium text-gray-700">ID:</span>
-                                    <span className="ml-2 font-mono">{job.id}</span>
-                                  </div>
-                                  <div>
-                                    <span className="font-medium text-gray-700">Name:</span>
-                                    <span className="ml-2">{job.name}</span>
-                                  </div>
-                                  {job.description && (
-                                    <div>
-                                      <span className="font-medium text-gray-700">Description:</span>
-                                      <span className="ml-2">{job.description}</span>
-                                    </div>
-                                  )}
-                                  <div>
-                                    <span className="font-medium text-gray-700">Status:</span>
-                                    <span className={`ml-2 inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(job.status)}`}>
-                                      {getStatusIcon(job.status)}
-                                      {job.status.charAt(0).toUpperCase() + job.status.slice(1)}
-                                    </span>
-                                  </div>
-                                  <div>
-                                    <span className="font-medium text-gray-700">Parallel Execution:</span>
-                                    <span className="ml-2">{job.parallel_execution ? 'Yes' : 'No'}</span>
-                                  </div>
-                                </div>
-                              </div>
-
-                              {/* Progress & Timing */}
-                              <div className="space-y-4">
-                                <h4 className="font-medium text-gray-900">Progress & Timing</h4>
-                                <div className="space-y-2 text-sm">
-                                  <div>
-                                    <span className="font-medium text-gray-700">Progress:</span>
-                                    <div className="mt-1 flex items-center space-x-2">
-                                      <div className="flex-1 bg-gray-200 rounded-full h-2">
-                                        <div
-                                          className="bg-primary-600 h-2 rounded-full transition-all duration-300"
-                                          style={{ width: `${getProgressPercentage(job)}%` }}
-                                        ></div>
-                                      </div>
-                                      <span className="text-xs text-gray-500 w-8">
-                                        {getProgressPercentage(job)}%
-                                      </span>
-                                    </div>
-                                  </div>
-                                  <div>
-                                    <span className="font-medium text-gray-700">Steps:</span>
-                                    <span className="ml-2">{job.completed_steps + job.failed_steps}/{job.total_steps}</span>
-                                    {job.failed_steps > 0 && (
-                                      <span className="text-red-600 ml-1">({job.failed_steps} failed)</span>
-                                    )}
-                                  </div>
-                                  <div>
-                                    <span className="font-medium text-gray-700">Created:</span>
-                                    <span className="ml-2">{formatDate(job.created_at)}</span>
-                                  </div>
-                                  {job.started_at && (
-                                    <div>
-                                      <span className="font-medium text-gray-700">Started:</span>
-                                      <span className="ml-2">{formatDate(job.started_at)}</span>
-                                    </div>
-                                  )}
-                                  {job.completed_at && (
-                                    <div>
-                                      <span className="font-medium text-gray-700">Completed:</span>
-                                      <span className="ml-2">{formatDate(job.completed_at)}</span>
-                                    </div>
-                                  )}
-                                  {job.started_at && job.completed_at && (
-                                    <div>
-                                      <span className="font-medium text-gray-700">Duration:</span>
-                                      <span className="ml-2">
-                                        {Math.round(
-                                          (new Date(job.completed_at).getTime() - new Date(job.started_at).getTime()) / 1000
-                                        )}s
-                                      </span>
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-
-                              {/* Actions & Error */}
-                              <div className="space-y-4">
-                                <h4 className="font-medium text-gray-900">Actions & Status</h4>
-                                <div className="space-y-2 text-sm">
-                                  <div className="flex items-center space-x-2">
-                                    <Button
-                                      variant="secondary"
-                                      size="sm"
-                                      onClick={() => onViewJob(job)}
-                                      className="flex items-center gap-2"
-                                    >
-                                      <Eye className="h-4 w-4" />
-                                      View Full Details
-                                    </Button>
-                                    <Button
-                                      variant="secondary"
-                                      size="sm"
-                                      onClick={() => onCloneJob(job)}
-                                      className="flex items-center gap-2"
-                                    >
-                                      <Copy className="h-4 w-4" />
-                                      Clone Job
-                                    </Button>
-                                  </div>
-                                  {(job.status === 'pending' || job.status === 'running') && (
-                                    <div className="flex items-center space-x-2">
-                                      <Button
-                                        variant="secondary"
-                                        size="sm"
-                                        onClick={() => handleCancelJob(job)}
-                                        className="text-red-600 hover:text-red-700"
-                                        loading={cancelJobMutation.isLoading}
-                                      >
-                                        <X className="h-4 w-4 mr-1" />
-                                        Cancel Job
-                                      </Button>
-                                    </div>
-                                  )}
-                                  {job.error_message && (
-                                    <div>
-                                      <span className="font-medium text-gray-700">Error:</span>
-                                      <div className="mt-1 p-2 bg-red-50 border border-red-200 rounded text-red-700 text-xs">
-                                        {job.error_message}
-                                      </div>
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-
-                            </div>
-                            
-                            {/* Action Results - Full Width Section */}
-                            {job.steps && job.steps.length > 0 && (
-                              <div className="mt-6 space-y-4">
-                                <div className="flex items-center justify-between">
-                                  <h4 className="font-medium text-gray-900">Action Results</h4>
-                                  <div className="flex items-center space-x-2">
-                                    <Search className="h-4 w-4 text-gray-400" />
-                                    <Input
-                                      type="text"
-                                      placeholder="Search messages & errors..."
-                                      value={actionResultsSearch[job.id] || ''}
-                                      onChange={(e) => setActionResultsSearch(prev => ({
-                                        ...prev,
-                                        [job.id]: e.target.value
-                                      }))}
-                                      className="w-64 text-sm"
-                                    />
-                                  </div>
-                                </div>
-                                <div className="space-y-4">
-                                  {job.steps.map((step, stepIndex) => (
-                                    <div key={step.id} className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                                      <div className="mb-3">
-                                        <div className="flex items-center space-x-2 mb-1">
-                                          <span className="font-mono text-sm text-gray-500">#{step.step_order}</span>
-                                          <span className="font-medium text-base text-gray-900 truncate flex-1" title={step.action_type}>
-                                            {step.action_type}
-                                          </span>
-                                          <span
-                                            className={`inline-flex items-center gap-1 px-3 py-1 text-sm font-semibold rounded-full flex-shrink-0 ${
-                                              step.status === 'completed' ? 'bg-green-100 text-green-800' :
-                                              step.status === 'failed' ? 'bg-red-100 text-red-800' :
-                                              step.status === 'running' ? 'bg-blue-100 text-blue-800' :
-                                              'bg-gray-100 text-gray-800'
-                                            }`}
-                                          >
-                                            {step.status.charAt(0).toUpperCase() + step.status.slice(1)}
-                                          </span>
-                                        </div>
-                                        <div className="text-sm text-gray-500">
-                                          {step.account_ids.length} account{step.account_ids.length !== 1 ? 's' : ''} • {step.is_async ? 'Async' : 'Sync'}
-                                        </div>
-                                      </div>
-                                      
-                                      {/* Action Summary */}
-                                      {step.result && step.result.summary && (
-                                        <div className="bg-blue-50 border border-blue-200 rounded p-4">
-                                          {renderActionSummary(step.result.summary, actionResultsSearch[job.id] || '')}
-                                        </div>
-                                      )}
-                                      
-                                      {/* Error Display */}
-                                      {step.error_message && (
-                                        <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded text-red-700 text-sm">
-                                          {step.error_message}
-                                        </div>
-                                      )}
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
+                            <JobExpandedDetails 
+                              job={job} 
+                              onViewJob={onViewJob}
+                              onCloneJob={onCloneJob}
+                              handleCancelJob={handleCancelJob}
+                              cancelJobMutation={cancelJobMutation}
+                              actionResultsSearch={actionResultsSearch}
+                              setActionResultsSearch={setActionResultsSearch}
+                              renderActionSummary={renderActionSummary}
+                            />
                           </div>
                         </TableCell>
                       </TableRow>
@@ -649,12 +506,371 @@ const JobList: React.FC<JobListProps> = ({ onViewJob, onCreateJob, onCloneJob })
       </div>
 
       {/* Pagination */}
-      {jobsData && jobsData.total_pages > 1 && (
+      {jobsData && jobsData.total > perPage && (
         <Pagination
           currentPage={page}
-          totalPages={jobsData.total_pages}
+          totalPages={Math.ceil(jobsData.total / perPage)}
           onPageChange={setPage}
         />
+      )}
+    </div>
+  );
+};
+
+// Separate component for expanded job details with progress tracking
+const JobExpandedDetails: React.FC<{ 
+  job: JobResponse; 
+  onViewJob: (job: JobResponse) => void;
+  onCloneJob: (job: JobResponse) => void;
+  handleCancelJob: (job: JobResponse) => void;
+  cancelJobMutation: any;
+  actionResultsSearch: {[jobId: number]: string};
+  setActionResultsSearch: React.Dispatch<React.SetStateAction<{[jobId: number]: string}>>;
+  renderActionSummary: (summary: any, searchTerm: string) => React.ReactNode;
+}> = ({ 
+  job, 
+  onViewJob, 
+  onCloneJob, 
+  handleCancelJob, 
+  cancelJobMutation, 
+  actionResultsSearch, 
+  setActionResultsSearch, 
+  renderActionSummary 
+}) => {
+  const { data: progressData, isLoading: progressLoading, error: progressError } = useJobProgress(job.id);
+  
+  // Debug logging
+  console.log(`Job ${job.id} progress:`, {
+    progressData,
+    progressLoading,
+    progressError,
+    jobStatus: job.status
+  });
+  
+  // Helper functions
+  const getStatusIcon = (status: JobStatus) => {
+    switch (status) {
+      case 'pending':
+        return <Clock className="h-4 w-4 text-yellow-500" />;
+      case 'running':
+        return <AlertCircle className="h-4 w-4 text-blue-500" />;
+      case 'completed':
+        return <CheckCircle className="h-4 w-4 text-green-500" />;
+      case 'failed':
+        return <XCircle className="h-4 w-4 text-red-500" />;
+      case 'cancelled':
+        return <Pause className="h-4 w-4 text-gray-500" />;
+      default:
+        return <AlertCircle className="h-4 w-4 text-gray-500" />;
+    }
+  };
+
+  const getStatusColor = (status: JobStatus) => {
+    switch (status) {
+      case 'pending':
+        return 'bg-yellow-100 text-yellow-800';
+      case 'running':
+        return 'bg-blue-100 text-blue-800';
+      case 'completed':
+        return 'bg-green-100 text-green-800';
+      case 'failed':
+        return 'bg-red-100 text-red-800';
+      case 'cancelled':
+        return 'bg-gray-100 text-gray-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  const getProgressPercentage = (job: JobResponse) => {
+    if (job.total_steps === 0) return 0;
+    // Include both completed and failed steps as "finished" steps
+    const finishedSteps = job.completed_steps + job.failed_steps;
+    return Math.round((finishedSteps / job.total_steps) * 100);
+  };
+
+  const getAdvancedProgressPercentage = (job: JobResponse, progressData?: any) => {
+    if (job.total_steps === 0) return 0;
+    
+    // If we have progress data, calculate partial step progress
+    if (progressData?.steps && progressData.steps.length > 0) {
+      let totalProgress = 0;
+      
+      for (const step of progressData.steps) {
+        if (step.status === 'completed' || step.status === 'failed') {
+          // Completed/failed steps count as 100%
+          totalProgress += 100;
+        } else if (step.status === 'running' && step.total_accounts > 0) {
+          // Running steps count as partial progress
+          const stepProgress = (step.processed_accounts / step.total_accounts) * 100;
+          totalProgress += stepProgress;
+        }
+        // Pending steps count as 0%
+      }
+      
+      return Math.round(totalProgress / job.total_steps);
+    }
+    
+    // Fallback to simple step counting
+    const finishedSteps = job.completed_steps + job.failed_steps;
+    return Math.round((finishedSteps / job.total_steps) * 100);
+  };
+  
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {/* Job Overview */}
+        <div className="space-y-4">
+          <h4 className="font-medium text-gray-900">Job Overview</h4>
+          <div className="space-y-2 text-sm">
+            <div>
+              <span className="font-medium text-gray-700">ID:</span>
+              <span className="ml-2 font-mono">{job.id}</span>
+            </div>
+            <div>
+              <span className="font-medium text-gray-700">Name:</span>
+              <span className="ml-2">{job.name}</span>
+            </div>
+            {job.description && (
+              <div>
+                <span className="font-medium text-gray-700">Description:</span>
+                <span className="ml-2">{job.description}</span>
+              </div>
+            )}
+            <div>
+              <span className="font-medium text-gray-700">Status:</span>
+              <span className={`ml-2 inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(job.status)}`}>
+                {getStatusIcon(job.status)}
+                {job.status.charAt(0).toUpperCase() + job.status.slice(1)}
+              </span>
+            </div>
+            <div>
+              <span className="font-medium text-gray-700">Parallel Execution:</span>
+              <span className="ml-2">{job.parallel_execution ? 'Yes' : 'No'}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Progress & Timing */}
+        <div className="space-y-4">
+          <h4 className="font-medium text-gray-900">Progress & Timing</h4>
+          <div className="space-y-2 text-sm">
+            <div>
+              <span className="font-medium text-gray-700">Progress:</span>
+              <div className="mt-1 flex items-center space-x-2">
+                <div className="flex-1 bg-gray-200 rounded-full h-2">
+                  <div
+                    className="bg-primary-600 h-2 rounded-full transition-all duration-300"
+                    style={{ width: `${getAdvancedProgressPercentage(job, progressData)}%` }}
+                  ></div>
+                </div>
+                <span className="text-xs text-gray-500 w-8">
+                  {getAdvancedProgressPercentage(job, progressData)}%
+                </span>
+              </div>
+            </div>
+            <div>
+              <span className="font-medium text-gray-700">Steps:</span>
+              <span className="ml-2">{job.completed_steps + job.failed_steps}/{job.total_steps}</span>
+              {job.failed_steps > 0 && (
+                <span className="text-red-600 ml-1">({job.failed_steps} failed)</span>
+              )}
+            </div>
+            <div>
+              <span className="font-medium text-gray-700">Created:</span>
+              <span className="ml-2">{formatDate(job.created_at)}</span>
+            </div>
+            {job.started_at && (
+              <div>
+                <span className="font-medium text-gray-700">Started:</span>
+                <span className="ml-2">{formatDate(job.started_at)}</span>
+              </div>
+            )}
+            {job.completed_at && (
+              <div>
+                <span className="font-medium text-gray-700">Completed:</span>
+                <span className="ml-2">{formatDate(job.completed_at)}</span>
+              </div>
+            )}
+            {job.started_at && job.completed_at && (
+              <div>
+                <span className="font-medium text-gray-700">Duration:</span>
+                <span className="ml-2">
+                  {Math.round(
+                    (new Date(job.completed_at).getTime() - new Date(job.started_at).getTime()) / 1000
+                  )}s
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Actions & Status */}
+        <div className="space-y-4">
+          <h4 className="font-medium text-gray-900">Actions & Status</h4>
+          <div className="space-y-2 text-sm">
+            <div className="flex items-center space-x-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => onViewJob(job)}
+                className="flex items-center gap-2"
+              >
+                <Eye className="h-4 w-4" />
+                View Full Details
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => onCloneJob(job)}
+                className="flex items-center gap-2"
+              >
+                <Copy className="h-4 w-4" />
+                Clone Job
+              </Button>
+            </div>
+            {(job.status === 'pending' || job.status === 'running') && (
+              <div className="flex items-center space-x-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => handleCancelJob(job)}
+                  className="text-red-600 hover:text-red-700"
+                  loading={cancelJobMutation.isLoading}
+                >
+                  <X className="h-4 w-4 mr-1" />
+                  Cancel Job
+                </Button>
+              </div>
+            )}
+            {job.error_message && (
+              <div>
+                <span className="font-medium text-gray-700">Error:</span>
+                <div className="mt-1 p-2 bg-red-50 border border-red-200 rounded text-red-700 text-xs">
+                  {job.error_message}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+      
+      {/* Action Results - Full Width Section */}
+      {job.steps && job.steps.length > 0 && (
+        <div className="mt-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <h4 className="font-medium text-gray-900">Action Results</h4>
+            <div className="flex items-center space-x-2">
+              <Search className="h-4 w-4 text-gray-400" />
+              <Input
+                type="text"
+                placeholder="Search messages & errors..."
+                value={actionResultsSearch[job.id] || ''}
+                onChange={(e) => setActionResultsSearch(prev => ({
+                  ...prev,
+                  [job.id]: e.target.value
+                }))}
+                className="w-64 text-sm"
+              />
+            </div>
+          </div>
+          <div className="space-y-4">
+            {job.steps.map((step, stepIndex) => {
+              // Get real-time progress data for this step by matching step ID
+              const progressStep = progressData?.steps?.find(ps => ps.id === step.id);
+              const stepData = progressStep || step;
+              
+              // Debug logging
+              console.log(`Step ${stepIndex} (ID: ${step.id}):`, {
+                stepId: step.id,
+                stepData,
+                progressStep,
+                progressDataSteps: progressData?.steps,
+                progressDataStepsLength: progressData?.steps?.length,
+                progressDataStepAtIndex: progressData?.steps?.[stepIndex],
+                total_accounts: stepData.total_accounts,
+                processed_accounts: stepData.processed_accounts,
+                status: stepData.status,
+                isUsingProgressData: !!progressStep
+              });
+              
+              return (
+              <div key={step.id} className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                <div className="mb-3">
+                  <div className="flex items-center space-x-2 mb-1">
+                    <span className="font-mono text-sm text-gray-500">#{step.step_order}</span>
+                    <span className="font-medium text-base text-gray-900 truncate flex-1" title={step.action_type}>
+                      {step.action_type}
+                    </span>
+                    <span
+                      className={`inline-flex items-center gap-1 px-3 py-1 text-sm font-semibold rounded-full flex-shrink-0 ${
+                        stepData.status === 'completed' ? 'bg-green-100 text-green-800' :
+                        stepData.status === 'failed' ? 'bg-red-100 text-red-800' :
+                        stepData.status === 'running' ? 'bg-blue-100 text-blue-800' :
+                        'bg-gray-100 text-gray-800'
+                      }`}
+                    >
+                      {stepData.status.charAt(0).toUpperCase() + stepData.status.slice(1)}
+                    </span>
+                  </div>
+                  <div className="text-sm text-gray-500">
+                    {stepData.total_accounts > 0 ? (
+                      <div className="space-y-1">
+                        <div>
+                          {stepData.processed_accounts}/{stepData.total_accounts} accounts processed • {step.is_async ? 'Async' : 'Sync'}
+                        </div>
+                        {/* Always show progress bar for debugging */}
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div 
+                            className="bg-blue-600 h-2 rounded-full transition-all duration-300" 
+                            style={{ width: `${stepData.total_accounts > 0 ? (stepData.processed_accounts / stepData.total_accounts) * 100 : 0}%` }}
+                          ></div>
+                        </div>
+                        <div className="text-xs text-gray-500">
+                          Progress: {stepData.processed_accounts || 0}/{stepData.total_accounts || 0} ({stepData.total_accounts > 0 ? Math.round((stepData.processed_accounts / stepData.total_accounts) * 100) : 0}%)
+                        </div>
+                        {stepData.successful_accounts > 0 || stepData.failed_accounts > 0 ? (
+                          <div className="text-xs text-gray-400">
+                            ✓ {stepData.successful_accounts} successful • ✗ {stepData.failed_accounts} failed
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <div>
+                        {step.account_ids.length} account{step.account_ids.length !== 1 ? 's' : ''} • {step.is_async ? 'Async' : 'Sync'}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                
+                {/* Action Summary */}
+                {step.result && step.result.summary && (
+                  <div className="bg-blue-50 border border-blue-200 rounded p-4">
+                    {renderActionSummary(step.result.summary, actionResultsSearch[job.id] || '')}
+                  </div>
+                )}
+                
+                {/* Error Display */}
+                {step.error_message && (
+                  <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded text-red-700 text-sm">
+                    {step.error_message}
+                  </div>
+                )}
+              </div>
+            );
+            })}
+          </div>
+        </div>
       )}
     </div>
   );

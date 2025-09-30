@@ -177,6 +177,10 @@ class JobStep(Base):
     error_message = Column(Text, nullable=True)  # Error message if step failed
     started_at = Column(DateTime(timezone=True), nullable=True)
     completed_at = Column(DateTime(timezone=True), nullable=True)
+    total_accounts = Column(Integer, default=0, nullable=False)  # Total number of accounts in this step
+    processed_accounts = Column(Integer, default=0, nullable=False)  # Number of accounts processed so far
+    successful_accounts = Column(Integer, default=0, nullable=False)  # Number of successful account operations
+    failed_accounts = Column(Integer, default=0, nullable=False)  # Number of failed account operations
     
     # Relationships
     job = relationship("Job", back_populates="steps")

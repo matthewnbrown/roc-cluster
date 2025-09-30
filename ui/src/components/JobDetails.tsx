@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useJob, useCancelJob } from '../hooks/useJobs';
+import { useJob, useCancelJob, useJobProgress } from '../hooks/useJobs';
 import { JobResponse, JobStatus } from '../types/api';
 import Button from './ui/Button';
 import { Table, TableHeader, TableBody, TableRow, TableCell } from './ui/Table';
@@ -14,6 +14,7 @@ const JobDetails: React.FC<JobDetailsProps> = ({ jobId, onBack }) => {
   const [showSteps, setShowSteps] = useState(true);
   const [expandedSteps, setExpandedSteps] = useState<Set<number>>(new Set());
   const { data: job, isLoading, error } = useJob(jobId, true);
+  const { data: progressData } = useJobProgress(jobId);
   const cancelJobMutation = useCancelJob();
 
   const handleCancelJob = async () => {
@@ -537,7 +538,12 @@ const JobDetails: React.FC<JobDetailsProps> = ({ jobId, onBack }) => {
           <h4 className="text-md font-medium text-gray-900 mb-4">Job Steps</h4>
           {job.steps && job.steps.length > 0 ? (
             <div className="space-y-3">
-              {job.steps.map((step, index) => (
+              {(progressData?.steps || job.steps || []).map((step, index) => {
+                // Use progress data if available, otherwise fall back to job data
+                const stepData = progressData?.steps?.[index] || step;
+                // Always use original step for fields not in progress data
+                const originalStep = job.steps?.[index] || step;
+                return (
                 <div key={step.id} className="border border-gray-200 rounded-lg">
                   {/* Step Summary Row - Clickable */}
                   <div 
@@ -551,69 +557,83 @@ const JobDetails: React.FC<JobDetailsProps> = ({ jobId, onBack }) => {
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="font-medium text-gray-900 truncate">{step.action_type}</div>
-                          {step.parameters && Object.keys(step.parameters).length > 0 && (
+                          {(originalStep as any).parameters && Object.keys((originalStep as any).parameters).length > 0 && (
                             <div className="text-sm text-gray-500 truncate">
-                              {Object.entries(step.parameters).slice(0, 2).map(([key, value]) => (
+                              {Object.entries((originalStep as any).parameters).slice(0, 2).map(([key, value]) => (
                                 <span key={key} className="mr-2">
                                   {key}: {typeof value === 'object' && value !== null ? JSON.stringify(value) : String(value)}
                                 </span>
                               ))}
-                              {Object.keys(step.parameters).length > 2 && (
-                                <span className="text-gray-400">+{Object.keys(step.parameters).length - 2} more</span>
+                              {Object.keys((originalStep as any).parameters).length > 2 && (
+                                <span className="text-gray-400">+{Object.keys((originalStep as any).parameters).length - 2} more</span>
                               )}
                             </div>
                           )}
                         </div>
                         <div className="text-sm text-gray-500 w-20 flex-shrink-0">
-                          {step.account_ids.length} Account{step.account_ids.length !== 1 ? 's' : ''}
+                          {stepData.total_accounts > 0 ? (
+                            <div className="text-center">
+                              <div>{stepData.processed_accounts}/{stepData.total_accounts}</div>
+                              {stepData.status === 'running' && stepData.total_accounts > 0 && (
+                                <div className="w-full bg-gray-200 rounded-full h-1 mt-1">
+                                  <div 
+                                    className="bg-blue-600 h-1 rounded-full transition-all duration-300" 
+                                    style={{ width: `${(stepData as any).progress_percentage || (stepData.processed_accounts / stepData.total_accounts * 100)}%` }}
+                                  ></div>
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <div>{(originalStep as any).account_ids.length} Account{(originalStep as any).account_ids.length !== 1 ? 's' : ''}</div>
+                          )}
                         </div>
                         <div className="w-24 flex-shrink-0">
                           <span
-                            className={`inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-full ${getStepStatusColor(step.status)}`}
+                            className={`inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-full ${getStepStatusColor(stepData.status as any)}`}
                           >
-                            {getStepStatusIcon(step.status)}
-                            {step.status.charAt(0).toUpperCase() + step.status.slice(1)}
+                            {getStepStatusIcon(stepData.status as any)}
+                            {stepData.status.charAt(0).toUpperCase() + stepData.status.slice(1)}
                           </span>
                         </div>
                         <div className="text-sm text-gray-500 w-28 flex-shrink-0">
-                          {step.started_at && step.completed_at ? (
+                          {(originalStep as any).started_at && (originalStep as any).completed_at ? (
                             (() => {
-                              const startTime = new Date(step.started_at).getTime();
-                              const endTime = new Date(step.completed_at).getTime();
+                              const startTime = new Date((originalStep as any).started_at).getTime();
+                              const endTime = new Date((originalStep as any).completed_at).getTime();
                               if (isNaN(startTime) || isNaN(endTime)) return 'Invalid';
                               const duration = endTime - startTime;
                               return duration < 0 ? '0.00s' : `${(duration / 1000).toFixed(2)}s`;
                             })()
-                          ) : step.started_at ? (
+                          ) : (originalStep as any).started_at ? (
                             'Running...'
                           ) : (
                             '-'
                           )}
                         </div>
                         <div className="w-32 flex-shrink-0">
-                          {step.error_message ? (
-                            <div className="text-red-600 text-xs truncate" title={step.error_message}>
-                              Error: {step.error_message.length > 20 ? `${step.error_message.substring(0, 20)}...` : step.error_message}
+                          {(originalStep as any).error_message ? (
+                            <div className="text-red-600 text-xs truncate" title={(originalStep as any).error_message}>
+                              Error: {(originalStep as any).error_message.length > 20 ? `${(originalStep as any).error_message.substring(0, 20)}...` : (originalStep as any).error_message}
                             </div>
-                          ) : step.result ? (
+                          ) : (originalStep as any).result ? (
                             <div className="text-green-600 text-xs truncate">
-                              {typeof step.result === 'object' && step.result !== null ? 
+                              {typeof (originalStep as any).result === 'object' && (originalStep as any).result !== null ? 
                                 (() => {
-                                  const keys = Object.keys(step.result);
+                                  const keys = Object.keys((originalStep as any).result);
                                   if (keys.length === 0) return 'No data';
                                   
                                   // Check for message field first
-                                  if (step.result.message) {
-                                    const message = String(step.result.message);
+                                  if ((originalStep as any).result.message) {
+                                    const message = String((originalStep as any).result.message);
                                     return message.length > 20 ? 
                                       `${message.substring(0, 20)}...` : 
                                       message;
                                   }
                                   
                                   // Check for data field
-                                  if (step.result.data) {
-                                    if (typeof step.result.data === 'object') {
-                                      const dataKeys = Object.keys(step.result.data);
+                                  if ((originalStep as any).result.data) {
+                                    if (typeof (originalStep as any).result.data === 'object') {
+                                      const dataKeys = Object.keys((originalStep as any).result.data);
                                       return dataKeys.length > 0 ? 
                                         `${dataKeys.length} data fields` : 
                                         'Empty data';
@@ -622,8 +642,8 @@ const JobDetails: React.FC<JobDetailsProps> = ({ jobId, onBack }) => {
                                   }
                                   
                                   // Check for success field
-                                  if (step.result.success !== undefined) {
-                                    return step.result.success ? 'Success' : 'Failed';
+                                  if ((originalStep as any).result.success !== undefined) {
+                                    return (originalStep as any).result.success ? 'Success' : 'Failed';
                                   }
                                   
                                   return 'Completed';
@@ -658,15 +678,18 @@ const JobDetails: React.FC<JobDetailsProps> = ({ jobId, onBack }) => {
                           <h5 className="text-sm font-medium text-gray-900 mb-2">Step Details</h5>
                           <div className="space-y-2 text-sm">
                             <div><span className="font-medium">Action:</span> {step.action_type}</div>
-                            <div><span className="font-medium">Accounts:</span> {step.account_ids.length} account{step.account_ids.length !== 1 ? 's' : ''}</div>
-                            <div><span className="font-medium">Execution:</span> {step.is_async ? 'Asynchronous' : 'Synchronous'}</div>
-                            <div><span className="font-medium">Status:</span> {step.status}</div>
-                            <div><span className="font-medium">Started:</span> {step.started_at ? formatDate(step.started_at) : 'Not started'}</div>
-                            <div><span className="font-medium">Completed:</span> {step.completed_at ? formatDate(step.completed_at) : 'Not completed'}</div>
-                            {step.started_at && step.completed_at && (
+                              <div><span className="font-medium">Accounts:</span> {stepData.total_accounts > 0 ? `${stepData.processed_accounts}/${stepData.total_accounts} processed` : `${(originalStep as any).account_ids.length} account${(originalStep as any).account_ids.length !== 1 ? 's' : ''}`}</div>
+                            {stepData.total_accounts > 0 && (stepData.successful_accounts > 0 || stepData.failed_accounts > 0) && (
+                              <div><span className="font-medium">Results:</span> ✓ {stepData.successful_accounts} successful • ✗ {stepData.failed_accounts} failed</div>
+                            )}
+                            <div><span className="font-medium">Execution:</span> {(originalStep as any).is_async ? 'Asynchronous' : 'Synchronous'}</div>
+                            <div><span className="font-medium">Status:</span> {stepData.status}</div>
+                            <div><span className="font-medium">Started:</span> {(originalStep as any).started_at ? formatDate((originalStep as any).started_at) : 'Not started'}</div>
+                            <div><span className="font-medium">Completed:</span> {(originalStep as any).completed_at ? formatDate((originalStep as any).completed_at) : 'Not completed'}</div>
+                            {(originalStep as any).started_at && (originalStep as any).completed_at && (
                               <div><span className="font-medium">Duration:</span> {(() => {
-                                const startTime = new Date(step.started_at).getTime();
-                                const endTime = new Date(step.completed_at).getTime();
+                                const startTime = new Date((originalStep as any).started_at).getTime();
+                                const endTime = new Date((originalStep as any).completed_at).getTime();
                                 if (isNaN(startTime) || isNaN(endTime)) return 'Invalid';
                                 const duration = endTime - startTime;
                                 return duration < 0 ? '0.00s' : `${(duration / 1000).toFixed(2)}s`;
@@ -676,9 +699,9 @@ const JobDetails: React.FC<JobDetailsProps> = ({ jobId, onBack }) => {
                         </div>
                         <div>
                           <h5 className="text-sm font-medium text-gray-900 mb-2">Parameters</h5>
-                          {step.parameters && Object.keys(step.parameters).length > 0 ? (
+                          {(originalStep as any).parameters && Object.keys((originalStep as any).parameters).length > 0 ? (
                             <div className="space-y-1 text-sm">
-                              {Object.entries(step.parameters).map(([key, value]) => (
+                              {Object.entries((originalStep as any).parameters).map(([key, value]) => (
                                 <div key={key}>
                                   <span className="font-medium">{key}:</span> {typeof value === 'object' && value !== null ? JSON.stringify(value, null, 2) : String(value)}
                                 </div>
@@ -691,29 +714,29 @@ const JobDetails: React.FC<JobDetailsProps> = ({ jobId, onBack }) => {
                       </div>
                       
                       {/* Action Summary */}
-                      {step.result && step.result.summary && (
+                      {(originalStep as any).result && (originalStep as any).result.summary && (
                         <div className="mt-4">
                           <h5 className="text-sm font-medium text-gray-900 mb-2">Action Summary</h5>
                           <div className="bg-blue-50 border border-blue-200 rounded p-3">
-                            {renderActionSummary(step.result.summary)}
+                            {renderActionSummary((originalStep as any).result.summary)}
                           </div>
                         </div>
                       )}
                       
                       {/* Result/Error Details */}
-                      {(step.result || step.error_message) && (
+                      {((originalStep as any).result || (originalStep as any).error_message) && (
                         <div className="mt-4">
                           <h5 className="text-sm font-medium text-gray-900 mb-2">Result</h5>
-                          {step.error_message ? (
+                          {(originalStep as any).error_message ? (
                             <div className="bg-red-50 border border-red-200 rounded p-3">
                               <div className="text-red-700 text-sm font-medium mb-1">Error</div>
-                              <div className="text-red-600 text-sm break-words">{step.error_message}</div>
+                              <div className="text-red-600 text-sm break-words">{(originalStep as any).error_message}</div>
                             </div>
-                          ) : step.result ? (
+                          ) : (originalStep as any).result ? (
                             <div className="bg-green-50 border border-green-200 rounded p-3">
                               <div className="text-green-700 text-sm font-medium mb-2">Success Response</div>
                               <pre className="text-green-600 text-sm whitespace-pre-wrap break-words max-h-40 overflow-y-auto bg-white border border-green-300 rounded p-2">
-                                {JSON.stringify(step.result, null, 2)}
+                                {JSON.stringify((originalStep as any).result, null, 2)}
                               </pre>
                             </div>
                           ) : null}
@@ -722,7 +745,8 @@ const JobDetails: React.FC<JobDetailsProps> = ({ jobId, onBack }) => {
                     </div>
                   )}
                 </div>
-              ))}
+                );
+              })}
             </div>
           ) : (
             <div className="py-8 text-center text-gray-500">

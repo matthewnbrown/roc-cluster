@@ -26,6 +26,7 @@ class JobManager:
         self._running_jobs: Dict[int, asyncio.Task] = {}
         # In-memory job progress tracking for real-time updates
         self._job_progress = {}  # {job_id: {"completed": int, "failed": int, "total": int}}
+        self._step_progress = {}  # {step_id: {"total_accounts": int, "processed_accounts": int, "successful_accounts": int, "failed_accounts": int}}
     
     def _init_job_progress(self, job_id: int, total_steps: int):
         """Initialize in-memory progress tracking for a job"""
@@ -53,6 +54,38 @@ class JobManager:
         """Clean up in-memory progress when job is complete"""
         if job_id in self._job_progress:
             del self._job_progress[job_id]
+    
+    def _init_step_progress(self, step_id: int, total_accounts: int):
+        """Initialize in-memory progress tracking for a step"""
+        self._step_progress[step_id] = {
+            "total_accounts": total_accounts,
+            "processed_accounts": 0,
+            "successful_accounts": 0,
+            "failed_accounts": 0
+        }
+    
+    def _update_step_progress_in_memory(self, step_id: int, processed_accounts: int, successful_accounts: int, failed_accounts: int):
+        """Update step progress in memory for real-time updates"""
+        if step_id in self._step_progress:
+            self._step_progress[step_id].update({
+                "processed_accounts": processed_accounts,
+                "successful_accounts": successful_accounts,
+                "failed_accounts": failed_accounts
+            })
+    
+    def _get_step_progress(self, step_id: int) -> Dict[str, int]:
+        """Get current step progress from memory"""
+        return self._step_progress.get(step_id, {
+            "total_accounts": 0,
+            "processed_accounts": 0,
+            "successful_accounts": 0,
+            "failed_accounts": 0
+        })
+    
+    def _cleanup_step_progress(self, step_id: int):
+        """Clean up in-memory step progress when step is complete"""
+        if step_id in self._step_progress:
+            del self._step_progress[step_id]
     
     def get_job_progress(self, job_id: int) -> Dict[str, int]:
         """Get current job progress for API endpoints"""
@@ -693,7 +726,7 @@ class JobManager:
                 raise ValueError("Step must have account_ids")
             
             account_ids = json.loads(step.account_ids)
-            result = await self._execute_multi_account_step(account_ids, action_type_enum, parameters, step.max_retries, bulk_cookies, bulk_accounts)
+            result = await self._execute_multi_account_step(account_ids, action_type_enum, parameters, step.max_retries, step, bulk_cookies, bulk_accounts)
             
             # Update step result
             step.status = JobStatus.COMPLETED if result.get("success", False) else JobStatus.FAILED
@@ -704,6 +737,9 @@ class JobManager:
             # Update in-memory progress for real-time tracking
             self._update_step_progress(step.job_id, step.status)
             
+            # Clean up in-memory step progress when step is complete
+            self._cleanup_step_progress(step.id)
+            
         except Exception as e:
             logger.error(f"Error executing step {step.id}: {e}", exc_info=True)
             step.status = JobStatus.FAILED
@@ -712,102 +748,130 @@ class JobManager:
             
             # Update in-memory progress for real-time tracking
             self._update_step_progress(step.job_id, step.status)
+            
+            # Clean up in-memory step progress when step fails
+            self._cleanup_step_progress(step.id)
 
             raise
     
-    async def _execute_multi_account_step(self, account_ids: List[int], action_type_enum, parameters: Dict[str, Any], max_retries: int, bulk_cookies: Optional[Dict[int, Dict[str, Any]]] = None, bulk_accounts: Optional[Dict[int, Account]] = None):
+    async def _execute_multi_account_step(self, account_ids: List[int], action_type_enum, parameters: Dict[str, Any], max_retries: int, step: JobStep = None, bulk_cookies: Optional[Dict[int, Dict[str, Any]]] = None, bulk_accounts: Optional[Dict[int, Account]] = None):
         """Execute action for multiple accounts and consolidate results"""
         if not account_ids:
             return {"success": True, "message": "No accounts to process", "results": []}
         
-        # Execute actions for all accounts in parallel
+        # Initialize step progress if step is provided
+        if step:
+            step.total_accounts = len(account_ids)
+            step.processed_accounts = 0
+            step.successful_accounts = 0
+            step.failed_accounts = 0
+            # Initialize in-memory progress tracking
+            self._init_step_progress(step.id, step.total_accounts)
+        
+        # Execute actions for all accounts in parallel with real-time progress updates
         tasks = []
         for account_id in account_ids:
             task = asyncio.create_task(
                 self._execute_single_account_action(account_id, action_type_enum, parameters, max_retries, bulk_cookies, bulk_accounts)
             )
+            # Store account_id as an attribute on the task for later retrieval
+            task.account_id = account_id
             tasks.append(task)
         
-        # Wait for all tasks to complete
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        
-        # Consolidate results
+        # Process results as they complete for real-time progress updates
         successful_results = []
         failed_results = []
         total_success = 0
         total_failed = 0
         account_messages = {}
         
-        for i, result in enumerate(results):
-            account_id = account_ids[i]
-            if account_id is None:
-                logger.warning(f"Account ID is None at index {i} in account_ids: {account_ids}")
-                continue
+        # Use asyncio.as_completed to process results as they finish
+        for completed_task in asyncio.as_completed(tasks):
+            try:
+                result = await completed_task
+                # Get the account_id from the original task
+                # Find the original task that corresponds to this completed task
+                account_id = None
+                for task in tasks:
+                    if task.done() and not hasattr(task, '_processed'):
+                        account_id = task.account_id
+                        task._processed = True  # Mark as processed
+                        break
                 
-            if isinstance(result, Exception):
-                failed_results.append({
-                    "account_id": account_id,
-                    "error": str(result),
-                    "success": False
-                })
-                total_failed += 1
-            else:
-                # Check for messages in the result (both old "message" and new "messages" formats)
-                messages = result.get("messages", [])
-                if not messages and result.get("message"):
-                    # Convert old single message format to array
-                    messages = [result.get("message")]
+                if account_id is None:
+                    logger.warning(f"Could not find account_id for completed task")
+                    continue
                 
-                if messages:
-                    # Handle both list and string messages
-                    if isinstance(messages, str):
-                        messages = [messages]
-                    elif not isinstance(messages, list):
-                        messages = [str(messages)]
-                    
-                    logger.info(f"Processing messages for account {account_id}: {messages}")
-                    
-                    if messages:  # Only process if we have actual messages
-                        # Get account username for the message key
-                        account = None
-                        if bulk_accounts and account_id in bulk_accounts:
-                            account = bulk_accounts[account_id]
-                        else:
-                            # Fallback to database query if not in bulk_accounts
-                            db = SessionLocal()
-                            try:
-                                account = db.query(Account).filter(Account.id == account_id).first()
-                            finally:
-                                db.close()
-                        
-                        if account:
-                            account_messages[account.username] = messages
-                            logger.info(f"Added messages for username {account.username}: {messages}")
-                        else:
-                            logger.warning(f"Could not find account for account_id {account_id} when processing messages")
+                # Update step progress in memory only
+                if step:
+                    step.processed_accounts += 1
+                    # Store progress in memory for real-time updates
+                    self._update_step_progress_in_memory(step.id, step.processed_accounts, step.successful_accounts, step.failed_accounts)
                 
-                if result.get("success", False):
-                    successful_results.append({
-                        "account_id": account_id,
-                        "result": result,
-                        "success": True
-                    })
-                    total_success += 1
-                else:
-                    # Handle both old "error" format and new "errors" array format
-                    errors = result.get("errors", [])
-                    if not errors and result.get("error"):
-                        # Convert old single error format to array
-                        errors = [result.get("error")]
-                    if not errors:
-                        errors = ["Unknown error"]
-                    
+                # Process the result
+                if isinstance(result, Exception):
                     failed_results.append({
                         "account_id": account_id,
-                        "errors": errors,
+                        "error": str(result),
                         "success": False
                     })
                     total_failed += 1
+                    if step:
+                        step.failed_accounts += 1
+                        # Update progress in memory only
+                        self._update_step_progress_in_memory(step.id, step.processed_accounts, step.successful_accounts, step.failed_accounts)
+                else:
+                    # Check for messages in the result (both old "message" and new "messages" formats)
+                    messages = result.get("messages", [])
+                    if not messages and result.get("message"):
+                        # Convert old single message format to array
+                        messages = [result.get("message")]
+                    
+                    if messages:
+                        # Find account username for message attribution
+                        account = bulk_accounts.get(account_id) if bulk_accounts else None
+                        if account and hasattr(account, 'username'):
+                            account_messages[account.username] = messages
+                        else:
+                            # Fallback to account_id if username not available
+                            account_messages[str(account_id)] = messages
+                        logger.info(f"Account {account_id} returned {len(messages)} messages")
+                    
+                    if result.get("success", False):
+                        successful_results.append({
+                            "account_id": account_id,
+                            "result": result,
+                            "success": True
+                        })
+                        total_success += 1
+                        if step:
+                            step.successful_accounts += 1
+                            # Update progress in memory only
+                            self._update_step_progress_in_memory(step.id, step.processed_accounts, step.successful_accounts, step.failed_accounts)
+                    else:
+                        # Handle both old "error" format and new "errors" array format
+                        errors = result.get("errors", [])
+                        if not errors and result.get("error"):
+                            # Convert old single error format to array
+                            errors = [result.get("error")]
+                        if not errors:
+                            errors = ["Unknown error"]
+                        
+                        failed_results.append({
+                            "account_id": account_id,
+                            "errors": errors,
+                            "success": False
+                        })
+                        total_failed += 1
+                        if step:
+                            step.failed_accounts += 1
+                            
+            except Exception as e:
+                logger.error(f"Error processing completed task: {e}", exc_info=True)
+                # Still need to update progress even if there's an error
+                if step:
+                    step.processed_accounts += 1
+                    step.failed_accounts += 1
         
         # Determine overall success
         overall_success = total_failed == 0
@@ -880,7 +944,7 @@ class JobManager:
         }
         
         if account_messages:
-            logger.info(f"Summary created with {len(account_messages)} account messages: {list(account_messages.keys())}")
+            logger.info(f"Summary created with {len(account_messages)} account messages")
         
         # Action-specific summaries
         if action_type == "attack":
@@ -1366,7 +1430,11 @@ class JobManager:
                     result=json.loads(step.result) if step.result else None,
                     error_message=step.error_message,
                     started_at=step.started_at,
-                    completed_at=step.completed_at
+                    completed_at=step.completed_at,
+                    total_accounts=step.total_accounts,
+                    processed_accounts=step.processed_accounts,
+                    successful_accounts=step.successful_accounts,
+                    failed_accounts=step.failed_accounts
                 )
                 steps.append(step_response)
         

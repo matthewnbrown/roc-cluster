@@ -5,13 +5,14 @@ Job endpoints for managing asynchronous bulk operations
 from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Optional
 import logging
+from datetime import datetime, timezone
 
 from api.schemas import (
     JobCreateRequest, JobResponse, JobListResponse, JobCancelRequest,
     JobStatusEnum
 )
 from api.job_manager import JobManager
-from api.db_models import JobStatus
+from api.db_models import JobStatus, JobStep
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -214,4 +215,81 @@ async def get_job_status(
         raise
     except Exception as e:
         logger.error(f"Error getting job status {job_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get("/{job_id}/progress")
+async def get_job_progress(
+    job_id: int,
+    manager: JobManager = Depends(get_job_manager)
+):
+    """Get job progress with step details (lightweight endpoint)"""
+    try:
+        job = await manager.get_job(job_id, include_steps=True)
+        if not job:
+            raise HTTPException(status_code=404, detail="Job not found")
+        
+        # Get real-time progress from in-memory tracking if available
+        real_time_progress = manager.get_job_progress(job_id)
+        
+        # Use in-memory progress if available, otherwise fall back to database values
+        if real_time_progress["total"] > 0:
+            completed_steps = real_time_progress["completed"]
+            failed_steps = real_time_progress["failed"]
+            total_steps = real_time_progress["total"]
+        else:
+            completed_steps = job.completed_steps
+            failed_steps = job.failed_steps
+            total_steps = job.total_steps
+        
+        # Extract step progress information - get real-time data from memory
+        step_progress = []
+        if job.steps:
+            for step in job.steps:
+                # Get real-time step progress from memory
+                memory_progress = manager._get_step_progress(step.id)
+                if memory_progress["total_accounts"] > 0:
+                    # Use in-memory progress data
+                    step_progress.append({
+                        "id": step.id,
+                        "step_order": step.step_order,
+                        "action_type": step.action_type,
+                        "status": step.status.value,
+                        "total_accounts": memory_progress["total_accounts"],
+                        "processed_accounts": memory_progress["processed_accounts"],
+                        "successful_accounts": memory_progress["successful_accounts"],
+                        "failed_accounts": memory_progress["failed_accounts"],
+                        "progress_percentage": round((memory_progress["processed_accounts"] / memory_progress["total_accounts"] * 100) if memory_progress["total_accounts"] > 0 else 0, 2)
+                    })
+                else:
+                    # Fallback to database data if no memory progress
+                    step_progress.append({
+                        "id": step.id,
+                        "step_order": step.step_order,
+                        "action_type": step.action_type,
+                        "status": step.status.value,
+                        "total_accounts": step.total_accounts,
+                        "processed_accounts": step.processed_accounts,
+                        "successful_accounts": step.successful_accounts,
+                        "failed_accounts": step.failed_accounts,
+                        "progress_percentage": round((step.processed_accounts / step.total_accounts * 100) if step.total_accounts > 0 else 0, 2)
+                    })
+        
+        return {
+            "job_id": job.id,
+            "status": job.status,
+            "progress": {
+                "total_steps": total_steps,
+                "completed_steps": completed_steps,
+                "failed_steps": failed_steps,
+                "percentage": round((completed_steps / total_steps * 100) if total_steps > 0 else 0, 2)
+            },
+            "steps": step_progress,
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting job progress {job_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")

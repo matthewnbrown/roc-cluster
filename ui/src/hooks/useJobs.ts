@@ -23,7 +23,7 @@ export const useJobs = (page: number = 1, perPage: number = 20, status?: string,
       refetchInterval: (data) => {
         // Only auto-refresh if there are running or pending jobs on the current page
         if (data?.jobs && data.jobs.some(job => job.status === 'running' || job.status === 'pending')) {
-          return 1000; // Refetch every 1 seconds if there are active jobs
+          return 1000; // Refetch every 5 seconds if there are active jobs
         }
         return false; // Don't refetch if no active jobs
       },
@@ -39,9 +39,9 @@ export const useJob = (id: number, includeSteps: boolean = false) => {
     {
       enabled: !!id,
       refetchInterval: (data) => {
-        // Refetch every 2 seconds if job is running or pending
+        // Refetch every 3 seconds if job is running or pending
         if (data && (data.status === 'running' || data.status === 'pending')) {
-          return 2000; // Refetch every 2 seconds
+          return 3000; // Refetch every 3 seconds
         }
         return false; // Don't refetch if completed, failed, or cancelled
       },
@@ -57,8 +57,26 @@ export const useJobStatus = (id: number) => {
     {
       enabled: !!id,
       refetchInterval: (data) => {
-        // Refetch every 2 seconds if job is running
+        // Refetch every 3 seconds if job is running
         if (data?.status === 'running' || data?.status === 'pending') {
+          return 3000;
+        }
+        return false;
+      },
+    }
+  );
+};
+
+// Get job progress with step details (lightweight)
+export const useJobProgress = (id: number) => {
+  return useQuery(
+    [...jobKeys.all, 'progress', id],
+    () => jobsApi.getJobProgress(id),
+    {
+      enabled: !!id,
+      refetchInterval: (data) => {
+        // Refetch every 2 seconds if job is running or pending, or if no data yet
+        if (!data || data?.status === 'running' || data?.status === 'pending') {
           return 2000;
         }
         return false;

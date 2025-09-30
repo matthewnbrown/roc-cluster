@@ -165,6 +165,10 @@ export interface JobStepResponse {
   started_at?: string;
   completed_at?: string;
   cluster_ids?: number[]; // Added to support cluster selection in favorites
+  total_accounts: number;
+  processed_accounts: number;
+  successful_accounts: number;
+  failed_accounts: number;
 }
 
 export interface JobResponse {
