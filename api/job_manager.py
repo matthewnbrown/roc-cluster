@@ -467,7 +467,7 @@ class JobManager:
             return await self._job_to_response(job.id, db)
             
         except Exception as e:
-            logger.error(f"Error creating job: {e}")
+            logger.error(f"Error creating job: {e}", exc_info=True)
             db.rollback()
             raise
         finally:
@@ -485,7 +485,7 @@ class JobManager:
         finally:
             db.close()
     
-    async def list_jobs(self, status: Optional[JobStatus] = None, page: int = 1, per_page: int = 20) -> Dict[str, Any]:
+    async def list_jobs(self, status: Optional[JobStatus] = None, page: int = 1, per_page: int = 20, include_steps: bool = False) -> Dict[str, Any]:
         """List jobs with optional filtering"""
         db = SessionLocal()
         try:
@@ -501,7 +501,7 @@ class JobManager:
             
             job_responses = []
             for job in jobs:
-                job_responses.append(await self._job_to_response(job.id, db))
+                job_responses.append(await self._job_to_response(job.id, db, include_steps))
             
             return {
                 "jobs": job_responses,
@@ -551,7 +551,7 @@ class JobManager:
             return True
             
         except Exception as e:
-            logger.error(f"Error cancelling job {job_id}: {e}")
+            logger.error(f"Error cancelling job {job_id}: {e}", exc_info=True)
             db.rollback()
             return False
         finally:
@@ -661,7 +661,7 @@ class JobManager:
             self._cleanup_job_progress(job_id)
                 
         except Exception as e:
-            logger.error(f"Error executing job {job_id}: {e}")
+            logger.error(f"Error executing job {job_id}: {e}", exc_info=True)
             if job:
                 job.status = JobStatus.FAILED
                 job.error_message = str(e)
@@ -705,6 +705,7 @@ class JobManager:
             self._update_step_progress(step.job_id, step.status)
             
         except Exception as e:
+            logger.error(f"Error executing step {step.id}: {e}", exc_info=True)
             step.status = JobStatus.FAILED
             step.error_message = str(e)
             step.completed_at = datetime.now(timezone.utc)
@@ -735,9 +736,14 @@ class JobManager:
         failed_results = []
         total_success = 0
         total_failed = 0
+        account_messages = {}
         
         for i, result in enumerate(results):
             account_id = account_ids[i]
+            if account_id is None:
+                logger.warning(f"Account ID is None at index {i} in account_ids: {account_ids}")
+                continue
+                
             if isinstance(result, Exception):
                 failed_results.append({
                     "account_id": account_id,
@@ -746,6 +752,40 @@ class JobManager:
                 })
                 total_failed += 1
             else:
+                # Check for messages in the result (both old "message" and new "messages" formats)
+                messages = result.get("messages", [])
+                if not messages and result.get("message"):
+                    # Convert old single message format to array
+                    messages = [result.get("message")]
+                
+                if messages:
+                    # Handle both list and string messages
+                    if isinstance(messages, str):
+                        messages = [messages]
+                    elif not isinstance(messages, list):
+                        messages = [str(messages)]
+                    
+                    logger.info(f"Processing messages for account {account_id}: {messages}")
+                    
+                    if messages:  # Only process if we have actual messages
+                        # Get account username for the message key
+                        account = None
+                        if bulk_accounts and account_id in bulk_accounts:
+                            account = bulk_accounts[account_id]
+                        else:
+                            # Fallback to database query if not in bulk_accounts
+                            db = SessionLocal()
+                            try:
+                                account = db.query(Account).filter(Account.id == account_id).first()
+                            finally:
+                                db.close()
+                        
+                        if account:
+                            account_messages[account.username] = messages
+                            logger.info(f"Added messages for username {account.username}: {messages}")
+                        else:
+                            logger.warning(f"Could not find account for account_id {account_id} when processing messages")
+                
                 if result.get("success", False):
                     successful_results.append({
                         "account_id": account_id,
@@ -754,9 +794,17 @@ class JobManager:
                     })
                     total_success += 1
                 else:
+                    # Handle both old "error" format and new "errors" array format
+                    errors = result.get("errors", [])
+                    if not errors and result.get("error"):
+                        # Convert old single error format to array
+                        errors = [result.get("error")]
+                    if not errors:
+                        errors = ["Unknown error"]
+                    
                     failed_results.append({
                         "account_id": account_id,
-                        "error": result.get("error", "Unknown error"),
+                        "errors": errors,
                         "success": False
                     })
                     total_failed += 1
@@ -764,21 +812,360 @@ class JobManager:
         # Determine overall success
         overall_success = total_failed == 0
         
+        # Create action-specific summary
+        summary = self._create_action_summary(action_type_enum, successful_results, failed_results, account_messages)
+        
         # Create consolidated result
         consolidated_result = {
             "success": overall_success,
             "total_accounts": len(account_ids),
             "successful_accounts": total_success,
             "failed_accounts": total_failed,
-            "successful_results": successful_results,
-            "failed_results": failed_results,
+            "summary": summary,
             "message": f"Processed {len(account_ids)} accounts: {total_success} successful, {total_failed} failed"
         }
+        
+        # Add messages if any accounts returned messages
+        if account_messages:
+            consolidated_result["messages"] = account_messages
+            logger.info(f"Added {len(account_messages)} account messages to consolidated result")
         
         if not overall_success:
             consolidated_result["error"] = f"{total_failed} out of {len(account_ids)} accounts failed"
         
         return consolidated_result
+    
+    def _create_action_summary(self, action_type_enum, successful_results: List[Dict], failed_results: List[Dict], account_messages: Dict[str, List[str]] = None) -> Dict[str, Any]:
+        """Create action-specific summary based on action type"""
+        action_type = action_type_enum.value if hasattr(action_type_enum, 'value') else str(action_type_enum)
+        
+        # Create error list with usernames
+        error_list = []
+        if failed_results:
+            db = SessionLocal()
+            try:
+                for result in failed_results:
+                    account_id = result.get("account_id")
+                    if account_id is None:
+                        logger.warning(f"Failed result missing account_id: {result}")
+                        continue
+                    
+                    account = db.query(Account).filter(Account.id == account_id).first()
+                    username = account.username if account else f"Account {account_id}"
+                    
+                    # Handle both old single error and new errors array format
+                    errors = result.get("errors", [])
+                    if not errors and result.get("error"):
+                        errors = [result.get("error")]
+                    if not errors:
+                        errors = ["Unknown error"]
+                    
+                    error_list.append({
+                        "username": username,
+                        "account_id": account_id,
+                        "errors": errors
+                    })
+            except Exception as e:
+                logger.error(f"Error creating error list: {e}", exc_info=True)
+            finally:
+                db.close()
+        
+        # Base summary structure
+        summary = {
+            "action_type": action_type,
+            "successes": len(successful_results),
+            "failed": len(failed_results),
+            "error_list": error_list,
+            "messages": account_messages if account_messages else {}
+        }
+        
+        if account_messages:
+            logger.info(f"Summary created with {len(account_messages)} account messages: {list(account_messages.keys())}")
+        
+        # Action-specific summaries
+        if action_type == "attack":
+            summary.update(self._summarize_attack_results(successful_results))
+        elif action_type == "sabotage":
+            summary.update(self._summarize_sabotage_results(successful_results))
+        elif action_type == "spy":
+            summary.update(self._summarize_spy_results(successful_results))
+        elif action_type == "send_credits":
+            summary.update(self._summarize_send_credits_results(successful_results))
+        elif action_type == "recruit":
+            summary.update(self._summarize_recruit_results(successful_results))
+        elif action_type == "purchase_armory":
+            summary.update(self._summarize_purchase_armory_results(successful_results))
+        elif action_type == "purchase_training":
+            summary.update(self._summarize_purchase_training_results(successful_results))
+        elif action_type == "become_officer":
+            summary.update(self._summarize_become_officer_results(successful_results))
+        elif action_type == "get_metadata":
+            summary.update(self._summarize_get_metadata_results(successful_results))
+        else:
+            # Generic summary for other action types
+            summary.update(self._summarize_generic_results(successful_results))
+        
+        return summary
+    
+    def _summarize_attack_results(self, successful_results: List[Dict]) -> Dict[str, Any]:
+        """Summarize attack action results"""
+        summary = {
+            "battle_wins": 0,
+            "battle_losses": 0,
+            "protection_buffs": 0,
+            "maxed_hits": 0,
+            "runs_away": 0,
+            "gold_won": 0,
+            "troops_killed": 0,
+            "troops_lost": 0,
+            "soldiers_killed": 0,  # Keep for backward compatibility
+            "soldiers_lost": 0,    # Keep for backward compatibility
+            "total_retries": 0
+        }
+        
+        for result in successful_results:
+            result_data = result.get("result", {})
+            if isinstance(result_data, dict):
+                # Extract battle results - handle both old and new formats
+                if result_data.get("win") or result_data.get("battle_won"):
+                    summary["battle_wins"] += 1
+                elif result_data.get("loss") or result_data.get("battle_lost"):
+                    summary["battle_losses"] += 1
+                elif result_data.get("protection_buff"):
+                    summary["protection_buffs"] += 1
+                elif result_data.get("maxed_hits"):
+                    summary["maxed_hits"] += 1
+                elif result_data.get("runs_away"):
+                    summary["runs_away"] += 1
+                
+                # Sum up resources - handle both old and new field names
+                summary["gold_won"] += result_data.get("gold_won", 0)
+                summary["troops_killed"] += result_data.get("troops_killed", 0)
+                summary["troops_lost"] += result_data.get("troops_lost", 0)
+                summary["soldiers_killed"] += result_data.get("soldiers_killed", 0)  # Backward compatibility
+                summary["soldiers_lost"] += result_data.get("soldiers_lost", 0)      # Backward compatibility
+                summary["total_retries"] += result_data.get("retries", 0)
+        
+        return summary
+    
+    def _summarize_sabotage_results(self, successful_results: List[Dict]) -> Dict[str, Any]:
+        """Summarize sabotage action results"""
+        summary = {
+            "sabotages_successful": 0,
+            "sabotages_defended": 0,
+            "weapons_destroyed": 0,
+            "total_damage_dealt": 0,
+            "maxed_sab_attempts": 0,
+            "total_retries": 0,
+            "sabotages_failed": 0,
+            "weapon_damage_cost": 0
+        }
+        
+        for result in successful_results:
+            result_data = result.get("result", {})
+            if isinstance(result_data, dict):
+                summary["total_retries"] += result_data.get("retries", 0)
+                if result_data.get("success"):
+                    summary["sabotages_successful"] += 1
+                    summary["total_damage_dealt"] += result_data.get("damage_dealt", 0)
+                    summary["weapons_destroyed"] += result_data.get("weapons_destroyed", 0)
+                    summary["maxed_sab_attempts"] += result_data.get("maxed_sab_attempts", 0)
+                    summary["sabotages_defended"] += result_data.get("sabotages_defended", 0)
+                    summary["weapon_damage_cost"] += result_data.get("weapon_damage_cost", 0)
+                else:
+                    summary["sabotages_failed"] += 1
+        
+        return summary
+    
+    def _summarize_spy_results(self, successful_results: List[Dict]) -> Dict[str, Any]:
+        """Summarize spy action results"""
+        summary = {
+            "spies_successful": 0,
+            "spies_successful_data": 0,
+            "spies_caught": 0,
+            "spies_failed": 0,
+            "maxed_spy_attempts": 0,
+            "total_retries": 0
+        }
+        
+        for result in successful_results:
+            result_data = result.get("result", {})
+            if isinstance(result_data, dict):
+                summary["total_retries"] += result_data.get("retries", 0)
+                if result_data.get("success"):
+                    summary["spies_successful"] += 1
+                    summary["spies_successful_data"] += result_data.get("spies_successful_data", 0)
+                    summary["maxed_spy_attempts"] += result_data.get("maxed_spy_attempts", 0)
+                    summary["spies_caught"] += result_data.get("spies_caught", 0)
+                else:
+                    summary["spies_failed"] += 1
+        
+        return summary
+    
+    def _summarize_send_credits_results(self, successful_results: List[Dict]) -> Dict[str, Any]:
+        """Summarize send credits action results"""
+        summary = {
+            "credits_sent": 0,
+            "jackpot_credits": 0,
+            "transfers_successful": 0,
+            "transfers_failed": 0,
+            "total_retries": 0
+        }
+        
+        for result in successful_results:
+            result_data = result.get("result", {})
+            if isinstance(result_data, dict):
+                summary["total_retries"] += result_data.get("retries", 0)
+                if result_data.get("success"):
+                    summary["transfers_successful"] += 1
+                    summary["credits_sent"] += result_data.get("credits_sent", 0)
+                    summary["jackpot_credits"] += result_data.get("jackpot_credits", 0)
+                else:
+                    summary["transfers_failed"] += 1
+        
+        return summary
+    
+    def _summarize_recruit_results(self, successful_results: List[Dict]) -> Dict[str, Any]:
+        """Summarize recruit action results"""
+        summary = {
+            "recruit_not_needed": 0,
+            "recruitments_successful": 0,
+            "recruitments_failed": 0,
+            "total_cost": 0,
+            "total_retries": 0
+        }
+        
+        for result in successful_results:
+            result_data = result.get("result", {})
+            if isinstance(result_data, dict):
+                summary["total_retries"] += result_data.get("retries", 0)
+                if result_data.get("success"):
+                    summary["recruitments_successful"] += 1
+                    summary["recruit_not_needed"] += result_data.get("recruit_not_needed", 0)
+                    summary["total_cost"] += result_data.get("cost", 0)
+                else:
+                    summary["recruitments_failed"] += 1
+        
+        return summary
+    
+    def _summarize_purchase_armory_results(self, successful_results: List[Dict]) -> Dict[str, Any]:
+        """Summarize purchase armory action results"""
+        summary = {
+            "weapons_purchased": 0,
+            "purchases_successful": 0,
+            "purchases_failed": 0,
+            "total_cost": 0,
+            "weapons_sold": 0,
+            "total_revenue": 0,
+            "total_retries": 0
+        }
+        
+        for result in successful_results:
+            result_data = result.get("result", {})
+            if isinstance(result_data, dict):
+                summary["total_retries"] += result_data.get("retries", 0)
+                if result_data.get("success"):
+                    summary["purchases_successful"] += 1
+                    summary["weapons_purchased"] += result_data.get("weapons_purchased", 0)
+                    summary["total_cost"] += result_data.get("cost", 0)
+                    summary["weapons_sold"] += result_data.get("weapons_sold", 0)
+                    summary["total_revenue"] += result_data.get("revenue", 0)
+                else:
+                    summary["purchases_failed"] += 1
+        
+        return summary
+    
+    def _summarize_purchase_training_results(self, successful_results: List[Dict]) -> Dict[str, Any]:
+        """Summarize purchase training action results"""
+        summary = {
+            "soldiers_trained": 0,
+            "mercs_trained": 0,
+            "soldiers_untrained": 0,
+            "mercs_untrained": 0,
+            "purchases_successful": 0,
+            "purchases_failed": 0,
+            "total_cost": 0,
+            "total_retries": 0
+        }
+        
+        for result in successful_results:
+            result_data = result.get("result", {})
+            if isinstance(result_data, dict):
+                summary["total_retries"] += result_data.get("retries", 0)
+                if result_data.get("success"):
+                    summary["purchases_successful"] += 1
+                    summary["soldiers_trained"] += result_data.get("soldiers_trained", 0)
+                    summary["mercs_trained"] += result_data.get("mercs_trained", 0)
+                    summary["soldiers_untrained"] += result_data.get("soldiers_untrained", 0)
+                    summary["mercs_untrained"] += result_data.get("mercs_untrained", 0)
+                    summary["total_cost"] += result_data.get("cost", 0)
+                else:
+                    summary["purchases_failed"] += 1
+        
+        return summary
+    
+    def _summarize_become_officer_results(self, successful_results: List[Dict]) -> Dict[str, Any]:
+        """Summarize become officer action results"""
+        summary = {
+            "officer_applications": 0,
+            "applications_successful": 0,
+            "applications_failed": 0,
+            "total_retries": 0
+        }
+        
+        for result in successful_results:
+            result_data = result.get("result", {})
+            if isinstance(result_data, dict):
+                summary["officer_applications"] += 1
+                summary["total_retries"] += result_data.get("retries", 0)
+                if result_data.get("success"):
+                    summary["applications_successful"] += 1
+                else:
+                    summary["applications_failed"] += 1
+        
+        return summary
+    
+    def _summarize_get_metadata_results(self, successful_results: List[Dict]) -> Dict[str, Any]:
+        """Summarize get metadata action results"""
+        summary = {
+            "metadata_retrieved": 0,
+            "retrievals_successful": 0,
+            "retrievals_failed": 0,
+            "accounts_updated": 0,
+            "total_retries": 0
+        }
+        
+        for result in successful_results:
+            result_data = result.get("result", {})
+            if isinstance(result_data, dict):
+                summary["total_retries"] += result_data.get("retries", 0)
+                if result_data.get("success"):
+                    summary["retrievals_successful"] += 1
+                    summary["metadata_retrieved"] += 1
+                    if result_data.get("account_updated"):
+                        summary["accounts_updated"] += 1
+                else:
+                    summary["retrievals_failed"] += 1
+        
+        return summary
+    
+    def _summarize_generic_results(self, successful_results: List[Dict]) -> Dict[str, Any]:
+        """Generic summary for action types without specific summarization"""
+        summary = {
+            "operations_completed": len(successful_results),
+            "operations_failed": 0,
+            "total_retries": 0
+        }
+        
+        for result in successful_results:
+            result_data = result.get("result", {})
+            if isinstance(result_data, dict):
+                summary["total_retries"] += result_data.get("retries", 0)
+                if not result_data.get("success", True):
+                    summary["operations_failed"] += 1
+                    summary["operations_completed"] -= 1
+        
+        return summary
     
     async def _execute_single_account_action(self, account_id: int, action_type_enum, parameters: Dict[str, Any], max_retries: int, bulk_cookies: Optional[Dict[int, Dict[str, Any]]] = None, bulk_accounts: Optional[Dict[int, Account]] = None):
         """Execute action for a single account"""
@@ -842,7 +1229,7 @@ class JobManager:
                     await self._execute_step(step, db, bulk_cookies, bulk_accounts)
                     
             except Exception as e:
-                logger.error(f"Error executing step {step.id}: {e}")
+                logger.error(f"Error executing step {step.id}: {e}", exc_info=True)
                 step.status = JobStatus.FAILED
                 step.error_message = str(e)
                 step.completed_at = datetime.now(timezone.utc)
@@ -935,7 +1322,7 @@ class JobManager:
         try:
             await self._execute_step(step, db, bulk_cookies, bulk_accounts)
         except Exception as e:
-            logger.error(f"Error executing step {step.id}: {e}")
+            logger.error(f"Error executing step {step.id}: {e}", exc_info=True)
             step.status = JobStatus.FAILED
             step.error_message = str(e)
             step.completed_at = datetime.now(timezone.utc)

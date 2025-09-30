@@ -219,8 +219,8 @@ export const clusterApi = {
 // Jobs API
 export const jobsApi = {
   // Get all jobs with pagination and filtering
-  getJobs: async (page: number = 1, perPage: number = 20, status?: string): Promise<JobListResponse> => {
-    const params: any = { page, per_page: perPage };
+  getJobs: async (page: number = 1, perPage: number = 20, status?: string, includeSteps: boolean = true): Promise<JobListResponse> => {
+    const params: any = { page, per_page: perPage, include_steps: includeSteps };
     if (status) params.status = status;
     
     const response: AxiosResponse<JobListResponse> = await api.get('/jobs/', { params });

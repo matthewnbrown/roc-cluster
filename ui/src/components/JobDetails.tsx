@@ -155,6 +155,202 @@ const JobDetails: React.FC<JobDetailsProps> = ({ jobId, onBack }) => {
     return null;
   };
 
+  const renderActionSummary = (summary: any) => {
+    const actionType = summary.action_type || 'unknown';
+    
+    // Common summary items
+    const commonItems = [
+      { key: 'successes', label: 'Completed', value: summary.successes, color: 'text-green-600' },
+      { key: 'failed', label: 'Failed', value: summary.failed, color: 'text-red-600' },
+      { key: 'total_retries', label: 'Total Retries', value: summary.total_retries, color: 'text-orange-600' }
+    ];
+
+    // Action-specific summary items
+    const actionSpecificItems = [];
+    
+    switch (actionType) {
+      case 'attack':
+        actionSpecificItems.push(
+          { key: 'battle_wins', label: 'Battles Won', value: summary.battle_wins, color: 'text-green-600' },
+          { key: 'battle_losses', label: 'Battles Lost', value: summary.battle_losses, color: 'text-red-600' },
+          { key: 'protection_buffs', label: 'Protection Buffs', value: summary.protection_buffs, color: 'text-blue-600' },
+          { key: 'maxed_hits', label: 'Maxed Hits', value: summary.maxed_hits, color: 'text-purple-600' },
+          { key: 'runs_away', label: 'Runs Away', value: summary.runs_away, color: 'text-orange-600' },
+          { key: 'gold_won', label: 'Gold Won', value: summary.gold_won?.toLocaleString(), color: 'text-yellow-600' },
+          { key: 'troops_killed', label: 'Troops Killed', value: summary.troops_killed, color: 'text-red-600' },
+          { key: 'troops_lost', label: 'Troops Lost', value: summary.troops_lost, color: 'text-red-600' },
+          { key: 'soldiers_killed', label: 'Soldiers Killed', value: summary.soldiers_killed, color: 'text-red-600' },
+          { key: 'soldiers_lost', label: 'Soldiers Lost', value: summary.soldiers_lost, color: 'text-red-600' }
+        );
+        break;
+        
+      case 'sabotage':
+        actionSpecificItems.push(
+          { key: 'sabotages_defended', label: 'Defended', value: summary.sabotages_defended, color: 'text-yellow-600' },
+          { key: 'maxed_sab_attempts', label: 'Max Attempts', value: summary.maxed_sab_attempts, color: 'text-purple-600' },
+          { key: 'sabotages_failed', label: 'Failed', value: summary.sabotages_failed, color: 'text-red-600' },
+          { key: 'weapons_destroyed', label: 'Weapons Destroyed', value: summary.weapons_destroyed, color: 'text-red-600' },
+          { key: 'total_damage_dealt', label: 'Damage Dealt', value: summary.total_damage_dealt?.toLocaleString(), color: 'text-orange-600' },
+          { key: 'weapon_damage_cost', label: 'Weapon Cost', value: summary.weapon_damage_cost?.toLocaleString(), color: 'text-blue-600' }
+        );
+        break;
+        
+      case 'spy':
+        actionSpecificItems.push(
+          { key: 'spies_successful', label: 'Spies Successful', value: summary.spies_successful, color: 'text-green-600' },
+          { key: 'spies_successful_data', label: 'Data Collected', value: summary.spies_successful_data, color: 'text-blue-600' },
+          { key: 'spies_caught', label: 'Spies Caught', value: summary.spies_caught, color: 'text-red-600' },
+          { key: 'spies_failed', label: 'Spies Failed', value: summary.spies_failed, color: 'text-red-600' },
+          { key: 'maxed_spy_attempts', label: 'Max Attempts Reached', value: summary.maxed_spy_attempts, color: 'text-purple-600' }
+        );
+        break;
+        
+      case 'send_credits':
+        actionSpecificItems.push(
+          { key: 'credits_sent', label: 'Credits Sent', value: summary.credits_sent?.toLocaleString(), color: 'text-green-600' },
+          { key: 'jackpot_credits', label: 'Jackpot Credits', value: summary.jackpot_credits?.toLocaleString(), color: 'text-yellow-600' },
+          { key: 'transfers_successful', label: 'Transfers Successful', value: summary.transfers_successful, color: 'text-green-600' },
+          { key: 'transfers_failed', label: 'Transfers Failed', value: summary.transfers_failed, color: 'text-red-600' }
+        );
+        break;
+        
+      case 'recruit':
+        actionSpecificItems.push(
+          { key: 'recruitments_successful', label: 'Recruitments Successful', value: summary.recruitments_successful, color: 'text-green-600' },
+          { key: 'recruitments_failed', label: 'Recruitments Failed', value: summary.recruitments_failed, color: 'text-red-600' },
+          { key: 'recruit_not_needed', label: 'Recruit Not Needed', value: summary.recruit_not_needed, color: 'text-blue-600' },
+          { key: 'total_cost', label: 'Total Cost', value: summary.total_cost?.toLocaleString(), color: 'text-yellow-600' }
+        );
+        break;
+        
+      case 'purchase_armory':
+        actionSpecificItems.push(
+          { key: 'weapons_purchased', label: 'Weapons Purchased', value: summary.weapons_purchased, color: 'text-green-600' },
+          { key: 'purchases_successful', label: 'Purchases Successful', value: summary.purchases_successful, color: 'text-green-600' },
+          { key: 'purchases_failed', label: 'Purchases Failed', value: summary.purchases_failed, color: 'text-red-600' },
+          { key: 'total_cost', label: 'Total Cost', value: summary.total_cost?.toLocaleString(), color: 'text-yellow-600' },
+          { key: 'weapons_sold', label: 'Weapons Sold', value: summary.weapons_sold, color: 'text-blue-600' },
+          { key: 'total_revenue', label: 'Total Revenue', value: summary.total_revenue?.toLocaleString(), color: 'text-green-600' }
+        );
+        break;
+        
+      case 'purchase_training':
+        actionSpecificItems.push(
+          { key: 'purchases_successful', label: 'Purchases Successful', value: summary.purchases_successful, color: 'text-green-600' },
+          { key: 'purchases_failed', label: 'Purchases Failed', value: summary.purchases_failed, color: 'text-red-600' },
+          { key: 'soldiers_trained', label: 'Soldiers Trained', value: summary.soldiers_trained, color: 'text-blue-600' },
+          { key: 'mercs_trained', label: 'Mercs Trained', value: summary.mercs_trained, color: 'text-purple-600' },
+          { key: 'soldiers_untrained', label: 'Soldiers Untrained', value: summary.soldiers_untrained, color: 'text-orange-600' },
+          { key: 'mercs_untrained', label: 'Mercs Untrained', value: summary.mercs_untrained, color: 'text-orange-600' },
+          { key: 'total_cost', label: 'Total Cost', value: summary.total_cost?.toLocaleString(), color: 'text-yellow-600' }
+        );
+        break;
+        
+      case 'become_officer':
+        actionSpecificItems.push(
+          { key: 'officer_applications', label: 'Applications', value: summary.officer_applications, color: 'text-blue-600' },
+          { key: 'applications_successful', label: 'Applications Successful', value: summary.applications_successful, color: 'text-green-600' },
+          { key: 'applications_failed', label: 'Applications Failed', value: summary.applications_failed, color: 'text-red-600' }
+        );
+        break;
+        
+      case 'get_metadata':
+        actionSpecificItems.push(
+          { key: 'metadata_retrieved', label: 'Metadata Retrieved', value: summary.metadata_retrieved, color: 'text-green-600' },
+          { key: 'retrievals_successful', label: 'Retrievals Successful', value: summary.retrievals_successful, color: 'text-green-600' },
+          { key: 'retrievals_failed', label: 'Retrievals Failed', value: summary.retrievals_failed, color: 'text-red-600' },
+          { key: 'accounts_updated', label: 'Accounts Updated', value: summary.accounts_updated, color: 'text-blue-600' }
+        );
+        break;
+        
+      default:
+        actionSpecificItems.push(
+          { key: 'operations_completed', label: 'Operations Completed', value: summary.operations_completed, color: 'text-green-600' },
+          { key: 'operations_failed', label: 'Operations Failed', value: summary.operations_failed, color: 'text-red-600' }
+        );
+    }
+
+    // Combine all items
+    const allItems = [...commonItems, ...actionSpecificItems];
+    
+    // Filter out items with zero or undefined values for cleaner display
+    const displayItems = allItems.filter(item => item.value !== undefined && item.value !== null && item.value !== 0);
+
+    // Show errors if any
+    const errorItems = summary.error_list && summary.error_list.length > 0 ? summary.error_list : [];
+
+    return (
+      <div className="grid grid-cols-3 gap-6 w-full">
+        {/* Action Results Column */}
+        <div className="space-y-3">
+          <div className="text-sm font-medium text-gray-600 mb-3">Action Results</div>
+          <div className="space-y-3">
+            {displayItems.map((item) => (
+              <div key={item.key} className="flex items-center justify-between">
+                <span className="text-sm text-gray-600">{item.label}:</span>
+                <span className={`text-lg font-semibold ${item.color}`}>
+                  {item.value}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+        
+        {/* Messages Column */}
+        <div>
+          <div className="text-sm font-medium text-blue-600 mb-3">Messages</div>
+          {summary.messages && Object.keys(summary.messages).length > 0 ? (
+            <div className="max-h-40 overflow-y-auto space-y-2">
+              {Object.entries(summary.messages).map(([username, messages]: [string, any]) => (
+                <div key={username} className="bg-blue-100 rounded p-2">
+                  <div className="text-sm font-medium text-blue-800 mb-1">{username}</div>
+                  <div className="space-y-1">
+                    {Array.isArray(messages) ? messages.map((message: string, index: number) => (
+                      <div key={index} className="text-sm text-blue-700 break-words">
+                        {String(message)}
+                      </div>
+                    )) : (
+                      <div className="text-sm text-blue-700 break-words">
+                        {String(messages)}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-sm text-gray-500 italic">No messages</div>
+          )}
+        </div>
+
+        {/* Errors Column */}
+        <div>
+          <div className="text-sm font-medium text-red-600 mb-3">Errors</div>
+          {errorItems && errorItems.length > 0 ? (
+            <div className="max-h-40 overflow-y-auto space-y-2">
+              {errorItems.map((errorItem: any, index: number) => (
+                <div key={index} className="bg-red-100 rounded p-2">
+                  <div className="text-sm font-medium text-red-800">
+                    {errorItem.username || (errorItem.account_id ? `Account ${errorItem.account_id}` : 'Unknown Account')}
+                  </div>
+                  <div className="space-y-1">
+                    {(errorItem.errors || [errorItem.error]).map((error: string, errorIndex: number) => (
+                      <div key={errorIndex} className="text-sm text-red-700 break-words">
+                        {error}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-sm text-gray-500 italic">No errors</div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -463,6 +659,7 @@ const JobDetails: React.FC<JobDetailsProps> = ({ jobId, onBack }) => {
                           <div className="space-y-2 text-sm">
                             <div><span className="font-medium">Action:</span> {step.action_type}</div>
                             <div><span className="font-medium">Accounts:</span> {step.account_ids.length} account{step.account_ids.length !== 1 ? 's' : ''}</div>
+                            <div><span className="font-medium">Execution:</span> {step.is_async ? 'Asynchronous' : 'Synchronous'}</div>
                             <div><span className="font-medium">Status:</span> {step.status}</div>
                             <div><span className="font-medium">Started:</span> {step.started_at ? formatDate(step.started_at) : 'Not started'}</div>
                             <div><span className="font-medium">Completed:</span> {step.completed_at ? formatDate(step.completed_at) : 'Not completed'}</div>
@@ -492,6 +689,16 @@ const JobDetails: React.FC<JobDetailsProps> = ({ jobId, onBack }) => {
                           )}
                         </div>
                       </div>
+                      
+                      {/* Action Summary */}
+                      {step.result && step.result.summary && (
+                        <div className="mt-4">
+                          <h5 className="text-sm font-medium text-gray-900 mb-2">Action Summary</h5>
+                          <div className="bg-blue-50 border border-blue-200 rounded p-3">
+                            {renderActionSummary(step.result.summary)}
+                          </div>
+                        </div>
+                      )}
                       
                       {/* Result/Error Details */}
                       {(step.result || step.error_message) && (

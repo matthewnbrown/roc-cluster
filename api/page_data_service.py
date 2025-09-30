@@ -53,7 +53,7 @@ class SpyPageParser(PageParser):
                 logger.warning(f"Failed to parse spy data for account {account_id}: {result.get('error', 'Unknown error')}")
                 return {"success": False, "error": result.get("error", "Unknown error")}
         except Exception as e:
-            logger.error(f"Error parsing spy data for account {account_id}: {e}")
+            logger.error(f"Error parsing spy data for account {account_id}: {e}", exc_info=True)
             return {"success": False, "error": str(e)}
 
 
@@ -70,7 +70,7 @@ class AttackPageParser(PageParser):
             logger.info(f"Parsing attack data for account {account_id}")
             return {"success": True, "message": "Attack data parsed (placeholder)"}
         except Exception as e:
-            logger.error(f"Error parsing attack data for account {account_id}: {e}")
+            logger.error(f"Error parsing attack data for account {account_id}: {e}", exc_info=True)
             return {"success": False, "error": str(e)}
 
 
@@ -87,7 +87,7 @@ class MetadataPageParser(PageParser):
             logger.info(f"Parsing metadata for account {account_id}")
             return {"success": True, "message": "Metadata parsed (placeholder)"}
         except Exception as e:
-            logger.error(f"Error parsing metadata for account {account_id}: {e}")
+            logger.error(f"Error parsing metadata for account {account_id}: {e}", exc_info=True)
             return {"success": False, "error": str(e)}
 
 

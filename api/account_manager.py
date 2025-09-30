@@ -177,7 +177,7 @@ class AccountManager:
             return result
             
         except Exception as e:
-            logger.error(f"Error executing action {action} on account {id_type} {id}: {e}")
+            logger.error(f"Error executing action {action} on account {id_type} {id}: {e}", exc_info=True)
             return {"success": False, "error": str(e)}
         finally:
             # Always cleanup the ROCAccountManager instance

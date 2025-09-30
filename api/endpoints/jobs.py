@@ -65,7 +65,7 @@ async def create_job(
         return job
         
     except Exception as e:
-        logger.error(f"Error creating job: {e}")
+        logger.error(f"Error creating job: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -74,6 +74,7 @@ async def list_jobs(
     status: Optional[JobStatusEnum] = Query(None, description="Filter by job status"),
     page: int = Query(1, ge=1, description="Page number"),
     per_page: int = Query(20, ge=1, le=100, description="Items per page"),
+    include_steps: bool = Query(True, description="Include job steps in response"),
     manager: JobManager = Depends(get_job_manager)
 ):
     """List jobs with optional filtering"""
@@ -86,13 +87,14 @@ async def list_jobs(
         result = await manager.list_jobs(
             status=status_filter,
             page=page,
-            per_page=per_page
+            per_page=per_page,
+            include_steps=include_steps
         )
         
         return JobListResponse(**result)
         
     except Exception as e:
-        logger.error(f"Error listing jobs: {e}")
+        logger.error(f"Error listing jobs: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -124,7 +126,7 @@ async def get_valid_action_types(
             }
         }
     except Exception as e:
-        logger.error(f"Error getting valid action types: {e}")
+        logger.error(f"Error getting valid action types: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -145,7 +147,7 @@ async def get_job(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error getting job {job_id}: {e}")
+        logger.error(f"Error getting job {job_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -166,7 +168,7 @@ async def cancel_job(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error cancelling job {job_id}: {e}")
+        logger.error(f"Error cancelling job {job_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
@@ -211,5 +213,5 @@ async def get_job_status(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error getting job status {job_id}: {e}")
+        logger.error(f"Error getting job status {job_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")

@@ -5,9 +5,11 @@ Manages a single ROC account session
 
 from enum import Enum
 import logging
+import math
 import os
 import random
 
+import traceback
 from typing import Awaitable, Callable, List, Optional, Tuple
 from urllib.parse import urljoin
 import json
@@ -19,9 +21,12 @@ from typing import Dict, Any
 from bs4 import BeautifulSoup
 from sqlalchemy import false
 
-from api.db_models import Account, UserCookies
+from api.db_models import Account, UserCookies, ArmoryPreferences, ArmoryWeaponPreference, Weapon
+from api.page_parsers.attack import parse_attack_page
 from api.page_parsers.metadata_parser import parse_metadata_data
 from api.page_parsers.spy_parser import parse_recon_data
+from api.page_parsers.sab_parser import parse_sabotage_page
+from api.page_parsers.armory_parser import parse_armory_data
 from api.schemas import AccountMetadata, CaptchaSolutionItem
 from api.captcha import Captcha, CaptchaSolver, CaptchaKeypadSelector
 from api.database import SessionLocal
@@ -29,7 +34,9 @@ from api.rocurlgenerator import ROCDecryptUrlGenerator
 from api.credit_logger import credit_logger
 from api.captcha_feedback_service import captcha_feedback_service
 from api.page_data_service import page_data_service
+from api.preference_service import PreferenceService
 from config import settings
+from sqlalchemy.orm import joinedload
 
 
 logger = logging.getLogger(__name__)
@@ -43,7 +50,7 @@ class PageSubmit(Enum):
     SPY = "Recon"
     SABOTAGE = "Sabotage"
     UPGRADE = ""
-    CREDIT_SAVE = ""
+    CREDIT_SAVE = "Send+Credits"
 
 class GameAccountManager:
     """Manages a single ROC account session"""
@@ -92,8 +99,12 @@ class GameAccountManager:
                 request_time=request_time
             )
         except Exception as e:
-            logger.error(f"Failed to push page to queue for account {self.account.username}: {e}")
+            logger.error(f"Failed to push page to queue for account {self.account.username}: {e}", exc_info=True)
 
+    def __roc_format_number(self, number: int) -> str:
+        """Format a number in ROC format"""
+        return f"{number:,}"
+    
     def __was_captcha_correct(self, page_text: str, submit_url: str) -> bool:
         """Check if the captcha was correct"""
         
@@ -156,7 +167,7 @@ class GameAccountManager:
                     return None
             
         except Exception as e:
-            logger.error(f"Failed to get captcha: {e}")
+            logger.error(f"Failed to get captcha: {e}", exc_info=True)
             return None
     
     async def submit_captca(self, url: str, data: Dict[str, Any], captcha: Captcha, page_name = 'roc_recruit') -> Tuple[aiohttp.ClientResponse, str]:
@@ -184,7 +195,7 @@ class GameAccountManager:
             request_id = ""
             return await self.session.post(url, data=data), request_id
         except Exception as e:
-            logger.error(f"Failed to submit captcha: {e}")
+            logger.error(f"Failed to submit captcha: {e}", exc_info=True)
             raise e
     
     async def __submit_with_captcha(self, url: str, data: Dict[str, Any], page_name: PageSubmit) -> aiohttp.ClientResponse:
@@ -276,7 +287,7 @@ class GameAccountManager:
                     db.commit()
                     logger.info(f"Saved {len(cookie_data)} cookies for account {self.account.username}: {list(cookie_data.keys())}")
                 except Exception as e:
-                    logger.error(f"Failed to save cookies for account {self.account.username}: {e}")
+                    logger.error(f"Failed to save cookies for account {self.account.username}: {e}", exc_info=True)
                     db.rollback()
                 finally:
                     db.close()
@@ -298,7 +309,7 @@ class GameAccountManager:
                 if response.status != 200:
                     filename = f"{self.account.username}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}_{response.status}_metadata.html"
                     self.__save_error(filename=filename, error=await response.read())
-                    return {"success": False, "error": "Failed to load metadata"}
+                    return {"success": False, "errors": ["Failed to load metadata"]}
                 page_text = await response.text()
             
             if not self.__check_logged_in(page_text):
@@ -308,7 +319,7 @@ class GameAccountManager:
                 if response.status != 200:
                     filename = f"{self.account.username}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}_{response.status}_metadata.html"
                     self.__save_error(filename=filename, error=await response.read())
-                    return {"success": False, "error": "Failed to load metadata"}
+                    return {"success": False, "errors": ["Failed to load metadata"]}
                 page_text = await response.text()
 
             # Push page to queue for processing
@@ -347,7 +358,7 @@ class GameAccountManager:
             return { "success": True, "data": metadata }
             
         except Exception as e:
-            logger.error(f"Failed to get metadata for {self.account.username}: {e}")
+            logger.error(f"Failed to get metadata for {self.account.username}: {e}", exc_info=True)
             return None
     
     async def attack(self, target_id: str, turns: int = -1) -> Dict[str, Any]:
@@ -356,10 +367,11 @@ class GameAccountManager:
         try:
             turns = int(turns)
         except ValueError:
-            return {"success": False, "error": "Turn count must be an integer"}
+            return {"success": False, "errors": ["Turn count must be an integer"]}
 
         if turns < 1 or turns > 12:
-            return {"success": False, "error": "Turn count must be between 1 and 12"}
+            return {"success": False, "errors": ["Turn count must be between 1 and 12"]}
+    
 
         try:
             attack_url = self.url_generator.attack(target_id)
@@ -375,37 +387,43 @@ class GameAccountManager:
             async def _submit():                
                 return await self.__submit_page(attack_url, payload, PageSubmit.ATTACK)
 
+            errors = []
             for i in range(self.max_retries+1):
                 result = await self.__retry_login_wrapper(_submit)
             
-                if 'detail.php' not in result.url.path:
-                    logger.error(f"Unknown error. No captcha error, but not on attack detail url: {result.url}")
-                    with open(f"./errors/{self.account.username}_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}_attack_error.html", "w", encoding="utf-8") as f:
-                        f.write(await result.read())
-                    return {"success": False, "error": "Unknown error. No captcha error, but not on attack detail url"}
-                
                 page_text = await result.text()
+                page_data = parse_attack_page(page_text)
+                if page_data["result"] == "ProtectionBuff":
+                    return {"success": True, "protection_buff": 1, "retries": i}
+                elif page_data["result"] == "MaxedHits":
+                    return {"success": True, "maxed_hits": 1, "retries": i}
+                elif page_data["result"] == "RunAway":
+                    return {"success": True, "runs_away": 1, "retries": i}
+                elif page_data["result"] == "Win":
+                    return {
+                        "success": True,
+                        "win": 1,
+                        "gold_won": page_data["gold_won"],
+                        "troops_killed": page_data["troops_killed"],
+                        "troops_lost": page_data["troops_lost"],
+                        "retries": i}
+                elif page_data["result"] == "Loss":
+                    return {
+                        "success": True,
+                        "loss": 1,
+                        "troops_killed": page_data["troops_killed"],
+                        "troops_lost": page_data["troops_lost"],
+                        "retries": i
+                        }
                 
-                if 'You Get Nothing' in page_text:
-                    return {"success": True, "error": "Enemy defended"}
-                elif 'ribbon won' in page_text:
-                    soup = BeautifulSoup(page_text, 'html.parser')
-                    won_ribbon = soup.find('div', class_='ribbon won')
-                    if won_ribbon:
-                        gold_span = won_ribbon.find('span', class_='gold')
-                        gold = gold_span.text
-                        return {"success": True, "message": f"Defeated {target_id} for {gold} gold"}
-                    else:
-                        return {"success": False, "error": "Unknown error. No gold found"}
-                
-                return {"success": False, "message": "Unknown error. Could not determine result"}
+                errors.append('Unknown error. Could not determine result')
 
-            
-            results_str = "\n".join([f"{i+1}. {result.get('error', 'Unknown error')}" for i, result in enumerate(results)])
-            return {"success": False, "error": "Failed to spy on user:\n" + results_str}
+
+            return {"success": False, "errors": errors}
 
         except Exception as e:
-            return {"success": False, "error": str(e)}
+            logger.error(f"Error in attack for {self.account.username}: {e}", exc_info=True)
+            return {"success": False, "errors": [str(e)]}
     
     async def sabotage(self, target_id: str, spy_count: int = 1, enemy_weapon: int = -1) -> Dict[str, Any]:
         """Sabotage another user
@@ -421,10 +439,10 @@ class GameAccountManager:
 
         
         if enemy_weapon is None or enemy_weapon == -1:
-            return {"success": False, "error": "Enemy weapon must be specified"}
+            return {"success": False, "errors": ["Enemy weapon must be specified"]}
         
         if spy_count is None or spy_count < 1 or spy_count > 25:
-            return {"success": False, "error": "Spy count must be between 1 and 25"}
+            return {"success": False, "errors": ["Spy count must be between 1 and 25"]}
         
         payload = {
             "defender_id": target_id,
@@ -443,10 +461,32 @@ class GameAccountManager:
             
             page_text = await result.text()
             
-            #todo check if the sabotage was successful
-            return {"success": True, "message": f"Sabotaged user {target_id}"}
-        
-        return {"success": False, "error": "Failed to sabotage user"}
+            sabotage_data = parse_sabotage_page(page_text)
+            
+
+            if sabotage_data["result"] == "max_sabbed":
+                return {
+                    "success": True,
+                    "maxed_sab_attempts": 1,
+                    "retries": i
+                }
+            elif sabotage_data["result"] == "defended":
+                return {
+                    "success": True,
+                    "sabotages_defended": 1,
+                    "weapon_damage_cost": sabotage_data["weapon_damage_cost"],
+                    "retries": i
+                }
+            elif sabotage_data["result"] == "success":
+                return {
+                    "success": True,
+                    "weapon_damage_cost": sabotage_data["weapon_damage_cost"],
+                    "damage_dealt": sabotage_data["damage_to_enemy"],
+                    "weapon_count": sabotage_data["weapon_count"],
+                    "retries": i
+                }
+            
+        return {"success": False, "errors": ["Failed to sabotage user, I guess?"], "retries": self.max_retries}
     
     async def spy(self, target_id: str, spy_count: int = 1 ) -> Dict[str, Any]:
         """Spy on another user
@@ -460,11 +500,10 @@ class GameAccountManager:
         """
             
         if spy_count < 1 or spy_count > 25:
-            return {"success": False, "error": "Spy count must be between 1 and 25"}
+            return {"success": False, "errors": ["Spy count must be between 1 and 25"]}
 
         try:
             spy_url = self.url_generator.spy(target_id)
-            request_time = datetime.now(timezone.utc)
             
             payload = {
                 "defender_id": target_id,
@@ -479,36 +518,37 @@ class GameAccountManager:
 
             for i in range(self.max_retries+1):
                 result = await self.__retry_login_wrapper(_submit_spy)
-            
-                if 'inteldetail' not in result.url.path:
-                    return {"success": False, "error": "Unknown error. No captcha error, but not on intel url"}
-                
                 page_text = await result.text()
+                if 'You cannot recon this person again today!' in page_text:
+                    return {"success": True, "maxed_spy_attempts": 1, "retries": i}
                 
                 if 'As they approach, an alarm is cried out by enemy sentries' in page_text:
-                    return {"success": True, "message": "Enemy sentries detected"}
-                data = parse_recon_data(page_text)
-                if data["success"]:
-                    return {"success": True, "data": data}
-                else:
-                    return {"success": False, "error": data["error"]}
-            
+                    return {"success": True, "spies_caught": 1, "retries": i}
+                
+                if 'inteldetail' not in result.url.path:
+                    return {"success": False, "errors": ["Unknown error. No captcha error, but not on intel url"]}
+                
+                _ = parse_recon_data(page_text)
+                return {"success": True, "spies_successful_data": 1, "retries": i}
+
             results_str = "\n".join([f"{i+1}. {result.get('error', 'Unknown error')}" for i, result in enumerate(results)])
-            return {"success": False, "error": "Failed to spy on user:\n" + results_str}
+            return {"success": False, "errors": [f"Failed to spy on user: {results_str}"]}
 
         except Exception as e:
-            return {"success": False, "error": str(e)}
+            stack_trace = traceback.format_exc()
+            return {"success": False, "errors": [str(e) + "\n" + stack_trace]}
     
     # not implemented
     async def become_officer(self, target_id: str) -> Dict[str, Any]:
         """Become an officer of another user"""
         try:
             # Implement become officer logic
-            return {"success": True, "message": f"Became officer of user {target_id}"}
+            return {"success": True, "messages": [f"Became officer of user {target_id}"]}
         except Exception as e:
+            logger.error(f"Error in become_officer for {self.account.username}: {e}", exc_info=True)
             return {"success": False, "error": str(e)}
     
-    async def send_credits(self, target_id: str, amount: int, dry_run = False) -> Dict[str, Any]:
+    async def send_credits(self, target_id: str, amount: int, dry_run = False, cur_credits: int = -1) -> Dict[str, Any]:
         """Send credits to another user"""            
         try:
             # check if amount is 'all' or an int
@@ -518,82 +558,53 @@ class GameAccountManager:
                 try:
                     amount = int(amount)
                 except ValueError:
-                    return {"success": False, "error": "Invalid amount. Must be an integer or 'all'"}
+                    return {"success": False, "errors": ["Invalid amount. Must be an integer or 'all'"]}
             
             if amount < 100:
-                return {"success": False, "error": "Amount must be at least 100"}
+                return {"success": False, "errors": ["Amount must be at least 100"]}
+            
+            # if cur_credits == -1:
+            #     get_metadata = await self.get_metadata()
+            #     if not get_metadata["success"]:
+            #         return {"success": False, "error": "Failed to get metadata"}
+            #     cur_credits = get_metadata["data"].credits
             
             send_url = self.url_generator.send_credits()
-
+            
+            payload = {
+                "to": target_id,
+                "amount": amount,
+                "comment": "",
+                "submit": "Send+Credits"
+            }
+            
+            # Ceiling of 0.9 * amount
+            expected_sent_credits = math.ceil(0.9 * amount)
+            jackpot_credits = amount - expected_sent_credits
+                
             async def _submit_credits():
-                # captcha = await self._get_captcha()
-                # if not captcha:
-                #     return {"success": False, "error": "Failed to get captcha"}
-                
-                # logger.info(f"Got captcha {captcha.hash}")
-                captcha = Captcha(hash="", img=None, ans="")
-                payload = {
-                    "to": target_id,
-                    "amount": amount,
-                    "comment": "",
-                    "submit": "Send+Credits"
-                }
-                
                 if dry_run:
-                    return {"success": True, "message": f"Would have sent {amount} credits to user {target_id}"}
-                
-                captcha_response, request_id = await self.submit_captca(send_url, payload, captcha)
-                page_text = await captcha_response.text()
-                # correct = self.__was_captcha_correct(page_text, send_url)
-                correct = True
-                path = captcha_response.url.path
-                if correct and path not in self.url_generator.base():
-                    
-                    return {"success": False, "error": "Unknown error. No captcha error, but not on base url. " + captcha_response.url}
-                
-                if correct:
-                    # await captcha_feedback_service.report_feedback(
-                    #     account_id=self.account.id,
-                    #     captcha=captcha,
-                    #     request_id=request_id,
-                    #     was_correct=True
-                    # )
-                    await credit_logger.log_credit_attempt(
-                        sender_account_id=self.account.id,
-                        target_user_id=target_id,
-                        amount=amount,
-                        success=True
-                    )
-                    return {"success": True, "message": f"Sent {amount} credits to user {target_id}"}
-                else:
-                    logger.info(f"Captcha was incorrect for {self.account.username} sending {amount} credits to {target_id}")
-                    # Report failed captcha asynchronously
-                    await captcha_feedback_service.report_feedback(
-                        account_id=self.account.id,
-                        captcha=captcha,
-                        request_id=request_id,
-                        was_correct=False
-                    )
-                    # Log failed credit send
-                    await credit_logger.log_credit_attempt(
-                        sender_account_id=self.account.id,
-                        target_user_id=target_id,
-                        amount=amount,
-                        success=False,
-                        error_message="Captcha was incorrect"
-                    )
-                    return {"success": False, "error": "Captcha was incorrect"}
+                    return {"success": True, "messages": [f"{self.account.username} would have sent {self.__roc_format_number(amount)} credits to user {target_id}"]}
 
+                return await self.__submit_page(send_url, payload, PageSubmit.CREDIT_SAVE)
+            
+            errors = []
             for i in range(self.max_retries+1):
-                result = await _submit_credits()
-                if result["success"]:
-                    return result
+                result = await self.__retry_login_wrapper(_submit_credits)
+                
+                page_text = await result.text()
+                path = result.url.path
+                if path not in self.url_generator.base():
+                    errors.append("Unknown error. No captcha error, but not on base url. " + path.url)
+                if f'You sent {self.__roc_format_number(expected_sent_credits)} credits to' not in page_text:
+                    errors.append("On base url, but missing expected sent credits message.")                    
+                else:
+                    return {"success": True, "credits_sent": expected_sent_credits, "jackpot_credits": jackpot_credits, "retries": i}
 
-                    
-
-            return {"success": False, "error": "Failed to send credits"}
+            return {"success": False, "error": "Failed to send credits:\n" + "\n".join(errors)}
 
         except Exception as e:
+            logger.error(f"Error in send_credits for {self.account.username}: {e}", exc_info=True)
             return {"success": False, "error": str(e)} 
     
     async def send_all_credits(self, target_id: str) -> Dict[str, Any]:
@@ -606,7 +617,7 @@ class GameAccountManager:
         if credits == 0:
             return {"success": False, "error": "No credits to send"}
         
-        return await self.send_credits(target_id, str(credits))
+        return await self.send_credits(target_id, str(credits), cur_credits=credits)
     
     async def recruit(self) -> Dict[str, Any]:
         """Recruit soldiers"""
@@ -624,10 +635,10 @@ class GameAccountManager:
                 
                 # TODO: Check if the recruit was successful (recruit button exists?)
                 
-                return {"success": True, "message": "Successfully recruited"}
+                return {"success": True, "messages": ["Successfully recruited"]}
             
         except Exception as e:
-            logger.error(f"Error recruiting for {self.account.username}: {e}")
+            logger.error(f"Error recruiting for {self.account.username}: {e}", exc_info=True)
             return {"success": False, "error": str(e)}
     
     # not implemented
@@ -636,21 +647,20 @@ class GameAccountManager:
        
         try:
             # Implement armory purchase logic
-            return {"success": True, "message": f"Purchased armory items: {items}"}
+            return {"success": True, "messages": [f"Purchased armory items: {items}"]}
         except Exception as e:
+            logger.error(f"Error in purchase_armory for {self.account.username}: {e}", exc_info=True)
             return {"success": False, "error": str(e)}
     
     async def purchase_armory_by_preferences(self, preference_id = -1) -> Dict[str, Any]:
         """Purchase armory items based on user preferences"""
         #TODO: Login check, preference_id check get default if -1
         try:
-            from api.database import SessionLocal
-            from api.db_models import ArmoryPreferences, ArmoryWeaponPreference, Weapon
-            
             # Get user preferences from database with relationships loaded
+            
+
             db = SessionLocal()
             try:
-                from sqlalchemy.orm import joinedload
                 preferences = db.query(ArmoryPreferences).options(
                     joinedload(ArmoryPreferences.weapon_preferences).joinedload(ArmoryWeaponPreference.weapon)
                 ).filter(
@@ -675,8 +685,6 @@ class GameAccountManager:
                 armory_resp = await self.__get_page(armory_url)
                 armory_text = await armory_resp.text()
                 # Parse armory data
-                from api.page_parsers.armory_parser import parse_armory_data
-
                 armory_data = parse_armory_data(armory_text)
                 
                 # Log available weapons in armory
@@ -688,7 +696,7 @@ class GameAccountManager:
                 )
                 
                 if not weapon_purchases:
-                    return {"success": True, "message": "No weapons to purchase based on current gold and preferences"}
+                    return {"success": True, "messages": ["No weapons to purchase based on current gold and preferences"]}
                 
                 # Submit purchase form
                 purchase_result = await self._submit_armory_purchase(weapon_purchases)
@@ -706,13 +714,11 @@ class GameAccountManager:
                 db.close()
                 
         except Exception as e:
-            logger.error(f"Error purchasing armory by preferences for {self.account.username}: {e}")
+            logger.error(f"Error purchasing armory by preferences for {self.account.username}: {e}", exc_info=True)
             return {"success": False, "error": str(e)}
     
     def _calculate_weapon_purchases(self, armory_data: Dict[str, Any], preferences, current_gold: int, db) -> Dict[str, int]:
         """Calculate weapon purchases based on preferences and available gold"""
-        from api.db_models import Weapon
-        
         weapon_purchases = {}
         
         # Get weapon preferences sorted by percentage (highest first)
@@ -783,15 +789,12 @@ class GameAccountManager:
             
             return await self.__retry_login_wrapper(_submit)
         except Exception as e:
-            logger.error(f"Error submitting armory purchase: {e}")
+            logger.error(f"Error submitting armory purchase: {e}", exc_info=True)
             return {"success": False, "error": str(e)}
     
     async def update_armory_preferences(self, weapon_percentages: Dict[str, float]) -> Dict[str, Any]:
         """Update armory preferences for the account"""
         try:
-            from api.database import SessionLocal
-            from api.preference_service import PreferenceService
-            
             db = SessionLocal()
             try:
                 return PreferenceService.update_armory_preferences(self.account.id, weapon_percentages, db)
@@ -799,15 +802,14 @@ class GameAccountManager:
                 db.close()
                 
         except Exception as e:
-            logger.error(f"Error updating armory preferences for {self.account.username}: {e}")
-            return {"success": False, "error": str(e)}
+            stack_trace = traceback.format_exc()
+            logger.error(f"Error updating armory preferences for {self.account.username}: {e}\n{stack_trace}")
+            
+            return {"success": False, "error": [str(e) + "\n" + stack_trace]}
     
     async def update_training_preferences(self, soldier_type_percentages: Dict[str, float]) -> Dict[str, Any]:
         """Update training preferences for the account"""
         try:
-            from api.database import SessionLocal
-            from api.preference_service import PreferenceService
-            
             db = SessionLocal()
             try:
                 return PreferenceService.update_training_preferences(self.account.id, soldier_type_percentages, db)
@@ -815,7 +817,7 @@ class GameAccountManager:
                 db.close()
                 
         except Exception as e:
-            logger.error(f"Error updating training preferences for {self.account.username}: {e}")
+            logger.error(f"Error updating training preferences for {self.account.username}: {e}", exc_info=True)
             return {"success": False, "error": str(e)}
     
     async def purchase_training(self, training_orders: Dict[str, Any]) -> Dict[str, Any]:
@@ -883,7 +885,7 @@ class GameAccountManager:
                 
                 # Check if training was successful by looking for success indicators
                 # This could be enhanced with more specific success/failure detection
-                return {"success": True, "message": "Training purchase completed. Validation not implemented yet", "data": training_orders}
+                return {"success": True, "messages": ["Training purchase completed. Validation not implemented yet"], "data": training_orders}
                 
                 # if "Train Soldiers" in page_text or "training" in page_text.lower():
                 #     return {"success": True, "message": "Training purchase completed", "data": training_orders}
@@ -896,7 +898,7 @@ class GameAccountManager:
             return {"success": False, "error": "Failed to complete training purchase after retries"}
             
         except Exception as e:
-            logger.error(f"Error purchasing training for {self.account.username}: {e}")
+            logger.error(f"Error purchasing training for {self.account.username}: {e}", exc_info=True)
             return {"success": False, "error": str(e)}
     
     async def set_credit_saving(self, value: str) -> Dict[str, Any]:
@@ -925,10 +927,10 @@ class GameAccountManager:
                 
                 # TODO: Check if the credit saving was successful
                 
-                return {"success": True, "message": f"Credit saving {action}"}
+                return {"success": True, "messages": [f"Credit saving {action}"]}
             
         except Exception as e:
-            logger.error(f"Error setting credit saving for {self.account.username}: {e}")
+            logger.error(f"Error setting credit saving for {self.account.username}: {e}", exc_info=True)
             return {"success": False, "error": str(e)}
     
     async def buy_upgrade(self, upgrade_option: str) -> Dict[str, Any]:
@@ -967,10 +969,10 @@ class GameAccountManager:
                 
                 # TODO: Compare upgrades cost with previous cost to see if it was successful
                 
-                return {"success": True, "message": f"Successfully purchased {upgrade_option} upgrade"}
+                return {"success": True, "messages": [f"Successfully purchased {upgrade_option} upgrade"]}
             
         except Exception as e:
-            logger.error(f"Error buying upgrade {upgrade_option} for {self.account.username}: {e}")
+            logger.error(f"Error buying upgrade {upgrade_option} for {self.account.username}: {e}", exc_info=True)
             return {"success": False, "error": str(e)}
     
     async def get_solved_captchas(self, count: int = 1, min_confidence: float = 0, page_name = 'roc_armory') -> List[CaptchaSolutionItem]:
@@ -997,7 +999,7 @@ class GameAccountManager:
             
             return results
         except Exception as e:
-            logger.error(f"Failed to get solved captchas: {e}")
+            logger.error(f"Failed to get solved captchas: {e}", exc_info=True)
             return []
     
     ###################
@@ -1056,7 +1058,7 @@ class GameAccountManager:
             return True
             
         except Exception as e:
-            logger.error(f"Failed to initialize account {self.account.username}: {e}")
+            logger.error(f"Failed to initialize account {self.account.username}: {e}", exc_info=True)
             return False   
     
     async def cleanup(self):
@@ -1068,7 +1070,7 @@ class GameAccountManager:
             try:
                 await self.session.close()
             except Exception as e:
-                logger.warning(f"Error closing session for {self.account.username}: {e}")
+                logger.warning(f"Error closing session for {self.account.username}: {e}", exc_info=True)
             finally:
                 self.session = None
         
@@ -1077,7 +1079,7 @@ class GameAccountManager:
             try:
                 await self._connector.close()
             except Exception as e:
-                logger.warning(f"Error closing connector for {self.account.username}: {e}")
+                logger.warning(f"Error closing connector for {self.account.username}: {e}", exc_info=True)
             finally:
                 self._connector = None
         
@@ -1086,4 +1088,4 @@ class GameAccountManager:
             try:
                 await self.captcha_solver.close()
             except Exception as e:
-                logger.warning(f"Error closing captcha solver for {self.account.username}: {e}")
+                logger.warning(f"Error closing captcha solver for {self.account.username}: {e}", exc_info=True)

@@ -19,6 +19,7 @@ const JobList: React.FC<JobListProps> = ({ onViewJob, onCreateJob, onCloneJob })
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState('');
   const [expandedJobId, setExpandedJobId] = useState<number | null>(null);
+  const [actionResultsSearch, setActionResultsSearch] = useState<{[jobId: number]: string}>({});
 
   const { data: jobsData, isLoading, error } = useJobs(page, perPage, statusFilter || undefined);
   const cancelJobMutation = useCancelJob();
@@ -93,6 +94,205 @@ const JobList: React.FC<JobListProps> = ({ onViewJob, onCreateJob, onCloneJob })
     job.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     (job.description && job.description.toLowerCase().includes(searchTerm.toLowerCase()))
   ) || [];
+
+  const renderActionSummary = (summary: any, searchTerm: string = '') => {
+    const actionType = summary.action_type || 'unknown';
+    
+    // Common summary items
+    const commonItems = [
+      { key: 'successes', label: 'Completed', value: summary.successes, color: 'text-green-600' },
+      { key: 'failed', label: 'Failed', value: summary.failed, color: 'text-red-600' },
+      { key: 'total_retries', label: 'Retries', value: summary.total_retries, color: 'text-orange-600' }
+    ];
+
+    // Action-specific summary items
+    const actionSpecificItems = [];
+    
+    switch (actionType) {
+      case 'attack':
+        actionSpecificItems.push(
+          { key: 'battle_wins', label: 'Wins', value: summary.battle_wins, color: 'text-green-600' },
+          { key: 'battle_losses', label: 'Losses', value: summary.battle_losses, color: 'text-red-600' },
+          { key: 'protection_buffs', label: 'Protection Buffs', value: summary.protection_buffs, color: 'text-blue-600' },
+          { key: 'maxed_hits', label: 'Maxed Hits', value: summary.maxed_hits, color: 'text-purple-600' },
+          { key: 'runs_away', label: 'Runs Away', value: summary.runs_away, color: 'text-orange-600' },
+          { key: 'gold_won', label: 'Gold Won', value: summary.gold_won?.toLocaleString(), color: 'text-yellow-600' },
+          { key: 'troops_killed', label: 'Troops Killed', value: summary.troops_killed, color: 'text-red-600' },
+          { key: 'troops_lost', label: 'Troops Lost', value: summary.troops_lost, color: 'text-red-600' }
+        );
+        break;
+        
+      case 'sabotage':
+        actionSpecificItems.push(
+          { key: 'sabotages_defended', label: 'Defended', value: summary.sabotages_defended, color: 'text-yellow-600' },
+          { key: 'maxed_sab_attempts', label: 'Max Attempts', value: summary.maxed_sab_attempts, color: 'text-purple-600' },
+          { key: 'sabotages_failed', label: 'Failed', value: summary.sabotages_failed, color: 'text-red-600' },
+          { key: 'weapons_destroyed', label: 'Weapons Destroyed', value: summary.weapons_destroyed, color: 'text-red-600' },
+          { key: 'total_damage_dealt', label: 'Damage Dealt', value: summary.total_damage_dealt?.toLocaleString(), color: 'text-orange-600' },
+          { key: 'weapon_damage_cost', label: 'Weapon Cost', value: summary.weapon_damage_cost?.toLocaleString(), color: 'text-blue-600' }
+        );
+        break;
+        
+      case 'spy':
+        actionSpecificItems.push(
+          { key: 'spies_successful', label: 'Successful', value: summary.spies_successful, color: 'text-green-600' },
+          { key: 'spies_successful_data', label: 'Data Collected', value: summary.spies_successful_data, color: 'text-blue-600' },
+          { key: 'spies_caught', label: 'Caught', value: summary.spies_caught, color: 'text-red-600' },
+          { key: 'spies_failed', label: 'Failed', value: summary.spies_failed, color: 'text-red-600' },
+          { key: 'maxed_spy_attempts', label: 'Max Attempts', value: summary.maxed_spy_attempts, color: 'text-purple-600' }
+        );
+        break;
+        
+      case 'send_credits':
+        actionSpecificItems.push(
+          { key: 'credits_sent', label: 'Credits Sent', value: summary.credits_sent?.toLocaleString(), color: 'text-green-600' },
+          { key: 'jackpot_credits', label: 'Jackpot', value: summary.jackpot_credits?.toLocaleString(), color: 'text-yellow-600' },
+          { key: 'transfers_successful', label: 'Successful', value: summary.transfers_successful, color: 'text-green-600' }
+        );
+        break;
+        
+      case 'recruit':
+        actionSpecificItems.push(
+          { key: 'recruitments_successful', label: 'Successful', value: summary.recruitments_successful, color: 'text-green-600' },
+          { key: 'total_cost', label: 'Cost', value: summary.total_cost?.toLocaleString(), color: 'text-yellow-600' }
+        );
+        break;
+        
+      case 'purchase_armory':
+        actionSpecificItems.push(
+          { key: 'weapons_purchased', label: 'Purchased', value: summary.weapons_purchased, color: 'text-green-600' },
+          { key: 'total_cost', label: 'Cost', value: summary.total_cost?.toLocaleString(), color: 'text-yellow-600' },
+          { key: 'total_revenue', label: 'Revenue', value: summary.total_revenue?.toLocaleString(), color: 'text-green-600' }
+        );
+        break;
+        
+      case 'purchase_training':
+        actionSpecificItems.push(
+          { key: 'soldiers_trained', label: 'Soldiers', value: summary.soldiers_trained, color: 'text-blue-600' },
+          { key: 'mercs_trained', label: 'Mercs', value: summary.mercs_trained, color: 'text-purple-600' },
+          { key: 'total_cost', label: 'Cost', value: summary.total_cost?.toLocaleString(), color: 'text-yellow-600' }
+        );
+        break;
+        
+      case 'become_officer':
+        actionSpecificItems.push(
+          { key: 'applications_successful', label: 'Successful', value: summary.applications_successful, color: 'text-green-600' },
+          { key: 'applications_failed', label: 'Failed', value: summary.applications_failed, color: 'text-red-600' }
+        );
+        break;
+        
+      case 'get_metadata':
+        actionSpecificItems.push(
+          { key: 'retrievals_successful', label: 'Successful', value: summary.retrievals_successful, color: 'text-green-600' },
+          { key: 'accounts_updated', label: 'Updated', value: summary.accounts_updated, color: 'text-blue-600' }
+        );
+        break;
+        
+      default:
+        actionSpecificItems.push(
+          { key: 'operations_completed', label: 'Operations', value: summary.operations_completed, color: 'text-green-600' }
+        );
+    }
+
+    // Combine all items
+    const allItems = [...commonItems, ...actionSpecificItems];
+    
+    // Filter out items with zero or undefined values for cleaner display
+    const displayItems = allItems.filter(item => item.value !== undefined && item.value !== null && item.value !== 0);
+
+    // Show errors if any
+    const errorItems = summary.error_list && summary.error_list.length > 0 ? summary.error_list : [];
+
+    return (
+      <div className="grid grid-cols-3 gap-4 w-full">
+        {/* Action Results Column */}
+        <div className="space-y-2">
+          <div className="text-sm font-medium text-gray-600 mb-3">Action Results</div>
+          <div className="space-y-2">
+            {displayItems.map((item) => (
+              <div key={item.key} className="flex items-center justify-between">
+                <span className="text-sm text-gray-600">{item.label}:</span>
+                <span className={`text-sm font-semibold ${item.color}`}>
+                  {item.value}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+        
+        {/* Messages Column */}
+        <div>
+          <div className="text-sm font-medium text-blue-600 mb-3">Messages</div>
+          {summary.messages && Object.keys(summary.messages).length > 0 ? (
+            <div className="max-h-48 overflow-y-auto space-y-2">
+              {Object.entries(summary.messages)
+                .filter(([username, messages]: [string, any]) => {
+                  if (!searchTerm) return true;
+                  const searchLower = searchTerm.toLowerCase();
+                  return username.toLowerCase().includes(searchLower) ||
+                    (Array.isArray(messages) ? messages : [messages]).some((msg: string) => 
+                      String(msg).toLowerCase().includes(searchLower)
+                    );
+                })
+                .map(([username, messages]: [string, any]) => (
+                  <div key={username} className="bg-blue-100 rounded p-1">
+                    <div className="text-xs font-medium text-blue-800 mb-1">{username}</div>
+                    <div className="space-y-1">
+                      {Array.isArray(messages) ? messages.map((message: string, index: number) => (
+                        <div key={index} className="text-xs text-blue-700 break-words">
+                          {String(message)}
+                        </div>
+                      )) : (
+                        <div className="text-xs text-blue-700 break-words">
+                          {String(messages)}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+            </div>
+          ) : (
+            <div className="text-xs text-gray-500 italic">No messages</div>
+          )}
+        </div>
+
+        {/* Errors Column */}
+        <div>
+          <div className="text-sm font-medium text-red-600 mb-3">Errors</div>
+          {errorItems && errorItems.length > 0 ? (
+            <div className="max-h-48 overflow-y-auto space-y-2">
+              {errorItems
+                .filter((errorItem: any) => {
+                  if (!searchTerm) return true;
+                  const searchLower = searchTerm.toLowerCase();
+                  const username = errorItem.username || (errorItem.account_id ? `Account ${errorItem.account_id}` : 'Unknown Account');
+                  return username.toLowerCase().includes(searchLower) ||
+                    (errorItem.errors || [errorItem.error]).some((error: string) => 
+                      String(error).toLowerCase().includes(searchLower)
+                    );
+                })
+                .map((errorItem: any, index: number) => (
+                  <div key={index} className="bg-red-100 rounded p-1">
+                    <div className="text-xs font-medium text-red-800">
+                      {errorItem.username || (errorItem.account_id ? `Account ${errorItem.account_id}` : 'Unknown Account')}
+                    </div>
+                    <div className="space-y-1">
+                      {(errorItem.errors || [errorItem.error]).map((error: string, errorIndex: number) => (
+                        <div key={errorIndex} className="text-xs text-red-700 break-words">
+                          {error}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+            </div>
+          ) : (
+            <div className="text-xs text-gray-500 italic">No errors</div>
+          )}
+        </div>
+      </div>
+    );
+  };
 
   if (error) {
     return (
@@ -371,7 +571,71 @@ const JobList: React.FC<JobListProps> = ({ onViewJob, onCreateJob, onCloneJob })
                                   )}
                                 </div>
                               </div>
+
                             </div>
+                            
+                            {/* Action Results - Full Width Section */}
+                            {job.steps && job.steps.length > 0 && (
+                              <div className="mt-6 space-y-4">
+                                <div className="flex items-center justify-between">
+                                  <h4 className="font-medium text-gray-900">Action Results</h4>
+                                  <div className="flex items-center space-x-2">
+                                    <Search className="h-4 w-4 text-gray-400" />
+                                    <Input
+                                      type="text"
+                                      placeholder="Search messages & errors..."
+                                      value={actionResultsSearch[job.id] || ''}
+                                      onChange={(e) => setActionResultsSearch(prev => ({
+                                        ...prev,
+                                        [job.id]: e.target.value
+                                      }))}
+                                      className="w-64 text-sm"
+                                    />
+                                  </div>
+                                </div>
+                                <div className="space-y-4">
+                                  {job.steps.map((step, stepIndex) => (
+                                    <div key={step.id} className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                                      <div className="mb-3">
+                                        <div className="flex items-center space-x-2 mb-1">
+                                          <span className="font-mono text-sm text-gray-500">#{step.step_order}</span>
+                                          <span className="font-medium text-base text-gray-900 truncate flex-1" title={step.action_type}>
+                                            {step.action_type}
+                                          </span>
+                                          <span
+                                            className={`inline-flex items-center gap-1 px-3 py-1 text-sm font-semibold rounded-full flex-shrink-0 ${
+                                              step.status === 'completed' ? 'bg-green-100 text-green-800' :
+                                              step.status === 'failed' ? 'bg-red-100 text-red-800' :
+                                              step.status === 'running' ? 'bg-blue-100 text-blue-800' :
+                                              'bg-gray-100 text-gray-800'
+                                            }`}
+                                          >
+                                            {step.status.charAt(0).toUpperCase() + step.status.slice(1)}
+                                          </span>
+                                        </div>
+                                        <div className="text-sm text-gray-500">
+                                          {step.account_ids.length} account{step.account_ids.length !== 1 ? 's' : ''} • {step.is_async ? 'Async' : 'Sync'}
+                                        </div>
+                                      </div>
+                                      
+                                      {/* Action Summary */}
+                                      {step.result && step.result.summary && (
+                                        <div className="bg-blue-50 border border-blue-200 rounded p-4">
+                                          {renderActionSummary(step.result.summary, actionResultsSearch[job.id] || '')}
+                                        </div>
+                                      )}
+                                      
+                                      {/* Error Display */}
+                                      {step.error_message && (
+                                        <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded text-red-700 text-sm">
+                                          {step.error_message}
+                                        </div>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
                           </div>
                         </TableCell>
                       </TableRow>

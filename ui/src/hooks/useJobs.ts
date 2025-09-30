@@ -14,10 +14,10 @@ export const jobKeys = {
 };
 
 // Get all jobs with pagination and filtering
-export const useJobs = (page: number = 1, perPage: number = 20, status?: string) => {
+export const useJobs = (page: number = 1, perPage: number = 20, status?: string, includeSteps: boolean = true) => {
   return useQuery<JobListResponse, Error>(
-    jobKeys.list({ page, perPage, status }),
-    () => jobsApi.getJobs(page, perPage, status),
+    jobKeys.list({ page, perPage, status, includeSteps }),
+    () => jobsApi.getJobs(page, perPage, status, includeSteps),
     {
       keepPreviousData: true,
       refetchInterval: (data) => {

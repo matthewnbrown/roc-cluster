@@ -26,6 +26,7 @@ interface FormData {
     account_ids: number[];
     cluster_ids: number[];
     max_retries: number;
+    is_async: boolean;
     parameters: Record<string, any>;
   }>;
 }
@@ -68,6 +69,7 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
           account_ids: [],
           cluster_ids: [],
           max_retries: 0,
+          is_async: true,
           parameters: {},
         },
       ],
@@ -217,6 +219,7 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
             account_ids: (step as any).original_account_ids || [],
             cluster_ids: (step as any).original_cluster_ids || [], // Use original cluster_ids for cloning
             max_retries: step.max_retries || 0,
+            is_async: step.is_async !== undefined ? step.is_async : true,
             parameters: formParameters,
             originalParameters: step.parameters || {}, // Keep original parameters for comparison
           });
@@ -303,6 +306,7 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
             account_ids: step.account_ids.length > 0 ? step.account_ids : undefined,
             cluster_ids: step.cluster_ids.length > 0 ? step.cluster_ids : undefined,
             max_retries: step.max_retries,
+            is_async: step.is_async,
             parameters: Object.keys(filteredParameters).length > 0 ? filteredParameters : undefined,
           };
         }),
@@ -322,6 +326,7 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
       account_ids: [],
       cluster_ids: [],
       max_retries: 0,
+      is_async: true,
       parameters: {},
     });
   };
@@ -374,6 +379,7 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
             cluster_ids: step.cluster_ids || [],
             parameters: filteredParameters,
             max_retries: step.max_retries,
+            is_async: step.is_async,
           };
         }),
       };
@@ -697,7 +703,7 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
                             )}
                           </div>
                           <div className="text-xs text-gray-500">
-                            Max retries: {step?.max_retries || 0}
+                            Max retries: {step?.max_retries || 0} • {step?.is_async ? 'Async' : 'Sync'}
                           </div>
                         </div>
                       </div>
@@ -978,9 +984,25 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
                                 )}
                               </div>
                             </div>
+                            
+                            {/* Async Execution */}
+                            <div className="col-span-1">
+                              <div className="flex items-center">
+                                <input
+                                  type="checkbox"
+                                  id={`steps.${index}.is_async`}
+                                  {...register(`steps.${index}.is_async`)}
+                                  defaultChecked={true}
+                                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                                />
+                                <label htmlFor={`steps.${index}.is_async`} className="ml-2 block text-sm text-gray-900">
+                                  Execute asynchronously
+                                </label>
+                              </div>
+                            </div>
                           </div>
 
-                          {/* Action Parameters */}
+              {/* Action Parameters */}
                           {watchedSteps[index]?.action_type && (
                             <div className="space-y-4">
                               <h5 className="font-medium text-gray-900">Action Parameters</h5>
