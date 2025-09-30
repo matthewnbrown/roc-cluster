@@ -27,6 +27,8 @@ class JobManager:
         # In-memory job progress tracking for real-time updates
         self._job_progress = {}  # {job_id: {"completed": int, "failed": int, "total": int}}
         self._step_progress = {}  # {step_id: {"total_accounts": int, "processed_accounts": int, "successful_accounts": int, "failed_accounts": int}}
+        # Track running step tasks for cancellation
+        self._running_step_tasks: Dict[int, List[asyncio.Task]] = {}  # {job_id: [task1, task2, ...]}
     
     def _init_job_progress(self, job_id: int, total_steps: int):
         """Initialize in-memory progress tracking for a job"""
@@ -54,6 +56,36 @@ class JobManager:
         """Clean up in-memory progress when job is complete"""
         if job_id in self._job_progress:
             del self._job_progress[job_id]
+    
+    def _add_running_step_task(self, job_id: int, task: asyncio.Task):
+        """Add a running step task to the tracking list"""
+        if job_id not in self._running_step_tasks:
+            self._running_step_tasks[job_id] = []
+        self._running_step_tasks[job_id].append(task)
+    
+    def _remove_running_step_task(self, job_id: int, task: asyncio.Task):
+        """Remove a completed step task from the tracking list"""
+        if job_id in self._running_step_tasks:
+            try:
+                self._running_step_tasks[job_id].remove(task)
+            except ValueError:
+                pass  # Task not in list, ignore
+    
+    def _cancel_running_step_tasks(self, job_id: int):
+        """Cancel all running step tasks for a job"""
+        if job_id in self._running_step_tasks:
+            tasks = self._running_step_tasks[job_id]
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            # Clear the list
+            self._running_step_tasks[job_id] = []
+            logger.info(f"Cancelled {len(tasks)} running step tasks for job {job_id}")
+    
+    def _cleanup_running_step_tasks(self, job_id: int):
+        """Clean up the running step tasks tracking for a job"""
+        if job_id in self._running_step_tasks:
+            del self._running_step_tasks[job_id]
     
     def _init_step_progress(self, step_id: int, total_accounts: int):
         """Initialize in-memory progress tracking for a step"""
@@ -568,6 +600,9 @@ class JobManager:
                 task.cancel()
                 del self._running_jobs[job_id]
             
+            # Cancel all running step tasks
+            self._cancel_running_step_tasks(job_id)
+            
             # Update pending/running steps
             db.query(JobStep).filter(
                 and_(
@@ -581,6 +616,10 @@ class JobManager:
             })
             
             db.commit()
+            
+            # Clean up running step tasks tracking
+            self._cleanup_running_step_tasks(job_id)
+            
             return True
             
         except Exception as e:
@@ -692,6 +731,9 @@ class JobManager:
             
             # Clean up in-memory progress tracking
             self._cleanup_job_progress(job_id)
+            
+            # Clean up running step tasks tracking
+            self._cleanup_running_step_tasks(job_id)
                 
         except Exception as e:
             logger.error(f"Error executing job {job_id}: {e}", exc_info=True)
@@ -703,6 +745,9 @@ class JobManager:
             
             # Clean up in-memory progress tracking even on error
             self._cleanup_job_progress(job_id)
+            
+            # Clean up running step tasks tracking even on error
+            self._cleanup_running_step_tasks(job_id)
         finally:
             db.close()
     
@@ -713,6 +758,15 @@ class JobManager:
         db.commit()
         
         try:
+            # Check if job was cancelled before starting execution
+            job = db.query(Job).filter(Job.id == step.job_id).first()
+            if job and job.status == JobStatus.CANCELLED:
+                step.status = JobStatus.CANCELLED
+                step.error_message = "Job cancelled"
+                step.completed_at = datetime.now(timezone.utc)
+                db.commit()
+                return
+            
             # Parse parameters
             parameters = {}
             if step.parameters:
@@ -777,6 +831,20 @@ class JobManager:
             # Store account_id as an attribute on the task for later retrieval
             task.account_id = account_id
             tasks.append(task)
+        
+        # Check if job was cancelled before processing results
+        if step:
+            db = SessionLocal()
+            try:
+                job = db.query(Job).filter(Job.id == step.job_id).first()
+                if job and job.status == JobStatus.CANCELLED:
+                    # Cancel all account tasks
+                    for task in tasks:
+                        if not task.done():
+                            task.cancel()
+                    return {"success": False, "error": "Job cancelled", "results": []}
+            finally:
+                db.close()
         
         # Process results as they complete for real-time progress updates
         successful_results = []
@@ -1287,6 +1355,8 @@ class JobManager:
                     # Launch async step without waiting
                     task = asyncio.create_task(self._execute_step_safe(step, db, bulk_cookies, bulk_accounts))
                     async_tasks.append(task)
+                    # Track the task for cancellation
+                    self._add_running_step_task(job.id, task)
                     logger.info(f"Launched async step {step.id} for job {job.id}")
                 else:
                     # Execute sync step and wait for completion
@@ -1311,6 +1381,10 @@ class JobManager:
             logger.info(f"Waiting for {len(async_tasks)} async tasks to complete for job {job.id}")
             await asyncio.gather(*async_tasks, return_exceptions=True)
             logger.info(f"All async tasks completed for job {job.id}")
+            
+            # Remove completed async tasks from tracking
+            for task in async_tasks:
+                self._remove_running_step_task(job.id, task)
 
     async def _execute_steps_parallel(self, steps: List[JobStep], db: Session, bulk_cookies: Optional[Dict[int, Dict[str, Any]]] = None, bulk_accounts: Optional[Dict[int, Account]] = None):
         """Execute multiple steps in parallel"""
@@ -1319,9 +1393,15 @@ class JobManager:
         for step in steps:
             task = asyncio.create_task(self._execute_step_safe(step, None, bulk_cookies, bulk_accounts))
             tasks.append(task)
+            # Track the task for cancellation
+            self._add_running_step_task(step.job_id, task)
         
         # Wait for all tasks to complete
         results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # Remove completed tasks from tracking
+        for task in tasks:
+            self._remove_running_step_task(steps[0].job_id, task)
         
         # Update step statuses based on results - use the main db session for final updates
         for i, result in enumerate(results):
