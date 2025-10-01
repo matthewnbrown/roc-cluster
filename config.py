@@ -45,7 +45,11 @@ class Settings:
     DB_POOL_RECYCLE: int = int(os.getenv("DB_POOL_RECYCLE", "3600"))  # 1 hour
     
     # Concurrency Control
-    MAX_CONCURRENT_OPERATIONS: int = int(os.getenv("MAX_CONCURRENT_OPERATIONS", "100"))
+    MAX_CONCURRENT_OPERATIONS: int = int(os.getenv("MAX_CONCURRENT_OPERATIONS", "200"))
+    
+    # Target Rate Limiting
+    MAX_CONCURRENT_TARGET_REQUESTS: int = int(os.getenv("MAX_CONCURRENT_TARGET_REQUESTS", "20"))
+    TARGET_RATE_LIMIT_TIMEOUT: int = int(os.getenv("TARGET_RATE_LIMIT_TIMEOUT", "180"))  # seconds
     
     # HTTP Connection Limits - Optimized for high concurrency
     HTTP_CONNECTION_LIMIT: int = int(os.getenv("HTTP_CONNECTION_LIMIT", "40"))

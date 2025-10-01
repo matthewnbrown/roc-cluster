@@ -8,6 +8,7 @@ import logging
 import math
 import os
 import random
+import asyncio
 
 import traceback
 from typing import Awaitable, Callable, List, Optional, Tuple
@@ -35,6 +36,7 @@ from api.credit_logger import credit_logger
 from api.captcha_feedback_service import captcha_feedback_service
 from api.page_data_service import page_data_service
 from api.preference_service import PreferenceService
+from api.target_rate_limiter import roc_target_rate_limiter
 from config import settings
 from sqlalchemy.orm import joinedload
 
@@ -70,6 +72,59 @@ class GameAccountManager:
             
         self.use_page_data_service = use_page_data_service
 
+    def _is_target_based_action(self, action_name: str) -> bool:
+        """Check if an action requires target rate limiting"""
+        target_based_actions = {
+            "attack",
+            "sabotage", 
+            "spy",
+            "become_officer",
+            "send_credits"
+        }
+        return action_name in target_based_actions
+
+    async def _with_target_rate_limit(self, target_id: str, action_name: str, func):
+        """
+        Execute a function with target-based rate limiting for ROC API calls.
+        
+        Args:
+            target_id: The target user ID
+            action_name: Name of the action being performed
+            func: Async function to execute
+            
+        Returns:
+            Result of the function execution
+        """
+        if not self._is_target_based_action(action_name):
+            # Not a target-based action, execute directly
+            return await func()
+        
+        # Acquire rate limit lock for this target
+        request_id = None
+        try:
+            request_id = await roc_target_rate_limiter.acquire_lock(target_id)
+            logger.debug(f"Acquired ROC rate limit lock for target {target_id}, action {action_name}, request {request_id}")
+            
+            # Execute the actual action
+            return await func()
+            
+        except asyncio.TimeoutError:
+            logger.warning(f"Rate limit timeout for target {target_id}, action {action_name}")
+            return {
+                "success": False,
+                "error": f"Rate limit exceeded for target {target_id}. Too many concurrent ROC API requests. Please try again later."
+            }
+        except Exception as e:
+            logger.error(f"Error in rate-limited action for target {target_id}, action {action_name}: {e}")
+            raise
+        finally:
+            # Always release the lock if we acquired it
+            if request_id:
+                try:
+                    await roc_target_rate_limiter.release_lock(target_id, request_id)
+                    logger.debug(f"Released ROC rate limit lock for target {target_id}, request {request_id}")
+                except Exception as e:
+                    logger.error(f"Error releasing ROC rate limit lock for target {target_id}, request {request_id}: {e}")
 
     def parse_roc_number(self, number: str) -> int:
         """Parse a ROC number"""
@@ -372,58 +427,60 @@ class GameAccountManager:
         if turns < 1 or turns > 12:
             return {"success": False, "errors": ["Turn count must be between 1 and 12"]}
     
-
-        try:
-            attack_url = self.url_generator.attack(target_id)
-            
-            payload = {
-                "defender_id": target_id,
-                "mission_type": "attack",
-                "attacks": turns
-            }
-            
-            results = []
-            
-            async def _submit():                
-                return await self.__submit_page(attack_url, payload, PageSubmit.ATTACK)
-
-            errors = []
-            for i in range(self.max_retries+1):
-                result = await self.__retry_login_wrapper(_submit)
-            
-                page_text = await result.text()
-                page_data = parse_attack_page(page_text)
-                if page_data["result"] == "ProtectionBuff":
-                    return {"success": True, "protection_buff": 1, "retries": i}
-                elif page_data["result"] == "MaxedHits":
-                    return {"success": True, "maxed_hits": 1, "retries": i}
-                elif page_data["result"] == "RunAway":
-                    return {"success": True, "runs_away": 1, "retries": i}
-                elif page_data["result"] == "Win":
-                    return {
-                        "success": True,
-                        "win": 1,
-                        "gold_won": page_data["gold_won"],
-                        "troops_killed": page_data["troops_killed"],
-                        "troops_lost": page_data["troops_lost"],
-                        "retries": i}
-                elif page_data["result"] == "Loss":
-                    return {
-                        "success": True,
-                        "loss": 1,
-                        "troops_killed": page_data["troops_killed"],
-                        "troops_lost": page_data["troops_lost"],
-                        "retries": i
-                        }
+        async def _attack_implementation():
+            try:
+                attack_url = self.url_generator.attack(target_id)
                 
-                errors.append('Unknown error. Could not determine result')
+                payload = {
+                    "defender_id": target_id,
+                    "mission_type": "attack",
+                    "attacks": turns
+                }
+                
+                results = []
+                
+                async def _submit():                
+                    return await self.__submit_page(attack_url, payload, PageSubmit.ATTACK)
 
+                errors = []
+                for i in range(self.max_retries+1):
+                    result = await self.__retry_login_wrapper(_submit)
+                
+                    page_text = await result.text()
+                    page_data = parse_attack_page(page_text)
+                    if page_data["result"] == "ProtectionBuff":
+                        return {"success": True, "protection_buff": 1, "retries": i}
+                    elif page_data["result"] == "MaxedHits":
+                        return {"success": True, "maxed_hits": 1, "retries": i}
+                    elif page_data["result"] == "RunAway":
+                        return {"success": True, "runs_away": 1, "retries": i}
+                    elif page_data["result"] == "Win":
+                        return {
+                            "success": True,
+                            "win": 1,
+                            "gold_won": page_data["gold_won"],
+                            "troops_killed": page_data["troops_killed"],
+                            "troops_lost": page_data["troops_lost"],
+                            "retries": i}
+                    elif page_data["result"] == "Loss":
+                        return {
+                            "success": True,
+                            "loss": 1,
+                            "troops_killed": page_data["troops_killed"],
+                            "troops_lost": page_data["troops_lost"],
+                            "retries": i
+                            }
+                    
+                    errors.append('Unknown error. Could not determine result')
 
-            return {"success": False, "errors": errors}
+                return {"success": False, "errors": errors}
 
-        except Exception as e:
-            logger.error(f"Error in attack for {self.account.username}: {e}", exc_info=True)
-            return {"success": False, "errors": [str(e)]}
+            except Exception as e:
+                logger.error(f"Error in attack for {self.account.username}: {e}", exc_info=True)
+                return {"success": False, "errors": [str(e)]}
+
+        # Execute with rate limiting
+        return await self._with_target_rate_limit(target_id, "attack", _attack_implementation)
     
     async def sabotage(self, target_id: str, spy_count: int = 1, enemy_weapon: int = -1) -> Dict[str, Any]:
         """Sabotage another user
@@ -444,49 +501,53 @@ class GameAccountManager:
         if spy_count is None or spy_count < 1 or spy_count > 25:
             return {"success": False, "errors": ["Spy count must be between 1 and 25"]}
         
-        payload = {
-            "defender_id": target_id,
-            "mission_type": "sabotage",
-            "sabspies": spy_count,
-            "enemy_weapon": enemy_weapon
-        }
-        
-        sabotage_url = self.url_generator.sabotage(target_id)
-        
-        async def _submit_sabotage():                
-            return await self.__submit_page(sabotage_url, payload, PageSubmit.SABOTAGE)
-        
-        for i in range(self.max_retries+1):
-            result = await self.__retry_login_wrapper(_submit_sabotage)
+        async def _sabotage_implementation():
+            payload = {
+                "defender_id": target_id,
+                "mission_type": "sabotage",
+                "sabspies": spy_count,
+                "enemy_weapon": enemy_weapon
+            }
             
-            page_text = await result.text()
+            sabotage_url = self.url_generator.sabotage(target_id)
             
-            sabotage_data = parse_sabotage_page(page_text)
+            async def _submit_sabotage():                
+                return await self.__submit_page(sabotage_url, payload, PageSubmit.SABOTAGE)
             
+            for i in range(self.max_retries+1):
+                result = await self.__retry_login_wrapper(_submit_sabotage)
+                
+                page_text = await result.text()
+                
+                sabotage_data = parse_sabotage_page(page_text)
+                
 
-            if sabotage_data["result"] == "max_sabbed":
-                return {
-                    "success": True,
-                    "maxed_sab_attempts": 1,
-                    "retries": i
-                }
-            elif sabotage_data["result"] == "defended":
-                return {
-                    "success": True,
-                    "sabotages_defended": 1,
-                    "weapon_damage_cost": sabotage_data["weapon_damage_cost"],
-                    "retries": i
-                }
-            elif sabotage_data["result"] == "success":
-                return {
-                    "success": True,
-                    "weapon_damage_cost": sabotage_data["weapon_damage_cost"],
-                    "damage_dealt": sabotage_data["damage_to_enemy"],
-                    "weapon_count": sabotage_data["weapon_count"],
-                    "retries": i
-                }
-            
-        return {"success": False, "errors": ["Failed to sabotage user, I guess?"], "retries": self.max_retries}
+                if sabotage_data["result"] == "max_sabbed":
+                    return {
+                        "success": True,
+                        "maxed_sab_attempts": 1,
+                        "retries": i
+                    }
+                elif sabotage_data["result"] == "defended":
+                    return {
+                        "success": True,
+                        "sabotages_defended": 1,
+                        "weapon_damage_cost": sabotage_data["weapon_damage_cost"],
+                        "retries": i
+                    }
+                elif sabotage_data["result"] == "success":
+                    return {
+                        "success": True,
+                        "weapon_damage_cost": sabotage_data["weapon_damage_cost"],
+                        "damage_dealt": sabotage_data["damage_to_enemy"],
+                        "weapon_count": sabotage_data["weapon_count"],
+                        "retries": i
+                    }
+                
+            return {"success": False, "errors": ["Failed to sabotage user, I guess?"], "retries": self.max_retries}
+
+        # Execute with rate limiting
+        return await self._with_target_rate_limit(target_id, "sabotage", _sabotage_implementation)
     
     async def spy(self, target_id: str, spy_count: int = 1 ) -> Dict[str, Any]:
         """Spy on another user
@@ -502,110 +563,122 @@ class GameAccountManager:
         if spy_count < 1 or spy_count > 25:
             return {"success": False, "errors": ["Spy count must be between 1 and 25"]}
 
-        try:
-            spy_url = self.url_generator.spy(target_id)
-            
-            payload = {
-                "defender_id": target_id,
-                "mission_type": "recon",
-                "reconspies": spy_count
-            }
-            
-            results = []
-            
-            async def _submit_spy():                
-                return await self.__submit_page(spy_url, payload, PageSubmit.SPY)
-
-            for i in range(self.max_retries+1):
-                result = await self.__retry_login_wrapper(_submit_spy)
-                page_text = await result.text()
-                if 'You cannot recon this person again today!' in page_text:
-                    return {"success": True, "maxed_spy_attempts": 1, "retries": i}
+        async def _spy_implementation():
+            try:
+                spy_url = self.url_generator.spy(target_id)
                 
-                if 'As they approach, an alarm is cried out by enemy sentries' in page_text:
-                    return {"success": True, "spies_caught": 1, "retries": i}
+                payload = {
+                    "defender_id": target_id,
+                    "mission_type": "recon",
+                    "reconspies": spy_count
+                }
                 
-                if 'inteldetail' not in result.url.path:
-                    return {"success": False, "errors": ["Unknown error. No captcha error, but not on intel url"]}
+                results = []
                 
-                _ = parse_recon_data(page_text)
-                return {"success": True, "spies_successful_data": 1, "retries": i}
+                async def _submit_spy():                
+                    return await self.__submit_page(spy_url, payload, PageSubmit.SPY)
 
-            results_str = "\n".join([f"{i+1}. {result.get('error', 'Unknown error')}" for i, result in enumerate(results)])
-            return {"success": False, "errors": [f"Failed to spy on user: {results_str}"]}
+                for i in range(self.max_retries+1):
+                    result = await self.__retry_login_wrapper(_submit_spy)
+                    page_text = await result.text()
+                    if 'You cannot recon this person again today!' in page_text:
+                        return {"success": True, "maxed_spy_attempts": 1, "retries": i}
+                    
+                    if 'As they approach, an alarm is cried out by enemy sentries' in page_text:
+                        return {"success": True, "spies_caught": 1, "retries": i}
+                    
+                    if 'inteldetail' not in result.url.path:
+                        return {"success": False, "errors": ["Unknown error. No captcha error, but not on intel url"]}
+                    
+                    _ = parse_recon_data(page_text)
+                    return {"success": True, "spies_successful_data": 1, "retries": i}
 
-        except Exception as e:
-            stack_trace = traceback.format_exc()
-            return {"success": False, "errors": [str(e) + "\n" + stack_trace]}
+                results_str = "\n".join([f"{i+1}. {result.get('error', 'Unknown error')}" for i, result in enumerate(results)])
+                return {"success": False, "errors": [f"Failed to spy on user: {results_str}"]}
+
+            except Exception as e:
+                stack_trace = traceback.format_exc()
+                return {"success": False, "errors": [str(e) + "\n" + stack_trace]}
+
+        # Execute with rate limiting
+        return await self._with_target_rate_limit(target_id, "spy", _spy_implementation)
     
     # not implemented
     async def become_officer(self, target_id: str) -> Dict[str, Any]:
         """Become an officer of another user"""
-        try:
-            # Implement become officer logic
-            return {"success": True, "messages": [f"Became officer of user {target_id}"]}
-        except Exception as e:
-            logger.error(f"Error in become_officer for {self.account.username}: {e}", exc_info=True)
-            return {"success": False, "error": str(e)}
+        async def _become_officer_implementation():
+            try:
+                # Implement become officer logic
+                return {"success": True, "messages": [f"Became officer of user {target_id}"]}
+            except Exception as e:
+                logger.error(f"Error in become_officer for {self.account.username}: {e}", exc_info=True)
+                return {"success": False, "error": str(e)}
+
+        # Execute with rate limiting
+        return await self._with_target_rate_limit(target_id, "become_officer", _become_officer_implementation)
     
     async def send_credits(self, target_id: str, amount: int, dry_run = False, cur_credits: int = -1) -> Dict[str, Any]:
         """Send credits to another user"""            
+        # check if amount is 'all' or an int
+        if str(amount).lower() == 'all':
+            return await self.send_all_credits(target_id)
+        
         try:
-            # check if amount is 'all' or an int
-            if str(amount).lower() == 'all':
-                return await self.send_all_credits(target_id)
-            else:
-                try:
-                    amount = int(amount)
-                except ValueError:
-                    return {"success": False, "errors": ["Invalid amount. Must be an integer or 'all'"]}
-            
-            if amount < 100:
-                return {"success": False, "errors": ["Amount must be at least 100"]}
-            
-            # if cur_credits == -1:
-            #     get_metadata = await self.get_metadata()
-            #     if not get_metadata["success"]:
-            #         return {"success": False, "error": "Failed to get metadata"}
-            #     cur_credits = get_metadata["data"].credits
-            
-            send_url = self.url_generator.send_credits()
-            
-            payload = {
-                "to": target_id,
-                "amount": amount,
-                "comment": "",
-                "submit": "Send+Credits"
-            }
-            
-            # Ceiling of 0.9 * amount
-            expected_sent_credits = math.ceil(0.9 * amount)
-            jackpot_credits = amount - expected_sent_credits
+            amount = int(amount)
+        except ValueError:
+            return {"success": False, "errors": ["Invalid amount. Must be an integer or 'all'"]}
+        
+        if amount < 100:
+            return {"success": False, "errors": ["Amount must be at least 100"]}
+
+        async def _send_credits_implementation():
+            try:
+                # if cur_credits == -1:
+                #     get_metadata = await self.get_metadata()
+                #     if not get_metadata["success"]:
+                #         return {"success": False, "error": "Failed to get metadata"}
+                #     cur_credits = get_metadata["data"].credits
                 
-            async def _submit_credits():
-                if dry_run:
-                    return {"success": True, "messages": [f"{self.account.username} would have sent {self.__roc_format_number(amount)} credits to user {target_id}"]}
-
-                return await self.__submit_page(send_url, payload, PageSubmit.CREDIT_SAVE)
-            
-            errors = []
-            for i in range(self.max_retries+1):
-                result = await self.__retry_login_wrapper(_submit_credits)
+                send_url = self.url_generator.send_credits()
                 
-                page_text = await result.text()
-                path = result.url.path
-                if path not in self.url_generator.base():
-                    errors.append("Unknown error. No captcha error, but not on base url. " + path.url)
-                if f'You sent {self.__roc_format_number(expected_sent_credits)} credits to' not in page_text:
-                    errors.append("On base url, but missing expected sent credits message.")                    
-                else:
-                    return {"success": True, "credits_sent": expected_sent_credits, "jackpot_credits": jackpot_credits, "retries": i}
+                payload = {
+                    "to": target_id,
+                    "amount": amount,
+                    "comment": "",
+                    "submit": "Send+Credits"
+                }
+                
+                # Ceiling of 0.9 * amount
+                expected_sent_credits = math.ceil(0.9 * amount)
+                jackpot_credits = amount - expected_sent_credits
+                    
+                async def _submit_credits():
+                    if dry_run:
+                        return {"success": True, "messages": [f"{self.account.username} would have sent {self.__roc_format_number(amount)} credits to user {target_id}"]}
 
-            return {"success": False, "error": "Failed to send credits:\n" + "\n".join(errors)}
+                    return await self.__submit_page(send_url, payload, PageSubmit.CREDIT_SAVE)
+                
+                errors = []
+                for i in range(self.max_retries+1):
+                    result = await self.__retry_login_wrapper(_submit_credits)
+                    
+                    page_text = await result.text()
+                    path = result.url.path
+                    if path not in self.url_generator.base():
+                        errors.append("Unknown error. No captcha error, but not on base url. " + path.url)
+                    if f'You sent {self.__roc_format_number(expected_sent_credits)} credits to' not in page_text:
+                        errors.append("On base url, but missing expected sent credits message.")                    
+                    else:
+                        return {"success": True, "credits_sent": expected_sent_credits, "jackpot_credits": jackpot_credits, "retries": i}
 
-        except Exception as e:
-            logger.error(f"Error in send_credits for {self.account.username}: {e}", exc_info=True)
-            return {"success": False, "error": str(e)} 
+                return {"success": False, "error": "Failed to send credits:\n" + "\n".join(errors)}
+
+            except Exception as e:
+                logger.error(f"Error in send_credits for {self.account.username}: {e}", exc_info=True)
+                return {"success": False, "error": str(e)}
+
+        # Execute with rate limiting
+        return await self._with_target_rate_limit(target_id, "send_credits", _send_credits_implementation) 
     
     async def send_all_credits(self, target_id: str) -> Dict[str, Any]:
         get_metadata = await self.get_metadata()

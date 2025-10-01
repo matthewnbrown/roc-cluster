@@ -847,7 +847,7 @@ const JobExpandedDetails: React.FC<{
                       </div>
                     ) : (
                       <div>
-                        {step.account_ids.length} account{step.account_ids.length !== 1 ? 's' : ''} • {step.is_async ? 'Async' : 'Sync'}
+                        {step.account_count} account{step.account_count !== 1 ? 's' : ''} • {step.is_async ? 'Async' : 'Sync'}
                       </div>
                     )}
                   </div>

@@ -15,6 +15,7 @@ from api.schemas import (
 from api.account_manager import AccountManager
 from api.database import get_db
 from api.db_models import Weapon
+from api.target_rate_limiter import roc_target_rate_limiter
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
@@ -352,4 +353,33 @@ async def get_account_metadata(
         raise
     except Exception as e:
         logger.error(f"Error getting metadata for account {account_id}: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get("/rate-limits/stats")
+async def get_rate_limit_stats():
+    """Get ROC API rate limiting statistics"""
+    try:
+        global_stats = roc_target_rate_limiter.get_global_stats()
+        return {
+            "global_stats": global_stats,
+            "description": "ROC API rate limiting prevents too many concurrent requests to the same target user"
+        }
+    except Exception as e:
+        logger.error(f"Error getting rate limit stats: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get("/rate-limits/target/{target_id}")
+async def get_target_rate_limit_stats(target_id: str):
+    """Get rate limiting statistics for a specific target"""
+    try:
+        target_stats = await roc_target_rate_limiter.get_target_stats(target_id)
+        return {
+            "target_id": target_id,
+            "stats": target_stats,
+            "description": f"Current ROC API request status for target {target_id}"
+        }
+    except Exception as e:
+        logger.error(f"Error getting target rate limit stats for {target_id}: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")

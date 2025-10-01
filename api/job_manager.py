@@ -831,6 +831,10 @@ class JobManager:
             # Store account_id as an attribute on the task for later retrieval
             task.account_id = account_id
             tasks.append(task)
+            
+            # Track individual account action tasks for cancellation if step is provided
+            if step:
+                self._add_running_step_task(step.job_id, task)
         
         # Check if job was cancelled before processing results
         if step:
@@ -964,6 +968,11 @@ class JobManager:
         
         if not overall_success:
             consolidated_result["error"] = f"{total_failed} out of {len(account_ids)} accounts failed"
+        
+        # Clean up individual account action tasks from tracking when step completes
+        if step:
+            for task in tasks:
+                self._remove_running_step_task(step.job_id, task)
         
         return consolidated_result
     
@@ -1499,7 +1508,7 @@ class JobManager:
                     id=step.id,
                     step_order=step.step_order,
                     action_type=step.action_type,
-                    account_ids=account_ids,
+                    account_count=len(account_ids),
                     original_cluster_ids=original_cluster_ids,
                     original_account_ids=original_account_ids,
                     target_id=step.target_id,

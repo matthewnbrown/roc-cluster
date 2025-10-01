@@ -1,5 +1,4 @@
 
--- Add "favourite jobs"
 - Add a "delay" job step
 
 # add ability to navigate roc from inside our page
@@ -8,3 +7,10 @@
 
 # For sab, provide uisers with a lsit of weapons rather thna a id txt entry
 # convert all to enum
+
+job
+ - job definition
+Upon execution: break down job into substeps
+
+--
+allow jobsteps to be marked async

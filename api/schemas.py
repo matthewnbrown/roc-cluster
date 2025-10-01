@@ -371,7 +371,7 @@ class JobStepResponse(BaseModel):
     id: int
     step_order: int
     action_type: str
-    account_ids: List[int]  # Multiple accounts for multi-account execution
+    account_count: int  # Number of accounts in this step (instead of full list)
     original_cluster_ids: Optional[List[int]] = None  # Original cluster IDs for cloning
     original_account_ids: Optional[List[int]] = None  # Original direct account IDs for cloning
     target_id: Optional[str] = None

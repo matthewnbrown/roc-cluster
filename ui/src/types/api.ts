@@ -152,7 +152,7 @@ export interface JobStepResponse {
   id: number;
   step_order: number;
   action_type: string;
-  account_ids: number[];
+  account_count: number; // Number of accounts in this step (instead of full list)
   original_cluster_ids?: number[]; // Original cluster IDs for cloning
   original_account_ids?: number[]; // Original direct account IDs for cloning
   target_id?: string;
@@ -164,7 +164,6 @@ export interface JobStepResponse {
   error_message?: string;
   started_at?: string;
   completed_at?: string;
-  cluster_ids?: number[]; // Added to support cluster selection in favorites
   total_accounts: number;
   processed_accounts: number;
   successful_accounts: number;

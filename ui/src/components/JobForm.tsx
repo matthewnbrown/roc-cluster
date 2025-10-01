@@ -26,6 +26,8 @@ interface FormData {
     action_type: string;
     account_ids: number[];
     cluster_ids: number[];
+    original_account_ids?: number[];
+    original_cluster_ids?: number[];
     max_retries: number;
     is_async: boolean;
     parameters: Record<string, any>;
@@ -176,8 +178,8 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
           // Combine original account_ids and cluster_ids if they're different
           const existingAccountIds = acc[existingStepIndex].account_ids || [];
           const existingClusterIds = acc[existingStepIndex].cluster_ids || [];
-          const newAccountIds = (step as any).original_account_ids || [];
-          const newClusterIds = (step as any).original_cluster_ids || [];
+          const newAccountIds = (step as any).original_account_ids || (step as any).account_ids || [];
+          const newClusterIds = (step as any).original_cluster_ids || (step as any).cluster_ids || [];
           
           // Add any new account IDs that don't already exist
           const uniqueNewAccountIds = newAccountIds.filter((id: number) => !existingAccountIds.includes(id));
@@ -217,8 +219,8 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
           
           acc.push({
             action_type: step.action_type,
-            account_ids: (step as any).original_account_ids || [],
-            cluster_ids: (step as any).original_cluster_ids || [], // Use original cluster_ids for cloning
+            account_ids: (step as any).original_account_ids || (step as any).account_ids || [],
+            cluster_ids: (step as any).original_cluster_ids || (step as any).cluster_ids || [], // Use original cluster_ids for cloning
             max_retries: step.max_retries || 0,
             is_async: step.is_async !== undefined ? step.is_async : true,
             parameters: formParameters,
@@ -337,8 +339,12 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
 
           return {
             action_type: step.action_type,
-            account_ids: step.account_ids.length > 0 ? step.account_ids : undefined,
-            cluster_ids: step.cluster_ids.length > 0 ? step.cluster_ids : undefined,
+            account_ids: (step.original_account_ids && step.original_account_ids.length > 0) || (step.account_ids && step.account_ids.length > 0) 
+              ? (step.original_account_ids || step.account_ids) 
+              : undefined,
+            cluster_ids: (step.original_cluster_ids && step.original_cluster_ids.length > 0) || (step.cluster_ids && step.cluster_ids.length > 0)
+              ? (step.original_cluster_ids || step.cluster_ids)
+              : undefined,
             max_retries: step.max_retries,
             is_async: step.is_async,
             parameters: Object.keys(filteredParameters).length > 0 ? filteredParameters : undefined,
@@ -443,8 +449,8 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
 
           return {
             action_type: step.action_type,
-            account_ids: step.account_ids || [],
-            cluster_ids: step.cluster_ids || [],
+            account_ids: step.original_account_ids || step.account_ids || [],
+            cluster_ids: step.original_cluster_ids || step.cluster_ids || [],
             parameters: filteredParameters,
             max_retries: step.max_retries,
             is_async: step.is_async,
@@ -642,7 +648,7 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
     
     // For now, we can only count individual accounts since cluster users
     // are not available in the cluster list response
-    const individualAccounts = step.account_ids || [];
+    const individualAccounts = step.original_account_ids || step.account_ids || [];
     const clusterCount = step.cluster_ids?.length || 0;
     
     return {
