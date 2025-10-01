@@ -163,79 +163,42 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
       // Use full job data if available, otherwise use the passed job data
       const jobData = fullJobData || jobToClone;
       
-      // Smart step consolidation - combine steps with identical action_type, parameters, and max_retries
-      const originalStepCount = jobData.steps?.length || 0;
-      const consolidatedSteps = jobData.steps?.reduce((acc: any[], step) => {
-        const stepKey = `${step.action_type}-${JSON.stringify(step.parameters || {})}-${step.max_retries || 0}`;
-        
-        // Find existing step with same key
-        const existingStepIndex = acc.findIndex(existingStep => {
-          const existingKey = `${existingStep.action_type}-${JSON.stringify(existingStep.originalParameters || {})}-${existingStep.max_retries || 0}`;
-          return existingKey === stepKey;
-        });
-        
-        if (existingStepIndex >= 0) {
-          // Combine original account_ids and cluster_ids if they're different
-          const existingAccountIds = acc[existingStepIndex].account_ids || [];
-          const existingClusterIds = acc[existingStepIndex].cluster_ids || [];
-          const newAccountIds = (step as any).original_account_ids || (step as any).account_ids || [];
-          const newClusterIds = (step as any).original_cluster_ids || (step as any).cluster_ids || [];
-          
-          // Add any new account IDs that don't already exist
-          const uniqueNewAccountIds = newAccountIds.filter((id: number) => !existingAccountIds.includes(id));
-          if (uniqueNewAccountIds.length > 0) {
-            acc[existingStepIndex].account_ids = [...existingAccountIds, ...uniqueNewAccountIds];
-          }
-          
-          // Add any new cluster IDs that don't already exist
-          const uniqueNewClusterIds = newClusterIds.filter((id: number) => !existingClusterIds.includes(id));
-          if (uniqueNewClusterIds.length > 0) {
-            acc[existingStepIndex].cluster_ids = [...existingClusterIds, ...uniqueNewClusterIds];
-          }
-          
-          // No need to update parameters for existing steps since they're already formatted
-        } else {
-          // Add new step
-          // Convert object parameters to JSON strings for form display
-          const formParameters: Record<string, any> = {};
-          if (step.parameters) {
-            Object.entries(step.parameters).forEach(([key, value]) => {
-              // Check if this parameter should be displayed as JSON string
-              const actionInfo = getActionTypeInfo(step.action_type);
-              const paramInfo = actionInfo?.parameter_details?.[key];
-              
-              if (paramInfo?.type === 'object' && typeof value === 'object' && value !== null) {
-                // Convert object to JSON string for form display
-                formParameters[key] = JSON.stringify(value, null, 2);
-              } else if (key === 'weapon_percentages' && typeof value === 'object' && value !== null) {
-                // Special case for weapon_percentages - always convert to JSON string
-                formParameters[key] = JSON.stringify(value, null, 2);
-              } else {
-                // Keep other parameters as-is
-                formParameters[key] = value;
-              }
-            });
-          }
-          
-          acc.push({
-            action_type: step.action_type,
-            account_ids: (step as any).original_account_ids || (step as any).account_ids || [],
-            cluster_ids: (step as any).original_cluster_ids || (step as any).cluster_ids || [], // Use original cluster_ids for cloning
-            max_retries: step.max_retries || 0,
-            is_async: step.is_async !== undefined ? step.is_async : true,
-            parameters: formParameters,
-            originalParameters: step.parameters || {}, // Keep original parameters for comparison
+      // Preserve all steps exactly as they were - no consolidation
+      const originalSteps = jobData.steps || [];
+      const clonedSteps = originalSteps.map((step) => {
+        // Convert object parameters to JSON strings for form display
+        const formParameters: Record<string, any> = {};
+        if (step.parameters) {
+          Object.entries(step.parameters).forEach(([key, value]) => {
+            // Check if this parameter should be displayed as JSON string
+            const actionInfo = getActionTypeInfo(step.action_type);
+            const paramInfo = actionInfo?.parameter_details?.[key];
+            
+            if (paramInfo?.type === 'object' && typeof value === 'object' && value !== null) {
+              // Convert object to JSON string for form display
+              formParameters[key] = JSON.stringify(value, null, 2);
+            } else if (key === 'weapon_percentages' && typeof value === 'object' && value !== null) {
+              // Special case for weapon_percentages - always convert to JSON string
+              formParameters[key] = JSON.stringify(value, null, 2);
+            } else {
+              // Keep other parameters as-is
+              formParameters[key] = value;
+            }
           });
         }
         
-        return acc;
-      }, []) || [];
+        return {
+          action_type: step.action_type,
+          account_ids: (step as any).original_account_ids || (step as any).account_ids || [],
+          cluster_ids: (step as any).original_cluster_ids || (step as any).cluster_ids || [],
+          max_retries: step.max_retries || 0,
+          is_async: step.is_async !== undefined ? step.is_async : true,
+          parameters: formParameters,
+          originalParameters: step.parameters || {},
+        };
+      });
 
-      // Log consolidation results
-      const consolidatedStepCount = consolidatedSteps.length;
-      if (originalStepCount > consolidatedStepCount) {
-        console.log(`Step consolidation: ${originalStepCount} steps → ${consolidatedStepCount} steps (${originalStepCount - consolidatedStepCount} steps combined)`);
-      }
+      console.log(`Cloning ${originalSteps.length} steps exactly as they were (no consolidation)`);
 
       // Generate smart job name with proper numbering
       const generateName = async () => {
@@ -246,7 +209,7 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
           name: smartJobName,
           description: jobData.description || '',
           parallel_execution: jobData.parallel_execution || false,
-          steps: consolidatedSteps
+          steps: clonedSteps
         };
         
         reset(formData);
