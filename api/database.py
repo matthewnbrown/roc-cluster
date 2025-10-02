@@ -28,6 +28,8 @@ if "sqlite" in DATABASE_URL:
         DATABASE_URL,
         connect_args={"check_same_thread": False},
         # SQLite uses SingletonThreadPool by default, no pooling parameters needed
+        # Add timezone handling for SQLite
+        echo=False,  # Set to True for SQL debugging
     )
 else:
     # Non-SQLite database: use connection pooling

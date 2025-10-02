@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { systemApi } from '../services/api';
 import { SystemNotification } from '../types/api';
+import { formatDateTime } from '../utils/dateUtils';
 
 interface SystemNotificationsProps {
   show: boolean;
@@ -32,9 +33,7 @@ const SystemNotifications: React.FC<SystemNotificationsProps> = ({ show, onClose
     }
   };
 
-  const formatTimestamp = (timestamp: string) => {
-    return new Date(timestamp).toLocaleString();
-  };
+  // Using centralized date formatting utility
 
   const getNotificationIcon = (type: string, success: boolean) => {
     if (type === 'job_pruning') {
@@ -104,7 +103,7 @@ const SystemNotifications: React.FC<SystemNotificationsProps> = ({ show, onClose
                           {notification.type === 'job_pruning' ? 'Job Steps Pruning' : 'System Notification'}
                         </h3>
                         <span className="text-xs text-gray-500">
-                          {formatTimestamp(notification.timestamp)}
+                          {formatDateTime(notification.timestamp)}
                         </span>
                       </div>
                       <p className="mt-1 text-sm text-gray-700">

@@ -4,6 +4,7 @@ import { JobResponse, JobStatus } from '../types/api';
 import Button from './ui/Button';
 import { Table, TableHeader, TableBody, TableRow, TableCell } from './ui/Table';
 import { ArrowLeft, Clock, CheckCircle, XCircle, AlertCircle, Pause, X, Eye, ChevronDown, ChevronRight } from 'lucide-react';
+import { formatDate, formatDateTime, calculateDuration, formatNumber } from '../utils/dateUtils';
 
 interface JobDetailsProps {
   jobId: number;
@@ -105,16 +106,7 @@ const JobDetails: React.FC<JobDetailsProps> = ({ jobId, onBack }) => {
     }
   };
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-    });
-  };
+  // Using centralized date formatting utility
 
   const getProgressPercentage = () => {
     if (!job || job.total_steps === 0) return 0;
@@ -127,31 +119,10 @@ const JobDetails: React.FC<JobDetailsProps> = ({ jobId, onBack }) => {
     if (!job) return null;
     
     if (job.started_at && job.completed_at) {
-      // Backend now sends dates with 'Z' suffix, so direct parsing should work
-      const startTime = new Date(job.started_at).getTime();
-      const endTime = new Date(job.completed_at).getTime();
-      
-      if (isNaN(startTime) || isNaN(endTime)) return null;
-      
-      const duration = endTime - startTime;
-      return `${Math.round(duration / 1000)}s`;
+      return calculateDuration(job.started_at, job.completed_at);
     } else if (job.started_at) {
-      // Backend now sends dates with 'Z' suffix, so direct parsing should work
-      const startTime = new Date(job.started_at).getTime();
-      const currentTime = new Date().getTime();
-      
-      if (isNaN(startTime)) {
-        console.warn('Invalid start time:', job.started_at);
-        return 'Invalid start time';
-      }
-      
-      const duration = currentTime - startTime;
-      if (duration < 0) {
-        console.warn('Negative duration detected:', duration);
-        return '0s (running)'; // Handle negative duration
-      }
-      
-      return `${Math.round(duration / 1000)}s (running)`;
+      const duration = calculateDuration(job.started_at);
+      return duration === 'Invalid' ? 'Invalid start time' : `${duration} (running)`;
     }
     return null;
   };
@@ -177,7 +148,7 @@ const JobDetails: React.FC<JobDetailsProps> = ({ jobId, onBack }) => {
           { key: 'protection_buffs', label: 'Protection Buffs', value: summary.protection_buffs, color: 'text-blue-600' },
           { key: 'maxed_hits', label: 'Maxed Hits', value: summary.maxed_hits, color: 'text-purple-600' },
           { key: 'runs_away', label: 'Runs Away', value: summary.runs_away, color: 'text-orange-600' },
-          { key: 'gold_won', label: 'Gold Won', value: summary.gold_won?.toLocaleString(), color: 'text-yellow-600' },
+          { key: 'gold_won', label: 'Gold Won', value: formatNumber(summary.gold_won), color: 'text-yellow-600' },
           { key: 'troops_killed', label: 'Troops Killed', value: summary.troops_killed, color: 'text-red-600' },
           { key: 'troops_lost', label: 'Troops Lost', value: summary.troops_lost, color: 'text-red-600' },
           { key: 'soldiers_killed', label: 'Soldiers Killed', value: summary.soldiers_killed, color: 'text-red-600' },
@@ -191,8 +162,8 @@ const JobDetails: React.FC<JobDetailsProps> = ({ jobId, onBack }) => {
           { key: 'maxed_sab_attempts', label: 'Max Attempts', value: summary.maxed_sab_attempts, color: 'text-purple-600' },
           { key: 'sabotages_failed', label: 'Failed', value: summary.sabotages_failed, color: 'text-red-600' },
           { key: 'weapons_destroyed', label: 'Weapons Destroyed', value: summary.weapons_destroyed, color: 'text-red-600' },
-          { key: 'total_damage_dealt', label: 'Damage Dealt', value: summary.total_damage_dealt?.toLocaleString(), color: 'text-orange-600' },
-          { key: 'weapon_damage_cost', label: 'Weapon Cost', value: summary.weapon_damage_cost?.toLocaleString(), color: 'text-blue-600' }
+          { key: 'total_damage_dealt', label: 'Damage Dealt', value: formatNumber(summary.total_damage_dealt), color: 'text-orange-600' },
+          { key: 'weapon_damage_cost', label: 'Weapon Cost', value: formatNumber(summary.weapon_damage_cost), color: 'text-blue-600' }
         );
         break;
         
@@ -208,8 +179,8 @@ const JobDetails: React.FC<JobDetailsProps> = ({ jobId, onBack }) => {
         
       case 'send_credits':
         actionSpecificItems.push(
-          { key: 'credits_sent', label: 'Credits Sent', value: summary.credits_sent?.toLocaleString(), color: 'text-green-600' },
-          { key: 'jackpot_credits', label: 'Jackpot Credits', value: summary.jackpot_credits?.toLocaleString(), color: 'text-yellow-600' },
+          { key: 'credits_sent', label: 'Credits Sent', value: formatNumber(summary.credits_sent), color: 'text-green-600' },
+          { key: 'jackpot_credits', label: 'Jackpot Credits', value: formatNumber(summary.jackpot_credits), color: 'text-yellow-600' },
           { key: 'transfers_successful', label: 'Transfers Successful', value: summary.transfers_successful, color: 'text-green-600' },
           { key: 'transfers_failed', label: 'Transfers Failed', value: summary.transfers_failed, color: 'text-red-600' }
         );
@@ -220,7 +191,7 @@ const JobDetails: React.FC<JobDetailsProps> = ({ jobId, onBack }) => {
           { key: 'recruitments_successful', label: 'Recruitments Successful', value: summary.recruitments_successful, color: 'text-green-600' },
           { key: 'recruitments_failed', label: 'Recruitments Failed', value: summary.recruitments_failed, color: 'text-red-600' },
           { key: 'recruit_not_needed', label: 'Recruit Not Needed', value: summary.recruit_not_needed, color: 'text-blue-600' },
-          { key: 'total_cost', label: 'Total Cost', value: summary.total_cost?.toLocaleString(), color: 'text-yellow-600' }
+          { key: 'total_cost', label: 'Total Cost', value: formatNumber(summary.total_cost), color: 'text-yellow-600' }
         );
         break;
         
@@ -229,9 +200,9 @@ const JobDetails: React.FC<JobDetailsProps> = ({ jobId, onBack }) => {
           { key: 'weapons_purchased', label: 'Weapons Purchased', value: summary.weapons_purchased, color: 'text-green-600' },
           { key: 'purchases_successful', label: 'Purchases Successful', value: summary.purchases_successful, color: 'text-green-600' },
           { key: 'purchases_failed', label: 'Purchases Failed', value: summary.purchases_failed, color: 'text-red-600' },
-          { key: 'total_cost', label: 'Total Cost', value: summary.total_cost?.toLocaleString(), color: 'text-yellow-600' },
+          { key: 'total_cost', label: 'Total Cost', value: formatNumber(summary.total_cost), color: 'text-yellow-600' },
           { key: 'weapons_sold', label: 'Weapons Sold', value: summary.weapons_sold, color: 'text-blue-600' },
-          { key: 'total_revenue', label: 'Total Revenue', value: summary.total_revenue?.toLocaleString(), color: 'text-green-600' }
+          { key: 'total_revenue', label: 'Total Revenue', value: formatNumber(summary.total_revenue), color: 'text-green-600' }
         );
         break;
         
@@ -243,7 +214,7 @@ const JobDetails: React.FC<JobDetailsProps> = ({ jobId, onBack }) => {
           { key: 'mercs_trained', label: 'Mercs Trained', value: summary.mercs_trained, color: 'text-purple-600' },
           { key: 'soldiers_untrained', label: 'Soldiers Untrained', value: summary.soldiers_untrained, color: 'text-orange-600' },
           { key: 'mercs_untrained', label: 'Mercs Untrained', value: summary.mercs_untrained, color: 'text-orange-600' },
-          { key: 'total_cost', label: 'Total Cost', value: summary.total_cost?.toLocaleString(), color: 'text-yellow-600' }
+          { key: 'total_cost', label: 'Total Cost', value: formatNumber(summary.total_cost), color: 'text-yellow-600' }
         );
         break;
         
@@ -678,11 +649,7 @@ const JobDetails: React.FC<JobDetailsProps> = ({ jobId, onBack }) => {
                         <div className="text-sm text-gray-500 w-28 flex-shrink-0">
                           {(originalStep as any).started_at && (originalStep as any).completed_at ? (
                             (() => {
-                              const startTime = new Date((originalStep as any).started_at).getTime();
-                              const endTime = new Date((originalStep as any).completed_at).getTime();
-                              if (isNaN(startTime) || isNaN(endTime)) return 'Invalid';
-                              const duration = endTime - startTime;
-                              return duration < 0 ? '0.00s' : `${(duration / 1000).toFixed(2)}s`;
+                              return calculateDuration((originalStep as any).started_at, (originalStep as any).completed_at);
                             })()
                           ) : (originalStep as any).started_at ? (
                             'Running...'
@@ -768,11 +735,7 @@ const JobDetails: React.FC<JobDetailsProps> = ({ jobId, onBack }) => {
                             <div><span className="font-medium">Completed:</span> {(originalStep as any).completed_at ? formatDate((originalStep as any).completed_at) : 'Not completed'}</div>
                             {(originalStep as any).started_at && (originalStep as any).completed_at && (
                               <div><span className="font-medium">Duration:</span> {(() => {
-                                const startTime = new Date((originalStep as any).started_at).getTime();
-                                const endTime = new Date((originalStep as any).completed_at).getTime();
-                                if (isNaN(startTime) || isNaN(endTime)) return 'Invalid';
-                                const duration = endTime - startTime;
-                                return duration < 0 ? '0.00s' : `${(duration / 1000).toFixed(2)}s`;
+                                return calculateDuration((originalStep as any).started_at, (originalStep as any).completed_at);
                               })()}</div>
                             )}
                           </div>

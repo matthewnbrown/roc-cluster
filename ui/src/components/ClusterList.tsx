@@ -7,6 +7,7 @@ import Pagination from './ui/Pagination';
 import { Plus, Edit, Trash2, Search, Users, Copy, Shield } from 'lucide-react';
 import Input from './ui/Input';
 import ClusterTag from './ui/ClusterTag';
+import { formatDate } from '../utils/dateUtils';
 
 interface ClusterListProps {
   onViewCluster: (cluster: ClusterListResponse) => void;
@@ -38,13 +39,7 @@ const ClusterList: React.FC<ClusterListProps> = ({
     }
   };
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
-  };
+  // Using centralized date formatting utility
 
   if (isLoading) {
     return (

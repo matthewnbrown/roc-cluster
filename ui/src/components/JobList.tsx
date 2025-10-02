@@ -6,6 +6,7 @@ import Button from './ui/Button';
 import Pagination from './ui/Pagination';
 import { Plus, Eye, X, Search, Clock, CheckCircle, XCircle, AlertCircle, Pause, Copy } from 'lucide-react';
 import Input from './ui/Input';
+import { formatDate, formatNumber, calculateDuration } from '../utils/dateUtils';
 
 interface JobListProps {
   onViewJob: (job: JobResponse) => void;
@@ -92,15 +93,7 @@ const JobList: React.FC<JobListProps> = ({ onViewJob, onCreateJob, onCloneJob })
     }
   };
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
+  // Using centralized date formatting utility
 
   const getProgressPercentage = (job: JobResponse) => {
     if (job.total_steps === 0) return 0;
@@ -199,7 +192,7 @@ const JobList: React.FC<JobListProps> = ({ onViewJob, onCreateJob, onCloneJob })
           { key: 'protection_buffs', label: 'Protection Buffs', value: summary.protection_buffs, color: 'text-blue-600' },
           { key: 'maxed_hits', label: 'Maxed Hits', value: summary.maxed_hits, color: 'text-purple-600' },
           { key: 'runs_away', label: 'Runs Away', value: summary.runs_away, color: 'text-orange-600' },
-          { key: 'gold_won', label: 'Gold Won', value: summary.gold_won?.toLocaleString(), color: 'text-yellow-600' },
+          { key: 'gold_won', label: 'Gold Won', value: formatNumber(summary.gold_won), color: 'text-yellow-600' },
           { key: 'troops_killed', label: 'Troops Killed', value: summary.troops_killed, color: 'text-red-600' },
           { key: 'troops_lost', label: 'Troops Lost', value: summary.troops_lost, color: 'text-red-600' }
         );
@@ -211,8 +204,8 @@ const JobList: React.FC<JobListProps> = ({ onViewJob, onCreateJob, onCloneJob })
           { key: 'maxed_sab_attempts', label: 'Max Attempts', value: summary.maxed_sab_attempts, color: 'text-purple-600' },
           { key: 'sabotages_failed', label: 'Failed', value: summary.sabotages_failed, color: 'text-red-600' },
           { key: 'weapons_destroyed', label: 'Weapons Destroyed', value: summary.weapons_destroyed, color: 'text-red-600' },
-          { key: 'total_damage_dealt', label: 'Damage Dealt', value: summary.total_damage_dealt?.toLocaleString(), color: 'text-orange-600' },
-          { key: 'weapon_damage_cost', label: 'Weapon Cost', value: summary.weapon_damage_cost?.toLocaleString(), color: 'text-blue-600' }
+          { key: 'total_damage_dealt', label: 'Damage Dealt', value: formatNumber(summary.total_damage_dealt), color: 'text-orange-600' },
+          { key: 'weapon_damage_cost', label: 'Weapon Cost', value: formatNumber(summary.weapon_damage_cost), color: 'text-blue-600' }
         );
         break;
         
@@ -228,8 +221,8 @@ const JobList: React.FC<JobListProps> = ({ onViewJob, onCreateJob, onCloneJob })
         
       case 'send_credits':
         actionSpecificItems.push(
-          { key: 'credits_sent', label: 'Credits Sent', value: summary.credits_sent?.toLocaleString(), color: 'text-green-600' },
-          { key: 'jackpot_credits', label: 'Jackpot', value: summary.jackpot_credits?.toLocaleString(), color: 'text-yellow-600' },
+          { key: 'credits_sent', label: 'Credits Sent', value: formatNumber(summary.credits_sent), color: 'text-green-600' },
+          { key: 'jackpot_credits', label: 'Jackpot', value: formatNumber(summary.jackpot_credits), color: 'text-yellow-600' },
           { key: 'transfers_successful', label: 'Successful', value: summary.transfers_successful, color: 'text-green-600' }
         );
         break;
@@ -237,15 +230,15 @@ const JobList: React.FC<JobListProps> = ({ onViewJob, onCreateJob, onCloneJob })
       case 'recruit':
         actionSpecificItems.push(
           { key: 'recruitments_successful', label: 'Successful', value: summary.recruitments_successful, color: 'text-green-600' },
-          { key: 'total_cost', label: 'Cost', value: summary.total_cost?.toLocaleString(), color: 'text-yellow-600' }
+          { key: 'total_cost', label: 'Cost', value: formatNumber(summary.total_cost), color: 'text-yellow-600' }
         );
         break;
         
       case 'purchase_armory':
         actionSpecificItems.push(
           { key: 'weapons_purchased', label: 'Purchased', value: summary.weapons_purchased, color: 'text-green-600' },
-          { key: 'total_cost', label: 'Cost', value: summary.total_cost?.toLocaleString(), color: 'text-yellow-600' },
-          { key: 'total_revenue', label: 'Revenue', value: summary.total_revenue?.toLocaleString(), color: 'text-green-600' }
+          { key: 'total_cost', label: 'Cost', value: formatNumber(summary.total_cost), color: 'text-yellow-600' },
+          { key: 'total_revenue', label: 'Revenue', value: formatNumber(summary.total_revenue), color: 'text-green-600' }
         );
         break;
         
@@ -253,7 +246,7 @@ const JobList: React.FC<JobListProps> = ({ onViewJob, onCreateJob, onCloneJob })
         actionSpecificItems.push(
           { key: 'soldiers_trained', label: 'Soldiers', value: summary.soldiers_trained, color: 'text-blue-600' },
           { key: 'mercs_trained', label: 'Mercs', value: summary.mercs_trained, color: 'text-purple-600' },
-          { key: 'total_cost', label: 'Cost', value: summary.total_cost?.toLocaleString(), color: 'text-yellow-600' }
+          { key: 'total_cost', label: 'Cost', value: formatNumber(summary.total_cost), color: 'text-yellow-600' }
         );
         break;
         
@@ -529,9 +522,7 @@ const JobList: React.FC<JobListProps> = ({ onViewJob, onCreateJob, onCloneJob })
                       <TableCell className="text-gray-500 text-sm">
                         {job.started_at && job.completed_at ? (
                           <>
-                            {Math.round(
-                              (new Date(job.completed_at).getTime() - new Date(job.started_at).getTime()) / 1000
-                            )}s
+                            {calculateDuration(job.started_at, job.completed_at)}
                           </>
                         ) : job.started_at ? (
                           'Running...'
@@ -769,9 +760,7 @@ const JobExpandedDetails: React.FC<{
               <div>
                 <span className="font-medium text-gray-700">Duration:</span>
                 <span className="ml-2">
-                  {Math.round(
-                    (new Date(job.completed_at).getTime() - new Date(job.started_at).getTime()) / 1000
-                  )}s
+                  {calculateDuration(job.started_at, job.completed_at)}
                 </span>
               </div>
             )}

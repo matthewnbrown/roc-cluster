@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { systemApi } from '../services/api';
 import { PruningStats } from '../types/api';
+import { formatDateTime } from '../utils/dateUtils';
 
 interface SystemStatusProps {
   show: boolean;
@@ -256,7 +257,7 @@ const SystemStatus: React.FC<SystemStatusProps> = ({ show, onClose, onShowNotifi
 
               {/* Last Check */}
               <div className="text-xs text-gray-500 text-center">
-                Last checked: {new Date(stats.last_checked).toLocaleString()}
+                Last checked: {formatDateTime(stats.last_checked)}
               </div>
             </div>
           ) : null}

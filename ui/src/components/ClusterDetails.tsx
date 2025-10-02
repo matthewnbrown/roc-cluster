@@ -9,6 +9,7 @@ import { Table, TableHeader, TableBody, TableRow, TableCell } from './ui/Table';
 import Pagination from './ui/Pagination';
 import { ArrowLeft, Edit, Trash2, User, Mail, Calendar, Users, Plus, X, Copy, Shield } from 'lucide-react';
 import Input from './ui/Input';
+import { formatDate } from '../utils/dateUtils';
 
 interface ClusterDetailsProps {
   clusterId: number;
@@ -63,15 +64,7 @@ const ClusterDetails: React.FC<ClusterDetailsProps> = ({
 
   // Removed handleAccountSelect - now handled by AccountAutocomplete component
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
+  // Using centralized date formatting utility
 
   if (clusterLoading) {
     return (

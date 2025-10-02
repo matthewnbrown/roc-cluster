@@ -5,7 +5,7 @@ Pydantic schemas for the ROC Cluster API
 from enum import Enum
 from pydantic import BaseModel, EmailStr
 from typing import Optional, Dict, Any, List, Generic, TypeVar
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 
 # Generic type for paginated responses
@@ -15,12 +15,17 @@ def datetime_encoder(dt: datetime) -> str:
     """Custom datetime encoder that ensures UTC timezone suffix"""
     if dt is None:
         return None
+    
     # Ensure the datetime is timezone-aware and in UTC
     if dt.tzinfo is None:
         # If no timezone info, assume it's UTC
-        dt = dt.replace(tzinfo=None)
+        dt = dt.replace(tzinfo=timezone.utc)
+    elif dt.tzinfo != timezone.utc:
+        # Convert to UTC if it has different timezone
+        dt = dt.astimezone(timezone.utc)
+    
     # Format as ISO string with Z suffix
-    return dt.isoformat() + 'Z'
+    return dt.isoformat()
 
 
 # Account Schemas

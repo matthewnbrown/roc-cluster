@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { favoriteJobsApi } from '../services/api';
 import { FavoriteJobResponse, FavoriteJobCreateRequest } from '../types/api';
+import { getCurrentTimestamp } from '../utils/dateUtils';
 
 export const useFavoriteJobs = () => {
   const [favoriteJobs, setFavoriteJobs] = useState<FavoriteJobResponse[]>([]);
@@ -65,7 +66,7 @@ export const useFavoriteJobs = () => {
             ? { 
                 ...fav, 
                 usage_count: fav.usage_count + 1, 
-                last_used_at: new Date().toISOString() 
+                last_used_at: getCurrentTimestamp() 
               }
             : fav
         )

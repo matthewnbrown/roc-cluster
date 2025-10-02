@@ -2,11 +2,42 @@
 SQLAlchemy database models for the ROC Cluster API
 """
 
-from sqlalchemy import Column, Integer, String, DateTime, Text, Boolean, ForeignKey, UniqueConstraint, Table, Enum, Float
+from sqlalchemy import Column, Integer, String, DateTime, Text, Boolean, ForeignKey, UniqueConstraint, Table, Enum, Float, TypeDecorator
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from api.database import Base
 import enum
+from datetime import datetime, timezone
+
+
+class UTCDateTime(TypeDecorator):
+    """Custom DateTime type that ensures UTC timezone-aware timestamps"""
+    impl = DateTime
+    cache_ok = True
+
+    def process_bind_param(self, value, dialect):
+        if value is not None:
+            if isinstance(value, datetime):
+                # If it's timezone-naive, assume it's UTC
+                if value.tzinfo is None:
+                    value = value.replace(tzinfo=timezone.utc)
+                # Convert to UTC if it has timezone info
+                elif value.tzinfo != timezone.utc:
+                    value = value.astimezone(timezone.utc)
+            return value
+        return value
+
+    def process_result_value(self, value, dialect):
+        if value is not None:
+            # Ensure returned datetime is timezone-aware and in UTC
+            if isinstance(value, datetime):
+                if value.tzinfo is None:
+                    # If timezone-naive, assume it's UTC
+                    value = value.replace(tzinfo=timezone.utc)
+                elif value.tzinfo != timezone.utc:
+                    # Convert to UTC if it has different timezone
+                    value = value.astimezone(timezone.utc)
+        return value
 
 
 class Account(Base):
@@ -18,9 +49,9 @@ class Account(Base):
     email = Column(String(255), unique=True, index=True, nullable=False)
     password = Column(String(255), nullable=False)  # Store unencrypted password
     is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
-    last_login = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(UTCDateTime, server_default=func.now())
+    updated_at = Column(UTCDateTime, onupdate=func.now())
+    last_login = Column(UTCDateTime, nullable=True)
     
     # Relationships
     logs = relationship("AccountLog", back_populates="account", cascade="all, delete-orphan")
@@ -41,7 +72,7 @@ class AccountLog(Base):
     details = Column(Text, nullable=True)  # JSON string of action details
     success = Column(Boolean, default=True)
     error_message = Column(Text, nullable=True)
-    timestamp = Column(DateTime(timezone=True), server_default=func.now())
+    timestamp = Column(UTCDateTime, server_default=func.now())
     
     # Relationships
     account = relationship("Account", back_populates="logs")
@@ -57,7 +88,7 @@ class AccountAction(Base):
     target_id = Column(String(100), nullable=True)  # Target user ID for user actions
     parameters = Column(Text, nullable=True)  # JSON string of action parameters
     result = Column(Text, nullable=True)  # JSON string of action result
-    timestamp = Column(DateTime(timezone=True), server_default=func.now())
+    timestamp = Column(UTCDateTime, server_default=func.now())
     
     # Relationships
     account = relationship("Account", back_populates="actions")
@@ -70,8 +101,8 @@ class UserCookies(Base):
     id = Column(Integer, primary_key=True, index=True)
     account_id = Column(Integer, ForeignKey("accounts.id"), nullable=False, unique=True)
     cookies = Column(Text, nullable=False)  # JSON string of cookies
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    created_at = Column(UTCDateTime, server_default=func.now())
+    updated_at = Column(UTCDateTime, onupdate=func.now())
     
     # Relationships
     account = relationship("Account", back_populates="cookies", uselist=False)
@@ -87,7 +118,7 @@ class SentCreditLog(Base):
     amount = Column(Integer, nullable=False)  # Amount of credits attempted to send
     success = Column(Boolean, nullable=False)  # Whether the credit send was successful
     error_message = Column(Text, nullable=True)  # Error message if failed
-    timestamp = Column(DateTime(timezone=True), server_default=func.now())
+    timestamp = Column(UTCDateTime, server_default=func.now())
     
     # Relationships
     sender_account = relationship("Account", foreign_keys=[sender_account_id])
@@ -100,8 +131,8 @@ class Cluster(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(100), unique=True, index=True, nullable=False)
     description = Column(Text, nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    created_at = Column(UTCDateTime, server_default=func.now())
+    updated_at = Column(UTCDateTime, onupdate=func.now())
     
     # Relationships
     users = relationship("ClusterUser", back_populates="cluster", cascade="all, delete-orphan")
@@ -114,7 +145,7 @@ class ClusterUser(Base):
     id = Column(Integer, primary_key=True, index=True)
     cluster_id = Column(Integer, ForeignKey("clusters.id"), nullable=False)
     account_id = Column(Integer, ForeignKey("accounts.id"), nullable=False)
-    added_at = Column(DateTime(timezone=True), server_default=func.now())
+    added_at = Column(UTCDateTime, server_default=func.now())
     
     # Relationships
     cluster = relationship("Cluster", back_populates="users")
@@ -144,9 +175,9 @@ class Job(Base):
     description = Column(Text, nullable=True)  # Optional job description
     status = Column(Enum(JobStatus), default=JobStatus.PENDING, nullable=False)
     parallel_execution = Column(Boolean, default=False, nullable=False)  # Execute steps in parallel
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    started_at = Column(DateTime(timezone=True), nullable=True)
-    completed_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(UTCDateTime, server_default=func.now())
+    started_at = Column(UTCDateTime, nullable=True)
+    completed_at = Column(UTCDateTime, nullable=True)
     total_steps = Column(Integer, default=0, nullable=False)
     completed_steps = Column(Integer, default=0, nullable=False)
     failed_steps = Column(Integer, default=0, nullable=False)
@@ -175,8 +206,8 @@ class JobStep(Base):
     status = Column(Enum(JobStatus), default=JobStatus.PENDING, nullable=False)
     result = Column(Text, nullable=True)  # JSON string of step result
     error_message = Column(Text, nullable=True)  # Error message if step failed
-    started_at = Column(DateTime(timezone=True), nullable=True)
-    completed_at = Column(DateTime(timezone=True), nullable=True)
+    started_at = Column(UTCDateTime, nullable=True)
+    completed_at = Column(UTCDateTime, nullable=True)
     total_accounts = Column(Integer, default=0, nullable=False)  # Total number of accounts in this step
     processed_accounts = Column(Integer, default=0, nullable=False)  # Number of accounts processed so far
     successful_accounts = Column(Integer, default=0, nullable=False)  # Number of successful account operations
@@ -194,7 +225,7 @@ class Weapon(Base):
     roc_weapon_id = Column(Integer, unique=True, nullable=False)  # The in-game ROC weapon ID
     name = Column(String(50), unique=True, nullable=False)  # weapon name (dagger, maul, etc.)
     display_name = Column(String(100), nullable=False)  # Human-readable display name
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    created_at = Column(UTCDateTime, server_default=func.now())
 
 
 class SoldierType(Base):
@@ -206,7 +237,7 @@ class SoldierType(Base):
     name = Column(String(50), unique=True, nullable=False)  # soldier type name (attack_soldiers, etc.)
     display_name = Column(String(100), nullable=False)  # Human-readable display name
     costs_soldiers = Column(Boolean, default=True, nullable=False)  # Whether this type costs soldiers
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    created_at = Column(UTCDateTime, server_default=func.now())
 
 
 class ArmoryPreferences(Base):
@@ -215,8 +246,8 @@ class ArmoryPreferences(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     account_id = Column(Integer, ForeignKey("accounts.id"), nullable=False, unique=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    created_at = Column(UTCDateTime, server_default=func.now())
+    updated_at = Column(UTCDateTime, onupdate=func.now())
     
     # Relationships
     account = relationship("Account", back_populates="armory_preferences")
@@ -248,8 +279,8 @@ class TrainingPreferences(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     account_id = Column(Integer, ForeignKey("accounts.id"), nullable=False, unique=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    created_at = Column(UTCDateTime, server_default=func.now())
+    updated_at = Column(UTCDateTime, onupdate=func.now())
     
     # Relationships
     account = relationship("Account", back_populates="training_preferences")
@@ -282,7 +313,7 @@ class Race(Base):
     id = Column(Integer, primary_key=True, index=True)
     roc_race_id = Column(Integer, unique=True, nullable=False)
     name = Column(String(50), unique=True, nullable=False)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    created_at = Column(UTCDateTime, server_default=func.now())
 
 
 class RocUser(Base):
@@ -294,10 +325,10 @@ class RocUser(Base):
     name = Column(String(100), nullable=False)
     race = Column(String(50), nullable=True)
     created = Column(Boolean, default=False, nullable=False)
-    create_date = Column(DateTime(timezone=True), nullable=True)
-    last_updated = Column(DateTime(timezone=True), onupdate=func.now())
+    create_date = Column(UTCDateTime, nullable=True)
+    last_updated = Column(UTCDateTime, onupdate=func.now())
     alliance = Column(String(100), nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    created_at = Column(UTCDateTime, server_default=func.now())
 
 
 class RocStat(Base):
@@ -306,7 +337,7 @@ class RocStat(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(50), unique=True, nullable=False)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    created_at = Column(UTCDateTime, server_default=func.now())
 
 
 class RocUserStats(Base):
@@ -317,8 +348,8 @@ class RocUserStats(Base):
     roc_user_id = Column(String(100), ForeignKey("roc_users.roc_user_id"), nullable=False)
     roc_stat_id = Column(Integer, ForeignKey("roc_stats.id"), nullable=False)
     value = Column(Float, default=0.0, nullable=False)
-    last_updated = Column(DateTime(timezone=True), onupdate=func.now())
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    last_updated = Column(UTCDateTime, onupdate=func.now())
+    created_at = Column(UTCDateTime, server_default=func.now())
     
     # Relationships
     roc_user = relationship("RocUser", foreign_keys=[roc_user_id])
@@ -338,8 +369,8 @@ class RocUserSoldiers(Base):
     roc_user_id = Column(String(100), ForeignKey("roc_users.roc_user_id"), nullable=False)
     roc_soldier_type_id = Column(String(50), ForeignKey("soldier_types.roc_soldier_type_id"), nullable=False)
     count = Column(Integer, default=0, nullable=False)
-    last_updated = Column(DateTime(timezone=True), onupdate=func.now())
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    last_updated = Column(UTCDateTime, onupdate=func.now())
+    created_at = Column(UTCDateTime, server_default=func.now())
     
     # Relationships
     roc_user = relationship("RocUser", foreign_keys=[roc_user_id])
@@ -359,8 +390,8 @@ class RocUserWeapons(Base):
     roc_user_id = Column(String(100), ForeignKey("roc_users.roc_user_id"), nullable=False)
     roc_weapon_id = Column(Integer, ForeignKey("weapons.roc_weapon_id"), nullable=False)
     count = Column(Integer, default=0, nullable=False)
-    last_updated = Column(DateTime(timezone=True), onupdate=func.now())
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    last_updated = Column(UTCDateTime, onupdate=func.now())
+    created_at = Column(UTCDateTime, server_default=func.now())
     
     # Relationships
     roc_user = relationship("RocUser", foreign_keys=[roc_user_id])
@@ -391,11 +422,11 @@ class PageQueue(Base):
     page_content = Column(Text, nullable=False)  # HTML content of the page
     request_method = Column(String(10), nullable=False)  # GET, POST
     request_data = Column(Text, nullable=True)  # JSON string of POST data if applicable
-    request_time = Column(DateTime(timezone=True), nullable=True)  # When the request was made
+    request_time = Column(UTCDateTime, nullable=True)  # When the request was made
     status = Column(Enum(PageQueueStatus), default=PageQueueStatus.PENDING, nullable=False)
     error_message = Column(Text, nullable=True)  # Error message if processing failed
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    processed_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(UTCDateTime, server_default=func.now())
+    processed_at = Column(UTCDateTime, nullable=True)
     
     # Relationships
     account = relationship("Account")
@@ -409,10 +440,10 @@ class FavoriteJob(Base):
     name = Column(String(255), nullable=False)  # User-friendly name for the favorite
     description = Column(Text, nullable=True)  # Optional description
     job_config = Column(Text, nullable=False)  # JSON string of the complete job configuration
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    created_at = Column(UTCDateTime, server_default=func.now())
+    updated_at = Column(UTCDateTime, onupdate=func.now())
     usage_count = Column(Integer, default=0, nullable=False)  # Track how often it's used
-    last_used_at = Column(DateTime(timezone=True), nullable=True)  # When it was last used
+    last_used_at = Column(UTCDateTime, nullable=True)  # When it was last used
 
 
 class DatabaseMigration(Base):
@@ -422,7 +453,7 @@ class DatabaseMigration(Base):
     id = Column(Integer, primary_key=True, index=True)
     script_name = Column(String(255), unique=True, nullable=False, index=True)
     version = Column(String(50), nullable=True)  # Version identifier (e.g., "001", "1.0.0")
-    executed_at = Column(DateTime(timezone=True), server_default=func.now())
+    executed_at = Column(UTCDateTime, server_default=func.now())
     success = Column(Boolean, default=True, nullable=False)
     error_message = Column(Text, nullable=True)
     checksum = Column(String(64), nullable=True)  # Optional: file checksum for integrity

@@ -13,6 +13,7 @@ import { Table, TableHeader, TableBody, TableRow, TableCell } from './ui/Table';
 import Pagination from './ui/Pagination';
 import { ArrowLeft, Edit, Trash2, Cookie, CreditCard, User, Mail, Calendar, Shield, Users, Plus, X, Settings, Info, Swords, Wrench } from 'lucide-react';
 import QuickActions from './QuickActions';
+import { formatDate, formatNumber } from '../utils/dateUtils';
 import ClusterTag from './ui/ClusterTag';
 // Input import removed as it's not used in this component
 import AccountPreferences from './AccountPreferences';
@@ -153,20 +154,7 @@ const AccountDetails: React.FC<AccountDetailsProps> = ({
     }
   };
 
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    // Check if it's the Unix epoch (1970-01-01T00:00:00+00:00 or similar)
-    if (date.getTime() === 0 || date.getFullYear() === 1970) {
-      return 'Never';
-    }
-    return date.toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
+  // Using centralized date formatting utility
 
   const LoadingPlaceholder = ({ width = 'w-20', height = 'h-4' }: { width?: string; height?: string }) => (
     <div className={`animate-pulse bg-gray-300 rounded ${width} ${height}`}></div>
@@ -358,7 +346,7 @@ const AccountDetails: React.FC<AccountDetailsProps> = ({
                       {metadataLoading ? (
                         <LoadingPlaceholder width="w-16" height="h-6" />
                       ) : metadata ? (
-                        <p className="text-lg text-gray-700">#{metadata.rank.toLocaleString()}</p>
+                        <p className="text-lg text-gray-700">#{formatNumber(metadata.rank)}</p>
                       ) : (
                         <p className="text-sm text-gray-500">No data</p>
                       )}
@@ -372,7 +360,7 @@ const AccountDetails: React.FC<AccountDetailsProps> = ({
                       {metadataLoading ? (
                         <LoadingPlaceholder width="w-20" height="h-6" />
                       ) : metadata ? (
-                        <p className="text-lg text-gray-700">{metadata.credits.toLocaleString()}</p>
+                        <p className="text-lg text-gray-700">{formatNumber(metadata.credits)}</p>
                       ) : (
                         <p className="text-sm text-gray-500">No data</p>
                       )}
@@ -386,7 +374,7 @@ const AccountDetails: React.FC<AccountDetailsProps> = ({
                       {metadataLoading ? (
                         <LoadingPlaceholder width="w-20" height="h-6" />
                       ) : metadata ? (
-                        <p className="text-lg text-gray-700">{metadata.gold.toLocaleString()}</p>
+                        <p className="text-lg text-gray-700">{formatNumber(metadata.gold)}</p>
                       ) : (
                         <p className="text-sm text-gray-500">No data</p>
                       )}
@@ -453,7 +441,7 @@ const AccountDetails: React.FC<AccountDetailsProps> = ({
                           {metadataLoading ? (
                             <LoadingPlaceholder width="w-16" height="h-4" />
                           ) : metadata ? (
-                            <span className="text-sm text-gray-900">{metadata.credits_given.toLocaleString()}</span>
+                            <span className="text-sm text-gray-900">{formatNumber(metadata.credits_given)}</span>
                           ) : (
                             <span className="text-sm text-gray-500">No data</span>
                           )}
@@ -463,7 +451,7 @@ const AccountDetails: React.FC<AccountDetailsProps> = ({
                           {metadataLoading ? (
                             <LoadingPlaceholder width="w-16" height="h-4" />
                           ) : metadata ? (
-                            <span className="text-sm text-gray-900">{metadata.credits_received.toLocaleString()}</span>
+                            <span className="text-sm text-gray-900">{formatNumber(metadata.credits_received)}</span>
                           ) : (
                             <span className="text-sm text-gray-500">No data</span>
                           )}
@@ -656,7 +644,7 @@ const AccountDetails: React.FC<AccountDetailsProps> = ({
                     {creditLogsData.data.map((log) => (
                       <TableRow key={log.id}>
                         <TableCell className="font-mono text-sm">{log.target_user_id}</TableCell>
-                        <TableCell>{log.amount.toLocaleString()}</TableCell>
+                        <TableCell>{formatNumber(log.amount)}</TableCell>
                         <TableCell>
                           <span
                             className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${

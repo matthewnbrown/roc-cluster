@@ -5,6 +5,7 @@ import { FavoriteJobResponse, FavoriteJobCreateRequest } from '../types/api';
 import Button from './ui/Button';
 import Modal from './ui/Modal';
 import Input from './ui/Input';
+import { formatDate } from '../utils/dateUtils';
 
 interface FavoriteJobsManagerProps {
   onUseFavorite: (favorite: FavoriteJobResponse) => void;
@@ -92,9 +93,7 @@ const FavoriteJobsManager: React.FC<FavoriteJobsManagerProps> = ({
     onUseFavorite(favorite);
   };
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString();
-  };
+  // Using centralized date formatting utility
 
   if (loading) {
     return (

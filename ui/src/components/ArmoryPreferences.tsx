@@ -8,6 +8,7 @@ import {
   usePurchaseArmoryByPreferences
 } from '../hooks/usePreferences';
 import { ActionResponse } from '../types/api';
+import { getCurrentTimestamp } from '../utils/dateUtils';
 // Types are used in the component logic
 import Button from './ui/Button';
 import Input from './ui/Input';
@@ -115,7 +116,7 @@ const ArmoryPreferencesComponent: React.FC<ArmoryPreferencesProps> = ({
       const errorResult: ActionResponse = {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error occurred',
-        timestamp: new Date().toISOString()
+        timestamp: getCurrentTimestamp()
       };
       setPurchaseResult(errorResult);
       setShowPurchaseConfirm(false);

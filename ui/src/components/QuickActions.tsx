@@ -4,6 +4,7 @@ import { AccountIdentifier, ActionResponse, BuyUpgradeRequest, SabotageRequest, 
 import Button from './ui/Button';
 import Input from './ui/Input';
 import Select from './ui/Select';
+import { getCurrentTimestamp } from '../utils/dateUtils';
 
 interface QuickActionsProps {
   accountId: number;
@@ -63,7 +64,7 @@ const QuickActions: React.FC<QuickActionsProps> = ({ accountId, onClose }) => {
       const res = await actionsApi.buyUpgrade(req);
       setResult(res);
     } catch (e: any) {
-      setResult({ success: false, error: e?.message || 'Upgrade failed', timestamp: new Date().toISOString() });
+      setResult({ success: false, error: e?.message || 'Upgrade failed', timestamp: getCurrentTimestamp() });
     } finally {
       setLoading(false);
     }
@@ -84,7 +85,7 @@ const QuickActions: React.FC<QuickActionsProps> = ({ accountId, onClose }) => {
       const res = await actionsApi.sabotage(req);
       setResult(res);
     } catch (e: any) {
-      setResult({ success: false, error: e?.message || 'Sabotage failed', timestamp: new Date().toISOString() });
+      setResult({ success: false, error: e?.message || 'Sabotage failed', timestamp: getCurrentTimestamp() });
     } finally {
       setLoading(false);
     }
@@ -102,7 +103,7 @@ const QuickActions: React.FC<QuickActionsProps> = ({ accountId, onClose }) => {
       const res = await actionsApi.purchaseTraining(req);
       setResult(res);
     } catch (e: any) {
-      setResult({ success: false, error: e?.message || 'Training purchase failed', timestamp: new Date().toISOString() });
+      setResult({ success: false, error: e?.message || 'Training purchase failed', timestamp: getCurrentTimestamp() });
     } finally {
       setLoading(false);
     }
@@ -120,7 +121,7 @@ const QuickActions: React.FC<QuickActionsProps> = ({ accountId, onClose }) => {
       const res = await actionsApi.setCreditSaving(req);
       setResult(res);
     } catch (e: any) {
-      setResult({ success: false, error: e?.message || 'Credit saving update failed', timestamp: new Date().toISOString() });
+      setResult({ success: false, error: e?.message || 'Credit saving update failed', timestamp: getCurrentTimestamp() });
     } finally {
       setLoading(false);
     }
@@ -134,9 +135,9 @@ const QuickActions: React.FC<QuickActionsProps> = ({ accountId, onClose }) => {
         weapon_percentages: weaponPercentages,
       };
       const res = await armoryApi.updateArmoryPreferences(accountId, req);
-      setResult({ success: true, message: 'Armory preferences updated successfully', timestamp: new Date().toISOString() });
+      setResult({ success: true, message: 'Armory preferences updated successfully', timestamp: getCurrentTimestamp() });
     } catch (e: any) {
-      setResult({ success: false, error: e?.message || 'Armory preferences update failed', timestamp: new Date().toISOString() });
+      setResult({ success: false, error: e?.message || 'Armory preferences update failed', timestamp: getCurrentTimestamp() });
     } finally {
       setLoading(false);
     }

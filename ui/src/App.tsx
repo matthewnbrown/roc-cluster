@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { QueryClient, QueryClientProvider } from 'react-query';
 import { BrowserRouter as Router, Routes, Route, useNavigate, useParams, useLocation } from 'react-router-dom';
 import { Account, ClusterListResponse, ClusterResponse, JobResponse } from './types/api';
+import { getCurrentTimestamp } from './utils/dateUtils';
 import AccountList from './components/AccountList';
 import AccountForm from './components/AccountForm';
 import AccountDetails from './components/AccountDetails';
@@ -100,7 +101,7 @@ const AppContent: React.FC = () => {
       description: favorite.description,
       status: 'pending' as any,
       parallel_execution: favorite.job_config.parallel_execution,
-      created_at: new Date().toISOString(),
+      created_at: getCurrentTimestamp(),
       started_at: undefined,
       completed_at: undefined,
       total_steps: favorite.job_config.steps?.length || 0,
