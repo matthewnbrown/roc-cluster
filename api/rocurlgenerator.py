@@ -23,7 +23,8 @@ class ROCDecryptUrlGenerator():
             "roc_commander_change": self._rocburl + "commander_change.php",
             "roc_send_credits": self._rocburl + "sendcredits.php",
             "roc_intel_detail": self._rocburl + "intel_detail.php",
-            "roc_upgrades": self._rocburl + "upgrades.php"
+            "roc_upgrades": self._rocburl + "upgrades.php",
+            "roc_sendcards": self._rocburl + "sendcards.php"
         }
 
     def get_page_url(self, page: str) -> str:
@@ -97,3 +98,11 @@ class ROCDecryptUrlGenerator():
         
     def upgrades(self) -> str:
         return self.get_page_url("roc_upgrades")
+
+    def send_cards(self, target_id: str | None = None) -> str:
+        if target_id:
+            target_id = html.escape(target_id)
+            return self.get_page_url("roc_sendcards") + f"?to={target_id}"
+        else:
+            return self.get_page_url("roc_sendcards")
+        

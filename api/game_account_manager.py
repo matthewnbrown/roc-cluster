@@ -24,6 +24,7 @@ from sqlalchemy import false
 
 from api.db_models import Account, UserCookies, ArmoryPreferences, ArmoryWeaponPreference, Weapon
 from api.page_parsers.attack import parse_attack_page
+from api.page_parsers.cardpage_parser import parse_cards_page
 from api.page_parsers.metadata_parser import parse_metadata_data
 from api.page_parsers.spy_parser import parse_recon_data
 from api.page_parsers.sab_parser import parse_sabotage_page
@@ -52,7 +53,8 @@ class PageSubmit(Enum):
     SPY = "Recon"
     SABOTAGE = "Sabotage"
     UPGRADE = ""
-    CREDIT_SAVE = "Send+Credits"
+    CREDIT_SAVE = "Send+Credits",
+    SEND_CARDS = "Send+Card"
 
 class GameAccountManager:
     """Manages a single ROC account session"""
@@ -79,7 +81,8 @@ class GameAccountManager:
             "sabotage", 
             "spy",
             "become_officer",
-            "send_credits"
+            "send_credits",
+            "send_cards"
         }
         return action_name in target_based_actions
 
@@ -409,6 +412,7 @@ class GameAccountManager:
                 allianceid=metadata_data["allianceid"],
                 servertime=metadata_data["servertime"]
             )
+            
             
             return { "success": True, "data": metadata }
             
@@ -1071,6 +1075,145 @@ class GameAccountManager:
             logger.error(f"Failed to get solved captchas: {e}", exc_info=True)
             return []
     
+    async def get_cards(self) -> Dict[str, Any]:
+        """Get cards from sendcards page"""
+        try:
+            cards_url = self.url_generator.send_cards("1")
+            
+            async def _get_cards_page():
+                return await self.__get_page(cards_url)
+            
+            for i in range(self.max_retries+1):
+                page =  await self.__retry_login_wrapper(_get_cards_page)
+
+                page_text = await page.text()
+                
+                cards_data = parse_cards_page(page_text)
+                if cards_data["target_name"]:           
+                    unique_card_count = len(cards_data["cards"])
+                    total_cards = sum(card["count"] for card in cards_data["cards"])
+                    
+                    # Create detailed summary
+                    card_summary = []
+                    for card in cards_data["cards"]:
+                        card_summary.append(f"{card['card_name']}: {card['count']}")
+                    
+                    summary_message = f"Retrieved {unique_card_count} unique card types ({total_cards} total cards): {', '.join(card_summary)}"
+                    
+                    return {
+                        "success": True,
+                        "data": cards_data,
+                        "message": summary_message,
+                        "card_count": unique_card_count,
+                        "total_cards": total_cards,
+                        "card_summary": card_summary,
+                        "cards": cards_data["cards"]
+                    }
+                else:
+                    logger.warning(f"{self.account.username}: Failed to get cards'")
+                                   
+            return {"success": False, "errors": ["Failed to get cards"]}
+            
+        except Exception as e:
+            logger.error(f"Error getting cards for {self.account.username}: {e}", exc_info=True)
+            return {"success": False, "error": str(e)}
+    
+    async def send_cards(self, target_id: str, card_id: str, comment: str = "") -> Dict[str, Any]:
+        """Send cards to a target user"""
+       
+        cards_to_send = []
+        sent_summary = []
+        failed_summary = []
+        total_sent = 0
+        try:
+            if card_id.lower() == 'all':
+                cards_result = await self.get_cards()
+                if not cards_result or not cards_result["success"]:
+                    return {"success": False, "error": "Failed to get cards list"}
+                
+                cards_to_send = cards_result["data"]["cards"]
+                if not cards_to_send:
+                    return {"success": True, "message": f"{self.account.username}: No cards available to send"}
+
+            else:
+                cards_to_send = [{"card_id": card_id, "count": 1}]
+        
+            
+            # Track counts per card name
+            card_counts = {}
+            card_failures = {}
+            
+            for card in cards_to_send:
+                count = card["count"]
+                card_name = card.get("card_name", f"Card {card['card_id']}")
+                
+                for _ in range(count):
+                    result = await self._send_single_card(target_id, card["card_id"], comment)
+                    if result["success"]:
+                        total_sent += 1
+                        card_counts[card_name] = card_counts.get(card_name, 0) + 1
+                    else:
+                        error_msg = result.get('error', 'Unknown error')
+                        card_failures[card_name] = card_failures.get(card_name, 0) + 1
+            
+            # Build summaries from accumulated counts
+            sent_summary = [f"{card_name}: {count}" for card_name, count in card_counts.items()]
+            failed_summary = [f"{card_name}: {count}" for card_name, count in card_failures.items()]
+                
+        
+        except Exception as e:
+            logger.error(f"Error sending cards for {self.account.username}: {e}", exc_info=True)
+            return {"success": False, "error": str(e)}
+        
+        return {
+                "success": total_sent > 0,
+                "cards_sent": total_sent,
+                "sent_summary": sent_summary,
+                "failed_summary": failed_summary
+            }
+        
+       #  return await self._with_target_rate_limit(target_id, "send_cards", _send_cards_implementation)
+    
+    async def _send_single_card(self, target_id: str, card_id: str, comment: str = "") -> Dict[str, Any]:
+        """Send a single card to a target user"""
+        try:
+            send_url = self.url_generator.send_cards()  # No target_id in URL for POST
+            
+            payload = {
+                "to": target_id,
+                "comment": comment,
+                "card_type": card_id,
+            }
+            
+            async def _submit_card():
+                return await self.__submit_page(send_url, payload, PageSubmit.SEND_CARDS)
+            
+            errors = []
+            for i in range(self.max_retries+1):
+                result = await self.__retry_login_wrapper(_submit_card)
+                
+                page_text = await result.text()
+                path = result.url.path
+                
+                # Check for success indicators
+                if "Card sent successfully" in page_text or "successfully sent" in page_text.lower():
+                    return {"success": True, "message": f"Card {card_id} sent successfully", "cards_sent": 1}
+                
+                # Check for error indicators
+                if "error" in page_text.lower() or "invalid" in page_text.lower():
+                    errors.append(f"Error sending card {card_id}")
+                elif path not in self.url_generator.base():
+                    errors.append("Unknown error. Not on expected page after sending card.")
+                else:
+                    # Assume success if no clear error
+                    return {"success": True, "message": f"Card {card_id} sent", "cards_sent": 1}
+            
+            return {"success": False, "error": "Failed to send card:\n" + "\n".join(errors)}
+            
+        except Exception as e:
+            logger.error(f"Error sending single card {card_id} for {self.account.username}: {e}", exc_info=True)
+            return {"success": False, "error": str(e)}
+
     ###################
     ### END ACTIONS ###
     ###################

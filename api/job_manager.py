@@ -421,6 +421,46 @@ class JobManager:
                     "data": "object (optional) - contains preference update details",
                     "error": "string (optional)"
                 }
+            },
+            "get_cards": {
+                "description": "Get cards from sendcards page (always uses target_id '1')",
+                "category": "self_action",
+                "required_parameters": [],
+                "optional_parameters": [],
+                "parameter_details": {},
+                "output": {
+                    "success": "boolean",
+                    "message": "string (optional) - contains card count summary",
+                    "data": "object (optional) - contains parsed cards data with target info and card list",
+                    "error": "string (optional)"
+                }
+            },
+            "send_cards": {
+                "description": "Send cards to another user",
+                "category": "user_action",
+                "required_parameters": ["target_id", "card_id"],
+                "optional_parameters": ["comment"],
+                "parameter_details": {
+                    "target_id": {
+                        "type": "string",
+                        "description": "ROC ID of the target user to send cards to"
+                    },
+                    "card_id": {
+                        "type": "string",
+                        "description": "Card ID to send, or 'all' to send all available cards"
+                    },
+                    "comment": {
+                        "type": "string",
+                        "description": "Optional comment to include with the card (default: empty)",
+                        "default": ""
+                    }
+                },
+                "output": {
+                    "success": "boolean",
+                    "message": "string (optional) - contains cards sent summary",
+                    "data": "object (optional) - contains sending results and card counts",
+                    "error": "string (optional)"
+                }
             }
         }
         
@@ -1042,6 +1082,10 @@ class JobManager:
             summary.update(self._summarize_become_officer_results(successful_results))
         elif action_type == "get_metadata":
             summary.update(self._summarize_get_metadata_results(successful_results))
+        elif action_type == "get_cards":
+            summary.update(self._summarize_get_cards_results(successful_results))
+        elif action_type == "send_cards":
+            summary.update(self._summarize_send_cards_results(successful_results))
         else:
             # Generic summary for other action types
             summary.update(self._summarize_generic_results(successful_results))
@@ -1305,6 +1349,108 @@ class JobManager:
                 if not result_data.get("success", True):
                     summary["operations_failed"] += 1
                     summary["operations_completed"] -= 1
+        
+        return summary
+    
+    def _summarize_get_cards_results(self, successful_results: List[Dict]) -> Dict[str, Any]:
+        """Summarize get_cards action results"""
+        summary = {
+            "retrievals_successful": len(successful_results),
+            "retrievals_failed": 0,
+            "card_count": 0,
+            "total_cards": 0,
+            "total_retries": 0,
+            "card_summaries": []
+        }
+        
+        for result in successful_results:
+            result_data = result.get("result", {})
+            if isinstance(result_data, dict):
+                summary["total_retries"] += result_data.get("retries", 0)
+                
+                # Aggregate card counts from each successful result
+                if result_data.get("success", True):
+                    summary["card_count"] += result_data.get("card_count", 0)
+                    summary["total_cards"] += result_data.get("total_cards", 0)
+                    
+                    # Aggregate card summaries by card name
+                    card_summary = result_data.get("card_summary", [])
+                    for card_summary_item in card_summary:
+                        if ':' in card_summary_item:
+                            card_name, count_str = card_summary_item.split(':', 1)
+                            card_name = card_name.strip()
+                            count = int(count_str.strip())
+                            
+                            # Find existing entry or add new one
+                            existing = next((item for item in summary["card_summaries"] if item.startswith(card_name + ":")), None)
+                            if existing:
+                                existing_count = int(existing.split(':')[1].strip())
+                                summary["card_summaries"].remove(existing)
+                                summary["card_summaries"].append(f"{card_name}: {existing_count + count}")
+                            else:
+                                summary["card_summaries"].append(card_summary_item)
+                else:
+                    summary["retrievals_failed"] += 1
+                    summary["retrievals_successful"] -= 1
+        
+        return summary
+    
+    def _summarize_send_cards_results(self, successful_results: List[Dict]) -> Dict[str, Any]:
+        """Summarize send_cards action results"""
+        summary = {
+            "sends_successful": len(successful_results),
+            "sends_failed": 0,
+            "cards_sent": 0,
+            "total_retries": 0,
+            "sent_summaries": [],
+            "failed_summaries": []
+        }
+        
+        for result in successful_results:
+            result_data = result.get("result", {})
+            if isinstance(result_data, dict):
+                summary["total_retries"] += result_data.get("retries", 0)
+                
+                # Aggregate cards sent from each successful result
+                if result_data.get("success", True):
+                    summary["cards_sent"] += result_data.get("cards_sent", 0)
+                    
+                    # Aggregate sent summaries by card name
+                    sent_summary = result_data.get("sent_summary", [])
+                    for card_summary in sent_summary:
+                        if ':' in card_summary:
+                            card_name, count_str = card_summary.split(':', 1)
+                            card_name = card_name.strip()
+                            count = int(count_str.strip())
+                            
+                            # Find existing entry or add new one
+                            existing = next((item for item in summary["sent_summaries"] if item.startswith(card_name + ":")), None)
+                            if existing:
+                                existing_count = int(existing.split(':')[1].strip())
+                                summary["sent_summaries"].remove(existing)
+                                summary["sent_summaries"].append(f"{card_name}: {existing_count + count}")
+                            else:
+                                summary["sent_summaries"].append(card_summary)
+                    
+                    # Aggregate failed summaries by card name
+                    failed_summary = result_data.get("failed_summary", [])
+                    for card_summary in failed_summary:
+                        if ':' in card_summary:
+                            card_name, count_str = card_summary.split(':', 1)
+                            card_name = card_name.strip()
+                            count = int(count_str.strip())
+                            
+                            # Find existing entry or add new one
+                            existing = next((item for item in summary["failed_summaries"] if item.startswith(card_name + ":")), None)
+                            if existing:
+                                existing_count = int(existing.split(':')[1].strip())
+                                summary["failed_summaries"].remove(existing)
+                                summary["failed_summaries"].append(f"{card_name}: {existing_count + count}")
+                            else:
+                                summary["failed_summaries"].append(card_summary)
+                else:
+                    summary["sends_failed"] += 1
+                    summary["sends_successful"] -= 1
         
         return summary
     

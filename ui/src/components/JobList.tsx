@@ -142,6 +142,42 @@ const JobList: React.FC<JobListProps> = ({ onViewJob, onCreateJob, onCloneJob })
     (job.description && job.description.toLowerCase().includes(searchTerm.toLowerCase()))
   ) || [];
 
+  const renderCardSummary = (summary: any) => {
+    if (!summary) {
+      return <div className="text-xs text-gray-500 italic">No card data</div>;
+    }
+
+    // Handle get_cards summaries
+    if (summary.card_summaries && summary.card_summaries.length > 0) {
+      return (
+        <div className="max-h-48 overflow-y-auto space-y-1">
+          {summary.card_summaries.map((cardSummary: string, index: number) => (
+            <div key={index} className="text-xs text-green-700 flex justify-between bg-green-50 rounded p-1">
+              <span>{cardSummary.split(':')[0]}</span>
+              <span className="font-medium">{cardSummary.split(':')[1]}</span>
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    // Handle send_cards summaries
+    if (summary.sent_summaries && summary.sent_summaries.length > 0) {
+      return (
+        <div className="max-h-48 overflow-y-auto space-y-1">
+          {summary.sent_summaries.map((sentSummary: string, index: number) => (
+            <div key={index} className="text-xs text-green-700 flex justify-between bg-green-50 rounded p-1">
+              <span>{sentSummary.split(':')[0]}</span>
+              <span className="font-medium">{sentSummary.split(':')[1]}</span>
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    return <div className="text-xs text-gray-500 italic">No card data</div>;
+  };
+
   const renderActionSummary = (summary: any, searchTerm: string = '') => {
     const actionType = summary.action_type || 'unknown';
     
@@ -235,6 +271,21 @@ const JobList: React.FC<JobListProps> = ({ onViewJob, onCreateJob, onCloneJob })
         );
         break;
         
+      case 'get_cards':
+        actionSpecificItems.push(
+          { key: 'card_count', label: 'Unique Types', value: summary.card_count, color: 'text-blue-600' },
+          { key: 'total_cards', label: 'Total Cards', value: summary.total_cards, color: 'text-purple-600' },
+          { key: 'retrievals_successful', label: 'Successful', value: summary.retrievals_successful, color: 'text-green-600' }
+        );
+        break;
+        
+      case 'send_cards':
+        actionSpecificItems.push(
+          { key: 'cards_sent', label: 'Cards Sent', value: summary.cards_sent, color: 'text-green-600' },
+          { key: 'sends_successful', label: 'Successful', value: summary.sends_successful, color: 'text-green-600' }
+        );
+        break;
+        
       default:
         actionSpecificItems.push(
           { key: 'operations_completed', label: 'Operations', value: summary.operations_completed, color: 'text-green-600' }
@@ -250,8 +301,12 @@ const JobList: React.FC<JobListProps> = ({ onViewJob, onCreateJob, onCloneJob })
     // Show errors if any
     const errorItems = summary.error_list && summary.error_list.length > 0 ? summary.error_list : [];
 
+    // Determine grid columns based on whether card summary should be shown
+    const hasCardSummary = actionType === 'get_cards' || actionType === 'send_cards';
+    const gridCols = hasCardSummary ? 'grid-cols-4' : 'grid-cols-3';
+
     return (
-      <div className="grid grid-cols-3 gap-4 w-full">
+      <div className={`grid ${gridCols} gap-4 w-full`}>
         {/* Action Results Column */}
         <div className="space-y-2">
           <div className="text-sm font-medium text-gray-600 mb-3">Action Results</div>
@@ -337,6 +392,14 @@ const JobList: React.FC<JobListProps> = ({ onViewJob, onCreateJob, onCloneJob })
             <div className="text-xs text-gray-500 italic">No errors</div>
           )}
         </div>
+
+        {/* Card Summary Column - Only for card-related actions */}
+        {(actionType === 'get_cards' || actionType === 'send_cards') && (
+          <div>
+            <div className="text-sm font-medium text-purple-600 mb-3">Card Summary</div>
+            {renderCardSummary(summary)}
+          </div>
+        )}
       </div>
     );
   };

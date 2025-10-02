@@ -38,8 +38,8 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
   const queryClient = useQueryClient();
   const createJobMutation = useCreateJob();
   const { data: actionTypesData } = useValidActionTypes();
-  const { data: clustersData } = useClusters(1, 1000);
-  const { data: accountsData } = useAccounts(1, 1000);
+  const { data: clustersData } = useClusters(1, 10000); // Increased limit for autocomplete search
+  const { data: accountsData } = useAccounts(1, 10000); // Increased limit for autocomplete search
   const { createFavoriteJob } = useFavoriteJobs();
   const { data: jobsData, isLoading: jobsLoading, refetch: refetchJobs } = useJobs(1, 100); // Fetch jobs for smart numbering
   const [editingStepIndex, setEditingStepIndex] = useState<number | null>(null);
@@ -922,7 +922,9 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
                                           }`}
                                         >
                                           <div className="text-sm text-gray-900">{account.username}</div>
-                                          <div className="text-xs text-gray-500">{account.email} (ID: {account.id})</div>
+                                          <div className="text-xs text-gray-500">
+                                            {account.email} (ID: {account.id}
+                                          </div>
                                         </button>
                                       );
                                     })}

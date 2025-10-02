@@ -264,6 +264,23 @@ const JobDetails: React.FC<JobDetailsProps> = ({ jobId, onBack }) => {
         );
         break;
         
+      case 'get_cards':
+        actionSpecificItems.push(
+          { key: 'card_count', label: 'Unique Card Types', value: summary.card_count, color: 'text-blue-600' },
+          { key: 'total_cards', label: 'Total Cards', value: summary.total_cards, color: 'text-purple-600' },
+          { key: 'retrievals_successful', label: 'Retrievals Successful', value: summary.retrievals_successful, color: 'text-green-600' },
+          { key: 'retrievals_failed', label: 'Retrievals Failed', value: summary.retrievals_failed, color: 'text-red-600' }
+        );
+        break;
+        
+      case 'send_cards':
+        actionSpecificItems.push(
+          { key: 'cards_sent', label: 'Cards Sent', value: summary.cards_sent, color: 'text-green-600' },
+          { key: 'sends_successful', label: 'Sends Successful', value: summary.sends_successful, color: 'text-green-600' },
+          { key: 'sends_failed', label: 'Sends Failed', value: summary.sends_failed, color: 'text-red-600' }
+        );
+        break;
+        
       default:
         actionSpecificItems.push(
           { key: 'operations_completed', label: 'Operations Completed', value: summary.operations_completed, color: 'text-green-600' },
@@ -350,6 +367,69 @@ const JobDetails: React.FC<JobDetailsProps> = ({ jobId, onBack }) => {
         </div>
       </div>
     );
+  };
+
+  const renderCardDetails = (summary: any) => {
+    if (!summary) return null;
+
+    // Handle get_cards summaries
+    if (summary.card_summaries && summary.card_summaries.length > 0) {
+      return (
+        <div className="mt-4">
+          <h5 className="text-sm font-medium text-gray-900 mb-2">Card Types Found</h5>
+          <div className="bg-green-50 border border-green-200 rounded p-3">
+            <div className="space-y-1 max-h-48 overflow-y-auto">
+              {summary.card_summaries.map((cardSummary: string, index: number) => (
+                <div key={index} className="text-sm text-green-700 flex justify-between">
+                  <span>{cardSummary.split(':')[0]}</span>
+                  <span className="font-medium">{cardSummary.split(':')[1]}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // Handle send_cards summaries
+    if (summary.sent_summaries && summary.sent_summaries.length > 0) {
+      return (
+        <div className="mt-4">
+          <h5 className="text-sm font-medium text-gray-900 mb-2">Cards Sent by Type</h5>
+          <div className="bg-green-50 border border-green-200 rounded p-3">
+            <div className="space-y-1 max-h-48 overflow-y-auto">
+              {summary.sent_summaries.map((sentSummary: string, index: number) => (
+                <div key={index} className="text-sm text-green-700 flex justify-between">
+                  <span>{sentSummary.split(':')[0]}</span>
+                  <span className="font-medium">{sentSummary.split(':')[1]}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // Handle failed send_cards summaries
+    if (summary.failed_summaries && summary.failed_summaries.length > 0) {
+      return (
+        <div className="mt-4">
+          <h5 className="text-sm font-medium text-gray-900 mb-2">Cards Failed to Send</h5>
+          <div className="bg-red-50 border border-red-200 rounded p-3">
+            <div className="space-y-1 max-h-48 overflow-y-auto">
+              {summary.failed_summaries.map((failedSummary: string, index: number) => (
+                <div key={index} className="text-sm text-red-700 flex justify-between">
+                  <span>{failedSummary.split(':')[0]}</span>
+                  <span className="font-medium">{failedSummary.split(':')[1]}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    return null;
   };
 
   if (isLoading) {
@@ -722,6 +802,10 @@ const JobDetails: React.FC<JobDetailsProps> = ({ jobId, onBack }) => {
                           </div>
                         </div>
                       )}
+
+                      {/* Card Details - Only for card-related actions */}
+                      {((originalStep as any).action_type === 'get_cards' || (originalStep as any).action_type === 'send_cards') && 
+                       renderCardDetails((originalStep as any).result?.summary)}
                       
                       {/* Result/Error Details */}
                       {((originalStep as any).result || (originalStep as any).error_message) && (

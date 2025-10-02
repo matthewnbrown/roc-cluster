@@ -84,8 +84,8 @@ async def list_accounts(
     try:
         if page < 1:
             raise HTTPException(status_code=400, detail="Page must be greater than 0")
-        if per_page < 1 or per_page > 1000:
-            raise HTTPException(status_code=400, detail="Per page must be between 1 and 1000")
+        if per_page < 1 or per_page > 10000:
+            raise HTTPException(status_code=400, detail="Per page must be between 1 and 10000")
         
         query = db.query(Account).order_by(Account.id)
         return paginate_query(query, page, per_page, AccountResponse)
@@ -298,8 +298,8 @@ async def get_credit_logs(
     try:
         if page < 1:
             raise HTTPException(status_code=400, detail="Page must be greater than 0")
-        if per_page < 1 or per_page > 1000:
-            raise HTTPException(status_code=400, detail="Per page must be between 1 and 1000")
+        if per_page < 1 or per_page > 10000:
+            raise HTTPException(status_code=400, detail="Per page must be between 1 and 10000")
         
         # Verify account exists
         account = db.query(Account).filter(Account.id == account_id).first()
@@ -329,8 +329,8 @@ async def get_all_credit_logs(
     try:
         if page < 1:
             raise HTTPException(status_code=400, detail="Page must be greater than 0")
-        if per_page < 1 or per_page > 1000:
-            raise HTTPException(status_code=400, detail="Per page must be between 1 and 1000")
+        if per_page < 1 or per_page > 10000:
+            raise HTTPException(status_code=400, detail="Per page must be between 1 and 10000")
         
         query = db.query(SentCreditLog).order_by(SentCreditLog.timestamp.desc())
         return paginate_query(query, page, per_page, SentCreditLogResponse)

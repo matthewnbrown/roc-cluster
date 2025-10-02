@@ -67,8 +67,8 @@ async def list_clusters(
     try:
         if page < 1:
             raise HTTPException(status_code=400, detail="Page must be greater than 0")
-        if per_page < 1 or per_page > 1000:
-            raise HTTPException(status_code=400, detail="Per page must be between 1 and 1000")
+        if per_page < 1 or per_page > 10000:
+            raise HTTPException(status_code=400, detail="Per page must be between 1 and 10000")
         
         # Build query with search
         query = db.query(Cluster)
@@ -338,8 +338,8 @@ async def search_clusters(
     try:
         if page < 1:
             raise HTTPException(status_code=400, detail="Page must be greater than 0")
-        if per_page < 1 or per_page > 1000:
-            raise HTTPException(status_code=400, detail="Per page must be between 1 and 1000")
+        if per_page < 1 or per_page > 10000:
+            raise HTTPException(status_code=400, detail="Per page must be between 1 and 10000")
         
         # Build search query
         query = db.query(Cluster)

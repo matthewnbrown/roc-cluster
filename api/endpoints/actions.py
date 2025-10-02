@@ -10,7 +10,8 @@ from datetime import datetime, timezone
 from api.schemas import (
     AccountIdentifier, AccountIdentifierType, AttackRequest, CaptchaSolutionItem, SabotageRequest, SpyRequest, BecomeOfficerRequest, SendCreditsRequest,
     RecruitRequest, ArmoryPurchaseRequest, TrainingPurchaseRequest, 
-    SetCreditSavingRequest, PurchaseUpgradeRequest, BuyUpgradeRequest, ActionResponse
+    SetCreditSavingRequest, PurchaseUpgradeRequest, BuyUpgradeRequest, ActionResponse,
+    GetCardsRequest, SendCardsRequest
 )
 from api.account_manager import AccountManager
 from api.database import get_db
@@ -172,6 +173,59 @@ async def send_credits(
         )
     except Exception as e:
         logger.error(f"Error in send credits action: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@router.post("/get-cards", response_model=ActionResponse)
+async def get_cards(
+    request: GetCardsRequest,
+    manager: AccountManager = Depends(get_account_manager)
+):
+    """Get cards from sendcards page"""
+    try:
+        result = await manager.execute_action(
+            id_type=request.acting_user.id_type,
+            id=request.acting_user.id,
+            action=AccountManager.ActionType.GET_CARDS,
+            max_retries=request.max_retries
+        )
+        
+        return ActionResponse(
+            success=result["success"],
+            message=result.get("message"),
+            data=result.get("data"),
+            error=result.get("error"),
+            timestamp=datetime.now(timezone.utc)
+        )
+    except Exception as e:
+        logger.error(f"Error in get cards action: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@router.post("/send-cards", response_model=ActionResponse)
+async def send_cards(
+    request: SendCardsRequest,
+    manager: AccountManager = Depends(get_account_manager)
+):
+    """Send cards to another user"""
+    try:
+        result = await manager.execute_action(
+            id_type=request.acting_user.id_type,
+            id=request.acting_user.id,
+            action=AccountManager.ActionType.SEND_CARDS,
+            max_retries=request.max_retries,
+            target_id=request.target_id,
+            card_id=request.card_id,
+            comment=request.comment
+        )
+        
+        return ActionResponse(
+            success=result["success"],
+            message=result.get("message"),
+            data=result.get("data"),
+            error=result.get("error"),
+            timestamp=datetime.now(timezone.utc)
+        )
+    except Exception as e:
+        logger.error(f"Error in send cards action: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 # Self Actions

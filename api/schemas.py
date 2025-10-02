@@ -204,6 +204,17 @@ class BuyUpgradeRequest(SelfActionRequest):
     upgrade_option: str
 
 
+class GetCardsRequest(SelfActionRequest):
+    """Get cards from sendcards page"""
+    pass
+
+
+class SendCardsRequest(UserActionRequest):
+    """Send cards to a target user"""
+    card_id: str  # Card ID or 'all' to send all cards
+    comment: Optional[str] = ""
+
+
 # Action Response Schemas
 class ActionResponse(BaseModel):
     """Response for action execution"""

@@ -41,6 +41,8 @@ class AccountManager:
         GET_SOLVED_CAPTCHAS = "get_solved_captchas"
         UPDATE_ARMORY_PREFERENCES = "update_armory_preferences"
         UPDATE_TRAINING_PREFERENCES = "update_training_preferences"
+        GET_CARDS = "get_cards"
+        SEND_CARDS = "send_cards"
 
 
     def __init__(self):
@@ -168,6 +170,8 @@ class AccountManager:
                 "get_solved_captchas": roc_account.get_solved_captchas,
                 "update_armory_preferences": roc_account.update_armory_preferences,
                 "update_training_preferences": roc_account.update_training_preferences,
+                "get_cards": roc_account.get_cards,
+                "send_cards": roc_account.send_cards,
             }
             
             if action.value not in action_map:

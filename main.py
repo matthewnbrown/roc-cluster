@@ -159,8 +159,11 @@ async def lifespan(app: FastAPI):
     logger.info("Captcha feedback service started")
     
     # Start page data service
-    await page_data_service.start()
-    logger.info("Page data service started")
+    if settings.USE_PAGE_DATA_SERVICE:
+        await page_data_service.start()
+        logger.info("Page data service started")
+    else:
+        logger.info("Page data service not started")
     
     account_manager = AccountManager()
     logger.info("Account manager initialized")
@@ -189,8 +192,9 @@ async def lifespan(app: FastAPI):
     logger.info("Job pruning service stopped")
     
     # Stop page data service
-    await page_data_service.stop()
-    logger.info("Page data service stopped")
+    if settings.USE_PAGE_DATA_SERVICE:
+        await page_data_service.stop()
+        logger.info("Page data service stopped")
     
     # Stop captcha feedback service
     await captcha_feedback_service.stop()
