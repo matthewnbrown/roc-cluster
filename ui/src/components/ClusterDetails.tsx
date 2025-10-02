@@ -4,6 +4,7 @@ import { useCluster, useAddUsersToCluster, useRemoveUserFromCluster } from '../h
 import { useAccounts } from '../hooks/useAccounts';
 import Button from './ui/Button';
 import Modal from './ui/Modal';
+import AccountAutocomplete from './AccountAutocomplete';
 import { Table, TableHeader, TableBody, TableRow, TableCell } from './ui/Table';
 import Pagination from './ui/Pagination';
 import { ArrowLeft, Edit, Trash2, User, Mail, Calendar, Users, Plus, X, Copy, Shield } from 'lucide-react';
@@ -28,7 +29,7 @@ const ClusterDetails: React.FC<ClusterDetailsProps> = ({
   const [selectedAccountIds, setSelectedAccountIds] = useState<number[]>([]);
 
   const { data: cluster, isLoading: clusterLoading, error: clusterError } = useCluster(clusterId);
-  const { data: allAccountsData } = useAccounts(1, 1000); // Get all accounts for the add modal
+  // Removed large account fetch - now using AccountAutocomplete component
   const addUsersToClusterMutation = useAddUsersToCluster();
   const removeUserFromClusterMutation = useRemoveUserFromCluster();
 
@@ -60,13 +61,7 @@ const ClusterDetails: React.FC<ClusterDetailsProps> = ({
     }
   };
 
-  const handleAccountSelect = (accountId: number) => {
-    setSelectedAccountIds(prev => 
-      prev.includes(accountId) 
-        ? prev.filter(id => id !== accountId)
-        : [...prev, accountId]
-    );
-  };
+  // Removed handleAccountSelect - now handled by AccountAutocomplete component
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
@@ -108,10 +103,7 @@ const ClusterDetails: React.FC<ClusterDetailsProps> = ({
     { id: 'users', label: 'Users', icon: User },
   ];
 
-  // Filter out users already in the cluster
-  const availableAccounts = allAccountsData?.data.filter(account => 
-    !cluster.users.some(user => user.account_id === account.id)
-  ) || [];
+  // Removed availableAccounts filtering - now handled by AccountAutocomplete component
 
   return (
     <div className="space-y-6">
@@ -328,63 +320,43 @@ const ClusterDetails: React.FC<ClusterDetailsProps> = ({
             Select accounts to add to this cluster:
           </p>
           
-          {availableAccounts.length > 0 ? (
-            <>
-              <div className="max-h-64 overflow-y-auto border border-gray-200 rounded-md">
-                {availableAccounts.map((account) => (
-                  <div
-                    key={account.id}
-                    className={`flex items-center justify-between p-3 border-b border-gray-100 last:border-b-0 hover:bg-gray-50 ${
-                      selectedAccountIds.includes(account.id) ? 'bg-blue-50' : ''
-                    }`}
-                  >
-                    <div className="flex items-center space-x-3">
-                      <input
-                        type="checkbox"
-                        checked={selectedAccountIds.includes(account.id)}
-                        onChange={() => handleAccountSelect(account.id)}
-                        className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
-                      />
-                      <div>
-                        <p className="font-medium text-gray-900">{account.username}</p>
-                        <p className="text-sm text-gray-500">{account.email}</p>
-                      </div>
-                    </div>
-                    <span className="text-xs text-gray-400 font-mono">#{account.id}</span>
-                  </div>
-                ))}
-              </div>
-              
-              <div className="flex items-center justify-between pt-4">
-                <p className="text-sm text-gray-600">
-                  {selectedAccountIds.length} user{selectedAccountIds.length !== 1 ? 's' : ''} selected
-                </p>
-                <div className="flex space-x-3">
-                  <Button
-                    variant="secondary"
-                    onClick={() => {
-                      setAddUsersModalOpen(false);
-                      setSelectedAccountIds([]);
-                    }}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    onClick={handleAddUsers}
-                    loading={addUsersToClusterMutation.isLoading}
-                    disabled={selectedAccountIds.length === 0}
-                  >
-                    Add {selectedAccountIds.length} User{selectedAccountIds.length !== 1 ? 's' : ''}
-                  </Button>
-                </div>
-              </div>
-            </>
-          ) : (
-            <div className="text-center py-8">
-              <User className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-500">All available accounts are already in this cluster.</p>
+          <AccountAutocomplete
+            selectedAccountIds={selectedAccountIds}
+            onAccountSelect={(accountId) => {
+              if (!selectedAccountIds.includes(accountId)) {
+                setSelectedAccountIds(prev => [...prev, accountId]);
+              }
+            }}
+            onAccountRemove={(accountId) => {
+              setSelectedAccountIds(prev => prev.filter(id => id !== accountId));
+            }}
+            placeholder="Search accounts to add to cluster..."
+            maxHeight="300px"
+          />
+          
+          <div className="flex items-center justify-between pt-4">
+            <p className="text-sm text-gray-600">
+              {selectedAccountIds.length} user{selectedAccountIds.length !== 1 ? 's' : ''} selected
+            </p>
+            <div className="flex space-x-3">
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setAddUsersModalOpen(false);
+                  setSelectedAccountIds([]);
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleAddUsers}
+                loading={addUsersToClusterMutation.isLoading}
+                disabled={selectedAccountIds.length === 0}
+              >
+                Add {selectedAccountIds.length} User{selectedAccountIds.length !== 1 ? 's' : ''}
+              </Button>
             </div>
-          )}
+          </div>
         </div>
       </Modal>
     </div>

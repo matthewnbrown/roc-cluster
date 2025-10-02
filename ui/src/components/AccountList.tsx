@@ -23,7 +23,7 @@ const AccountList: React.FC<AccountListProps> = ({
   const [perPage] = useState(20);
   const [searchTerm, setSearchTerm] = useState('');
 
-  const { data: accountsData, isLoading, error } = useAccounts(page, perPage);
+  const { data: accountsData, isLoading, error } = useAccounts(page, perPage, searchTerm);
   const deleteAccountMutation = useDeleteAccount();
 
   const handleDeleteAccount = async (account: Account) => {
@@ -36,11 +36,10 @@ const AccountList: React.FC<AccountListProps> = ({
     }
   };
 
-
-  const filteredAccounts = accountsData?.data.filter(account =>
-    account.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    account.email.toLowerCase().includes(searchTerm.toLowerCase())
-  ) || [];
+  // Reset to page 1 when search term changes
+  React.useEffect(() => {
+    setPage(1);
+  }, [searchTerm]);
 
   if (isLoading) {
     return (
@@ -107,14 +106,14 @@ const AccountList: React.FC<AccountListProps> = ({
               </TableRow>
             </TableHeader>
             <TableBody>
-            {filteredAccounts.length === 0 ? (
+            {!accountsData?.data || accountsData.data.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={6} className="text-center py-8 text-gray-500">
                   {searchTerm ? 'No accounts found matching your search.' : 'No accounts found.'}
                 </TableCell>
               </TableRow>
             ) : (
-              filteredAccounts.map((account) => (
+              accountsData?.data.map((account) => (
                 <TableRow 
                   key={account.id} 
                   className="cursor-pointer hover:bg-gray-50 transition-colors"

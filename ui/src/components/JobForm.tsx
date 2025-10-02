@@ -9,6 +9,7 @@ import { JobCreateRequest, JobStepRequest, ActionType, JobResponse } from '../ty
 import Button from './ui/Button';
 import Input from './ui/Input';
 import Modal from './ui/Modal';
+import AccountAutocomplete from './AccountAutocomplete';
 import { Plus, Trash2, Users, User, ChevronDown, ChevronRight, EyeOff, Search, X, Star } from 'lucide-react';
 import FriendlyActionParameters from './FriendlyActionParameters';
 
@@ -39,13 +40,11 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
   const createJobMutation = useCreateJob();
   const { data: actionTypesData } = useValidActionTypes();
   const { data: clustersData } = useClusters(1, 10000); // Increased limit for autocomplete search
-  const { data: accountsData } = useAccounts(1, 10000); // Increased limit for autocomplete search
+  // Removed large account fetch - now using AccountAutocomplete component
   const { createFavoriteJob } = useFavoriteJobs();
   const { data: jobsData, isLoading: jobsLoading, refetch: refetchJobs } = useJobs(1, 100); // Fetch jobs for smart numbering
   const [editingStepIndex, setEditingStepIndex] = useState<number | null>(null);
-  const [searchTerms, setSearchTerms] = useState<{ [stepIndex: number]: string }>({});
-  const [showSuggestions, setShowSuggestions] = useState<{ [stepIndex: number]: boolean }>({});
-  const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState<{ [stepIndex: number]: number }>({});
+  // Removed search state - now handled by AccountAutocomplete component
   const [clusterSearchTerms, setClusterSearchTerms] = useState<{ [stepIndex: number]: string }>({});
   const [showClusterSuggestions, setShowClusterSuggestions] = useState<{ [stepIndex: number]: boolean }>({});
   const [selectedClusterSuggestionIndex, setSelectedClusterSuggestionIndex] = useState<{ [stepIndex: number]: number }>({});
@@ -224,7 +223,6 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as HTMLElement;
       if (!target.closest('.suggestions-container')) {
-        setShowSuggestions({});
         setShowClusterSuggestions({});
       }
     };
@@ -435,34 +433,12 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
     }
   };
 
-  // Account search and selection helpers
-  const getFilteredAccounts = (searchTerm: string, stepIndex: number) => {
-    if (!searchTerm || !accountsData?.data) return [];
-    
-    const currentAccountIds = watchedSteps[stepIndex]?.account_ids || [];
-    
-    return accountsData.data.filter((account: any) => {
-      const isAlreadySelected = currentAccountIds.includes(account.id);
-      if (isAlreadySelected) return false;
-      
-      const searchLower = searchTerm.toLowerCase();
-      return (
-        account.username.toLowerCase().includes(searchLower) ||
-        account.email.toLowerCase().includes(searchLower) ||
-        account.id.toString().includes(searchTerm)
-      );
-    }).slice(0, 10); // Limit to 10 suggestions
-  };
+  // Account selection helpers - simplified for AccountAutocomplete component
 
   const addAccountToStep = (stepIndex: number, account: any) => {
     const currentAccountIds = watchedSteps[stepIndex]?.account_ids || [];
     const newAccountIds = [...currentAccountIds, account.id];
     setValue(`steps.${stepIndex}.account_ids`, newAccountIds);
-    
-    // Clear search and hide suggestions
-    setSearchTerms(prev => ({ ...prev, [stepIndex]: '' }));
-    setShowSuggestions(prev => ({ ...prev, [stepIndex]: false }));
-    setSelectedSuggestionIndex(prev => ({ ...prev, [stepIndex]: -1 }));
   };
 
   const removeAccountFromStep = (stepIndex: number, accountId: number) => {
@@ -475,9 +451,7 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
     setValue(`steps.${stepIndex}.account_ids`, []);
   };
 
-  const getAccountById = (accountId: number) => {
-    return accountsData?.data.find((account: any) => account.id === accountId);
-  };
+  // Removed getAccountById - account data now comes from AccountAutocomplete component
 
   // Cluster search and selection helpers
   const getFilteredClusters = (searchTerm: string, stepIndex: number) => {
@@ -518,45 +492,7 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
     return clustersData?.data.find((cluster: any) => cluster.id === clusterId);
   };
 
-  // Keyboard navigation helpers for accounts
-  const handleKeyDown = (stepIndex: number, event: React.KeyboardEvent) => {
-    const filteredAccounts = getFilteredAccounts(searchTerms[stepIndex] || '', stepIndex);
-    const currentIndex = selectedSuggestionIndex[stepIndex] ?? -1;
-
-    // Only handle keyboard navigation if suggestions are visible
-    if (!showSuggestions[stepIndex] || filteredAccounts.length === 0) {
-      return;
-    }
-
-    switch (event.key) {
-      case 'ArrowDown':
-        event.preventDefault();
-        event.stopPropagation();
-        const nextIndex = currentIndex < filteredAccounts.length - 1 ? currentIndex + 1 : 0;
-        setSelectedSuggestionIndex(prev => ({ ...prev, [stepIndex]: nextIndex }));
-        break;
-      case 'ArrowUp':
-        event.preventDefault();
-        event.stopPropagation();
-        const prevIndex = currentIndex <= 0 ? filteredAccounts.length - 1 : currentIndex - 1;
-        setSelectedSuggestionIndex(prev => ({ ...prev, [stepIndex]: prevIndex }));
-        break;
-      case 'Enter':
-        event.preventDefault();
-        event.stopPropagation();
-        if (currentIndex >= 0 && currentIndex < filteredAccounts.length) {
-          const account = filteredAccounts[currentIndex];
-          addAccountToStep(stepIndex, account);
-        }
-        break;
-      case 'Escape':
-        event.preventDefault();
-        event.stopPropagation();
-        setShowSuggestions(prev => ({ ...prev, [stepIndex]: false }));
-        setSelectedSuggestionIndex(prev => ({ ...prev, [stepIndex]: -1 }));
-        break;
-    }
-  };
+  // Keyboard navigation removed - now handled by AccountAutocomplete component
 
   // Keyboard navigation helpers for clusters
   const handleClusterKeyDown = (stepIndex: number, event: React.KeyboardEvent) => {
@@ -856,86 +792,16 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
                                 )}
                               </div>
                               
-                              {/* Selected Accounts */}
-                              <div className="mb-3">
-                                {watchedSteps[index]?.account_ids?.map((accountId: number) => {
-                                  const account = getAccountById(accountId);
-                                  if (!account) return null;
-                                  
-                                  return (
-                                    <span
-                                      key={accountId}
-                                      className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-800 text-sm rounded-md mr-2 mb-2"
-                                    >
-                                      {account.username} ({account.email})
-                                      <button
-                                        type="button"
-                                        onClick={() => removeAccountFromStep(index, accountId)}
-                                        className="text-blue-600 hover:text-blue-800"
-                                      >
-                                        <X className="h-3 w-3" />
-                                      </button>
-                                    </span>
-                                  );
-                                })}
-                              </div>
+                              {/* Selected Accounts - handled by AccountAutocomplete component */}
                               
-                              {/* Search Input */}
-                              <div className="relative">
-                                <div className="relative">
-                                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                                  <input
-                                    type="text"
-                                    placeholder="Search by username, email, or ID..."
-                                    value={searchTerms[index] || ''}
-                                    onChange={(e) => {
-                                      const value = e.target.value;
-                                      setSearchTerms(prev => ({ ...prev, [index]: value }));
-                                      setShowSuggestions(prev => ({ ...prev, [index]: value.length > 0 }));
-                                      // Reset selection when typing
-                                      setSelectedSuggestionIndex(prev => ({ ...prev, [index]: -1 }));
-                                    }}
-                                    onFocus={() => {
-                                      if (searchTerms[index]) {
-                                        setShowSuggestions(prev => ({ ...prev, [index]: true }));
-                                      }
-                                    }}
-                                    onKeyDown={(e) => handleKeyDown(index, e)}
-                                    className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-                                  />
-                                </div>
-                                
-                                {/* Suggestions Dropdown */}
-                                {showSuggestions[index] && searchTerms[index] && (
-                                  <div className="suggestions-container absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-48 overflow-y-auto">
-                                    {getFilteredAccounts(searchTerms[index], index).map((account: any, suggestionIndex: number) => {
-                                      const isSelected = selectedSuggestionIndex[index] === suggestionIndex;
-                                      return (
-                                        <button
-                                          key={account.id}
-                                          type="button"
-                                          onClick={() => addAccountToStep(index, account)}
-                                          className={`w-full px-3 py-2 text-left focus:outline-none ${
-                                            isSelected 
-                                              ? 'bg-primary-100 text-primary-900' 
-                                              : 'hover:bg-gray-100 focus:bg-gray-100'
-                                          }`}
-                                        >
-                                          <div className="text-sm text-gray-900">{account.username}</div>
-                                          <div className="text-xs text-gray-500">
-                                            {account.email} (ID: {account.id}
-                                          </div>
-                                        </button>
-                                      );
-                                    })}
-                                    {getFilteredAccounts(searchTerms[index], index).length === 0 && (
-                                      <div className="px-3 py-2 text-sm text-gray-500">
-                                        No accounts found
-                                      </div>
-                                    )}
-                                  </div>
-                                )}
-                              </div>
+                              {/* Account Autocomplete */}
+                              <AccountAutocomplete
+                                selectedAccountIds={watchedSteps[index]?.account_ids || []}
+                                onAccountSelect={(accountId) => addAccountToStep(index, { id: accountId })}
+                                onAccountRemove={(accountId) => removeAccountFromStep(index, accountId)}
+                                placeholder="Search accounts by username, email, or ID..."
+                                maxHeight="200px"
+                              />
                             </div>
 
                             {/* Clusters */}
@@ -1302,24 +1168,7 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
                     Target Accounts
                   </label>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm text-gray-600 mb-1">
-                        <User className="h-4 w-4 inline mr-1" />
-                        Individual Accounts
-                      </label>
-                      <select
-                        multiple
-                        {...register(`steps.${index}.account_ids`)}
-                        className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
-                        size={4}
-                      >
-                        {accountsData?.data.map((account) => (
-                          <option key={account.id} value={account.id}>
-                            {account.username} ({account.email})
-                          </option>
-                        ))}
-                      </select>
-                    </div>
+                    {/* Individual Accounts selection removed - now handled by AccountAutocomplete component */}
 
                     <div>
                       <label className="block text-sm text-gray-600 mb-1">

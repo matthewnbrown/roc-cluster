@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from 'react-query';
+import { useState, useEffect } from 'react';
 import { accountApi } from '../services/api';
 import { Account, AccountCreate, AccountUpdate } from '../types/api';
 
@@ -6,16 +7,16 @@ import { Account, AccountCreate, AccountUpdate } from '../types/api';
 export const accountKeys = {
   all: ['accounts'] as const,
   lists: () => [...accountKeys.all, 'list'] as const,
-  list: (page: number, perPage: number) => [...accountKeys.lists(), { page, perPage }] as const,
+  list: (page: number, perPage: number, search?: string) => [...accountKeys.lists(), { page, perPage, search }] as const,
   details: () => [...accountKeys.all, 'detail'] as const,
   detail: (id: number) => [...accountKeys.details(), id] as const,
 };
 
 // Hooks for accounts
-export const useAccounts = (page: number = 1, perPage: number = 100) => {
+export const useAccounts = (page: number = 1, perPage: number = 100, search?: string) => {
   return useQuery(
-    accountKeys.list(page, perPage),
-    () => accountApi.getAccounts(page, perPage),
+    accountKeys.list(page, perPage, search),
+    () => accountApi.getAccounts(page, perPage, search),
     {
       keepPreviousData: true,
       staleTime: 5 * 60 * 1000, // 5 minutes
@@ -76,6 +77,29 @@ export const useDeleteAccount = () => {
         // Invalidate accounts list to refetch
         queryClient.invalidateQueries(accountKeys.lists());
       },
+    }
+  );
+};
+
+// Hook for account search/autocomplete with debouncing
+export const useAccountSearch = (searchTerm: string, debounceMs: number = 300) => {
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState(searchTerm);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm);
+    }, debounceMs);
+
+    return () => clearTimeout(timer);
+  }, [searchTerm, debounceMs]);
+
+  return useQuery(
+    accountKeys.list(1, 50, debouncedSearchTerm), // Limit to 50 results for autocomplete
+    () => accountApi.getAccounts(1, 50, debouncedSearchTerm),
+    {
+      enabled: debouncedSearchTerm.length >= 2, // Only search when at least 2 characters
+      keepPreviousData: true,
+      staleTime: 30 * 1000, // 30 seconds for autocomplete
     }
   );
 };

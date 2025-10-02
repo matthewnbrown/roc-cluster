@@ -2,9 +2,10 @@
 Account management endpoints
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
-from typing import List
+from sqlalchemy import or_
+from typing import List, Optional
 import logging
 
 from api.database import get_db
@@ -78,16 +79,27 @@ async def create_account(
 async def list_accounts(
     page: int = 1,
     per_page: int = 100,
+    search: Optional[str] = Query(None, description="Search accounts by username or email"),
     db: Session = Depends(get_db)
 ):
-    """List all accounts with pagination"""
+    """List all accounts with pagination and optional search"""
     try:
         if page < 1:
             raise HTTPException(status_code=400, detail="Page must be greater than 0")
         if per_page < 1 or per_page > 10000:
             raise HTTPException(status_code=400, detail="Per page must be between 1 and 10000")
         
-        query = db.query(Account).order_by(Account.id)
+        # Build query with search
+        query = db.query(Account)
+        
+        if search:
+            search_filter = or_(
+                Account.username.ilike(f"%{search}%"),
+                Account.email.ilike(f"%{search}%")
+            )
+            query = query.filter(search_filter)
+        
+        query = query.order_by(Account.username)  # Order by username for better UX
         return paginate_query(query, page, per_page, AccountResponse)
     except HTTPException:
         raise

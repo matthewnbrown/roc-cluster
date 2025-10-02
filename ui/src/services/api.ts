@@ -75,10 +75,10 @@ api.interceptors.response.use(
 
 // Account API functions
 export const accountApi = {
-  // Get all accounts with pagination
-  getAccounts: async (page: number = 1, perPage: number = 100): Promise<PaginatedResponse<Account>> => {
+  // Get all accounts with pagination and optional search
+  getAccounts: async (page: number = 1, perPage: number = 100, search?: string): Promise<PaginatedResponse<Account>> => {
     const response: AxiosResponse<PaginatedResponse<Account>> = await api.get('/accounts/', {
-      params: { page, per_page: perPage },
+      params: { page, per_page: perPage, search },
     });
     return response.data;
   },
