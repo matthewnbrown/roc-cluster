@@ -281,7 +281,7 @@ class JobManager:
                 }
             },
             "purchase_armory_by_preferences": {
-                "description": "Purchase items from the armory based on user preferences",
+                "description": "Purchase items from the armory based on user preferences ",
                 "category": "self_action",
                 "required_parameters": [],
                 "optional_parameters": [],
@@ -387,14 +387,14 @@ class JobManager:
                 }
             },
             "update_armory_preferences": {
-                "description": "Update armory preferences for the account. Available weapons: dagger, maul, blade, excalibur, sai, shield, mithril, dragonskin, cloak, hook, pickaxe, horn, guard_dog, torch",
+                "description": "Update armory preferences for the account",
                 "category": "self_action",
                 "required_parameters": ["weapon_percentages"],
                 "optional_parameters": [],
                 "parameter_details": {
                     "weapon_percentages": {
                         "type": "object",
-                        "description": "Dictionary of weapon_name: percentage pairs (percentages must sum to <= 100%). Available weapons: dagger, maul, blade, excalibur, sai, shield, mithril, dragonskin, cloak, hook, pickaxe, horn, guard_dog, torch"
+                        "description": "Dictionary of weapon_name: percentage pairs (percentages must sum to <= 100%). "
                     }
                 },
                 "output": {

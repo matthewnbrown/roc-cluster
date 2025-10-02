@@ -315,9 +315,9 @@ const ClusterDetails: React.FC<ClusterDetailsProps> = ({
           
           <AccountAutocomplete
             selectedAccountIds={selectedAccountIds}
-            onAccountSelect={(accountId) => {
-              if (!selectedAccountIds.includes(accountId)) {
-                setSelectedAccountIds(prev => [...prev, accountId]);
+            onAccountSelect={(account) => {
+              if (!selectedAccountIds.includes(account.id)) {
+                setSelectedAccountIds(prev => [...prev, account.id]);
               }
             }}
             onAccountRemove={(accountId) => {

@@ -5,7 +5,7 @@ import { Account } from '../types/api';
 
 interface AccountAutocompleteProps {
   selectedAccountIds: number[];
-  onAccountSelect: (accountId: number) => void;
+  onAccountSelect: (account: Account) => void;
   onAccountRemove: (accountId: number) => void;
   placeholder?: string;
   maxHeight?: string;
@@ -27,11 +27,32 @@ const AccountAutocomplete: React.FC<AccountAutocompleteProps> = ({
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const { data: searchResults, isLoading } = useAccountSearch(searchTerm);
+  // Store selected account details to avoid losing them when search is cleared
+  const [selectedAccountDetails, setSelectedAccountDetails] = useState<Account[]>([]);
 
   const availableAccounts = searchResults?.data || [];
-  const selectedAccounts = availableAccounts.filter(account => 
-    selectedAccountIds.includes(account.id)
-  );
+  
+  // Update selected account details when selectedAccountIds changes
+  useEffect(() => {
+    // Add new accounts from search results
+    const newAccounts = availableAccounts.filter(account => 
+      selectedAccountIds.includes(account.id) && 
+      !selectedAccountDetails.some(selected => selected.id === account.id)
+    );
+    
+    if (newAccounts.length > 0) {
+      setSelectedAccountDetails(prev => [...prev, ...newAccounts]);
+    }
+  }, [availableAccounts, selectedAccountIds, selectedAccountDetails]);
+
+  // Remove accounts that are no longer selected
+  useEffect(() => {
+    setSelectedAccountDetails(prev => 
+      prev.filter(account => selectedAccountIds.includes(account.id))
+    );
+  }, [selectedAccountIds]);
+
+  const selectedAccounts = selectedAccountDetails;
 
   // Handle keyboard navigation
   useEffect(() => {
@@ -54,7 +75,7 @@ const AccountAutocomplete: React.FC<AccountAutocompleteProps> = ({
           if (focusedIndex >= 0 && focusedIndex < availableAccounts.length) {
             const account = availableAccounts[focusedIndex];
             if (!selectedAccountIds.includes(account.id)) {
-              onAccountSelect(account.id);
+              onAccountSelect(account);
             }
             setSearchTerm('');
             setIsOpen(false);
@@ -100,7 +121,7 @@ const AccountAutocomplete: React.FC<AccountAutocompleteProps> = ({
 
   const handleAccountSelect = (account: Account) => {
     if (!selectedAccountIds.includes(account.id)) {
-      onAccountSelect(account.id);
+      onAccountSelect(account);
     }
     setSearchTerm('');
     setIsOpen(false);
