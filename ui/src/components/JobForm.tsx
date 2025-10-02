@@ -672,7 +672,9 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
                               <span>{selection.totalClusters} cluster{selection.totalClusters !== 1 ? 's' : ''}</span>
                             )}
                             {selection.totalIndividual === 0 && selection.totalClusters === 0 && (
-                              <span className="text-gray-400">No targets selected</span>
+                              <span className="text-gray-400">
+                                {step?.action_type === 'delay' ? 'No targets needed' : 'No targets selected'}
+                              </span>
                             )}
                           </div>
                           <div className="text-xs text-gray-500">

@@ -461,6 +461,29 @@ class JobManager:
                     "data": "object (optional) - contains sending results and card counts",
                     "error": "string (optional)"
                 }
+            },
+            "delay": {
+                "description": "Wait for a specified amount of time before continuing",
+                "category": "system_action",
+                "required_parameters": ["duration_seconds"],
+                "optional_parameters": ["message"],
+                "parameter_details": {
+                    "duration_seconds": {
+                        "type": "number",
+                        "description": "Number of seconds to wait (can be decimal for sub-second precision)"
+                    },
+                    "message": {
+                        "type": "string",
+                        "description": "Optional message to display during the delay (default: 'Waiting...')",
+                        "default": "Waiting..."
+                    }
+                },
+                "output": {
+                    "success": "boolean",
+                    "message": "string (optional) - confirmation message",
+                    "data": "object (optional) - contains delay details",
+                    "error": "string (optional)"
+                }
             }
         }
         
@@ -494,6 +517,10 @@ class JobManager:
     
     def _get_all_account_ids_for_step(self, step_data: Dict[str, Any], db: Session) -> List[int]:
         """Get all account IDs for a step, combining direct account_ids and cluster expansion"""
+        # Delay steps don't need account IDs
+        if step_data.get("action_type") == "delay":
+            return []
+        
         all_account_ids = set()
         
         # Add direct account IDs
@@ -505,8 +532,8 @@ class JobManager:
             cluster_account_ids = self._expand_clusters_to_accounts(step_data["cluster_ids"], db)
             all_account_ids.update(cluster_account_ids)
         
-        # Validate that we have at least one account ID
-        if not all_account_ids:
+        # Validate that we have at least one account ID (except for delay steps)
+        if not all_account_ids and step_data.get("action_type") != "delay":
             raise ValueError("Step must specify at least account_ids or cluster_ids")
         
         # Return as sorted list for consistent ordering
@@ -812,15 +839,19 @@ class JobManager:
             if step.parameters:
                 parameters = json.loads(step.parameters)
             
-            # Convert string action_type to ActionType enum
-            action_type_enum = self.account_manager.ActionType(step.action_type)
-            
-            # Get account IDs from the step
-            if not step.account_ids:
-                raise ValueError("Step must have account_ids")
-            
-            account_ids = json.loads(step.account_ids)
-            result = await self._execute_multi_account_step(account_ids, action_type_enum, parameters, step.max_retries, step, bulk_cookies, bulk_accounts)
+            # Handle special delay step that doesn't need accounts
+            if step.action_type == "delay":
+                result = await self._execute_delay_step(parameters)
+            else:
+                # Convert string action_type to ActionType enum
+                action_type_enum = self.account_manager.ActionType(step.action_type)
+                
+                # Get account IDs from the step
+                if not step.account_ids:
+                    raise ValueError("Step must have account_ids")
+                
+                account_ids = json.loads(step.account_ids)
+                result = await self._execute_multi_account_step(account_ids, action_type_enum, parameters, step.max_retries, step, bulk_cookies, bulk_accounts)
             
             # Update step result
             step.status = JobStatus.COMPLETED if result.get("success", False) else JobStatus.FAILED
@@ -847,6 +878,58 @@ class JobManager:
             self._cleanup_step_progress(step.id)
 
             raise
+    
+    async def _execute_delay_step(self, parameters: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute a delay step - just wait for the specified duration"""
+        try:
+            duration_seconds = parameters.get("duration_seconds")
+            message = parameters.get("message", "Waiting...")
+            
+            if duration_seconds is None:
+                return {
+                    "success": False,
+                    "error": "duration_seconds parameter is required for delay steps"
+                }
+            
+            # Validate duration
+            try:
+                duration_seconds = float(duration_seconds)
+                if duration_seconds < 0:
+                    return {
+                        "success": False,
+                        "error": "duration_seconds must be non-negative"
+                    }
+            except (ValueError, TypeError):
+                return {
+                    "success": False,
+                    "error": "duration_seconds must be a valid number"
+                }
+            
+            # Log the delay start
+            logger.info(f"Delay step: {message} for {duration_seconds} seconds")
+            
+            # Wait for the specified duration
+            await asyncio.sleep(duration_seconds)
+            
+            # Log completion
+            logger.info(f"Delay step completed after {duration_seconds} seconds")
+            
+            return {
+                "success": True,
+                "message": f"Waited {duration_seconds} seconds",
+                "data": {
+                    "duration_seconds": duration_seconds,
+                    "message": message,
+                    "completed_at": datetime.now(timezone.utc).isoformat()
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"Error in delay step: {e}", exc_info=True)
+            return {
+                "success": False,
+                "error": str(e)
+            }
     
     async def _execute_multi_account_step(self, account_ids: List[int], action_type_enum, parameters: Dict[str, Any], max_retries: int, step: JobStep = None, bulk_cookies: Optional[Dict[int, Dict[str, Any]]] = None, bulk_accounts: Optional[Dict[int, Account]] = None):
         """Execute action for multiple accounts and consolidate results"""

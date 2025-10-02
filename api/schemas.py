@@ -365,8 +365,8 @@ class JobStepRequest(BaseModel):
     
     def __init__(self, **data):
         super().__init__(**data)
-        # Validate that at least one of account_ids or cluster_ids is provided
-        if not self.account_ids and not self.cluster_ids:
+        # Validate that at least one of account_ids or cluster_ids is provided (except for delay steps)
+        if not self.account_ids and not self.cluster_ids and self.action_type != "delay":
             raise ValueError("Either account_ids or cluster_ids must be provided")
         
         # Validate action_type (basic validation - detailed validation happens in job manager)

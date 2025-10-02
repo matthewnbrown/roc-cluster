@@ -43,6 +43,7 @@ class AccountManager:
         UPDATE_TRAINING_PREFERENCES = "update_training_preferences"
         GET_CARDS = "get_cards"
         SEND_CARDS = "send_cards"
+        DELAY = "delay"
 
 
     def __init__(self):

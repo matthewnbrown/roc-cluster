@@ -47,8 +47,8 @@ async def create_job(
             if step.cluster_ids:
                 step_data["cluster_ids"] = step.cluster_ids
             
-            # Validate that at least one targeting method is provided
-            if not step.account_ids and not step.cluster_ids:
+            # Validate that at least one targeting method is provided (except for delay steps)
+            if step.action_type != "delay" and not step.account_ids and not step.cluster_ids:
                 raise HTTPException(status_code=400, detail="Step must specify at least account_ids or cluster_ids")
             
             if step.parameters:
