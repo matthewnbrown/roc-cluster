@@ -10,7 +10,7 @@ import Button from './ui/Button';
 import Input from './ui/Input';
 import Modal from './ui/Modal';
 import AccountAutocomplete from './AccountAutocomplete';
-import { Plus, Trash2, Users, User, ChevronDown, ChevronRight, EyeOff, Search, X, Star } from 'lucide-react';
+import { Plus, Trash2, Users, User, ChevronDown, ChevronRight, EyeOff, Search, X, Star, Copy } from 'lucide-react';
 import FriendlyActionParameters from './FriendlyActionParameters';
 
 interface JobFormProps {
@@ -86,7 +86,7 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
     },
   });
 
-  const { fields, append, remove, replace } = useFieldArray({
+  const { fields, append, remove, replace, insert } = useFieldArray({
     control,
     name: 'steps',
   });
@@ -342,6 +342,23 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
   const removeStep = (index: number) => {
     if (fields.length > 1) {
       remove(index);
+    }
+  };
+
+  const duplicateStep = (index: number) => {
+    const stepToDuplicate = fields[index];
+    if (stepToDuplicate) {
+      // Insert the duplicated step right after the current step
+      insert(index + 1, {
+        action_type: stepToDuplicate.action_type,
+        account_ids: [...(stepToDuplicate.account_ids || [])],
+        cluster_ids: [...(stepToDuplicate.cluster_ids || [])],
+        original_account_ids: stepToDuplicate.original_account_ids ? [...stepToDuplicate.original_account_ids] : undefined,
+        original_cluster_ids: stepToDuplicate.original_cluster_ids ? [...stepToDuplicate.original_cluster_ids] : undefined,
+        parameters: stepToDuplicate.parameters ? { ...stepToDuplicate.parameters } : {},
+        max_retries: stepToDuplicate.max_retries,
+        is_async: stepToDuplicate.is_async,
+      });
     }
   };
 
@@ -695,6 +712,16 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
                           <div className="flex items-center justify-between">
                             <h4 className="font-medium text-gray-900">Edit Step {index + 1}</h4>
                             <div className="flex items-center space-x-2">
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => duplicateStep(index)}
+                                className="text-blue-600 hover:text-blue-700"
+                                title="Duplicate this step"
+                              >
+                                <Copy className="h-4 w-4" />
+                              </Button>
                               {fields.length > 1 && (
                                 <Button
                                   type="button"
@@ -702,6 +729,7 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
                                   size="sm"
                                   onClick={() => removeStep(index)}
                                   className="text-red-600 hover:text-red-700"
+                                  title="Delete this step"
                                 >
                                   <Trash2 className="h-4 w-4" />
                                 </Button>
@@ -712,6 +740,7 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
                                 size="sm"
                                 onClick={() => setEditingStepIndex(null)}
                                 className="text-gray-500 hover:text-gray-700"
+                                title="Close step editor"
                               >
                                 <EyeOff className="h-4 w-4" />
                               </Button>
