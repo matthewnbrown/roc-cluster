@@ -22,14 +22,13 @@ const JobList: React.FC<JobListProps> = ({ onViewJob, onCreateJob, onCloneJob })
   const [expandedJobId, setExpandedJobId] = useState<number | null>(null);
   const [actionResultsSearch, setActionResultsSearch] = useState<{[jobId: number]: string}>({});
 
-  const { data: jobsData, isLoading, error } = useJobs(page, perPage, statusFilter || undefined);
   const cancelJobMutation = useCancelJob();
 
+  // First, get a snapshot of jobs to identify running ones
+  const { data: jobsData, isLoading, error } = useJobs(page, perPage, statusFilter || undefined);
+  
   // Get progress data for all running/pending jobs
   const runningJobs = jobsData?.jobs.filter(job => job.status === 'running' || job.status === 'pending') || [];
-  
-  // Create a map of job progress data
-  const jobProgressData: Record<number, any> = {};
   
   // Always call hooks in the same order - use enabled flag to control when they run
   const progressQuery1 = useJobProgress(runningJobs[0]?.id || 0);
@@ -38,7 +37,35 @@ const JobList: React.FC<JobListProps> = ({ onViewJob, onCreateJob, onCloneJob })
   const progressQuery4 = useJobProgress(runningJobs[3]?.id || 0);
   const progressQuery5 = useJobProgress(runningJobs[4]?.id || 0);
   
-  // Populate the progress data map
+  // Create a map of job progress data and merge with job list data
+  const jobProgressData: Record<number, any> = {};
+  const enhancedJobsData: JobResponse[] = jobsData?.jobs.map(job => {
+    // If this job is running, use the enhanced progress data
+    const progressData = progressQuery1.data?.job_id === job.id ? progressQuery1.data :
+                        progressQuery2.data?.job_id === job.id ? progressQuery2.data :
+                        progressQuery3.data?.job_id === job.id ? progressQuery3.data :
+                        progressQuery4.data?.job_id === job.id ? progressQuery4.data :
+                        progressQuery5.data?.job_id === job.id ? progressQuery5.data : null;
+    
+    if (progressData) {
+      jobProgressData[job.id] = progressData;
+      // Convert progress data to JobResponse format
+      return {
+        ...job,
+        // Update with real-time data from progress endpoint
+        status: progressData.status,
+        started_at: progressData.started_at,
+        completed_at: progressData.completed_at,
+        completed_steps: progressData.progress.completed_steps,
+        failed_steps: progressData.progress.failed_steps,
+        // Keep original steps data for compatibility
+        steps: job.steps
+      };
+    }
+    return job;
+  }) || [];
+  
+  // Populate the progress data map for backward compatibility
   if (progressQuery1.data && runningJobs[0]) jobProgressData[runningJobs[0].id] = progressQuery1.data;
   if (progressQuery2.data && runningJobs[1]) jobProgressData[runningJobs[1].id] = progressQuery2.data;
   if (progressQuery3.data && runningJobs[2]) jobProgressData[runningJobs[2].id] = progressQuery3.data;
@@ -130,10 +157,10 @@ const JobList: React.FC<JobListProps> = ({ onViewJob, onCreateJob, onCloneJob })
   };
 
   // Filter jobs by search term
-  const filteredJobs = jobsData?.jobs.filter(job =>
+  const filteredJobs = enhancedJobsData.filter(job =>
     job.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     (job.description && job.description.toLowerCase().includes(searchTerm.toLowerCase()))
-  ) || [];
+  );
 
   const renderCardSummary = (summary: any) => {
     if (!summary) {

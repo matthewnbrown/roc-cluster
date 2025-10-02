@@ -23,7 +23,7 @@ export const useJobs = (page: number = 1, perPage: number = 20, status?: string,
       refetchInterval: (data) => {
         // Only auto-refresh if there are running or pending jobs on the current page
         if (data?.jobs && data.jobs.some(job => job.status === 'running' || job.status === 'pending')) {
-          return 1000; // Refetch every 5 seconds if there are active jobs
+          return 10000; // Refetch every 10 seconds if there are active jobs (progress endpoints handle real-time updates)
         }
         return false; // Don't refetch if no active jobs
       },

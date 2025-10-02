@@ -194,6 +194,35 @@ export interface JobListResponse {
   total_pages: number;
 }
 
+export interface JobProgressResponse {
+  job_id: number;
+  name: string;
+  description?: string;
+  status: JobStatus;
+  parallel_execution: boolean;
+  created_at: string;
+  started_at?: string;
+  completed_at?: string;
+  progress: {
+    total_steps: number;
+    completed_steps: number;
+    failed_steps: number;
+    percentage: number;
+  };
+  steps: Array<{
+    id: number;
+    step_order: number;
+    action_type: string;
+    status: string;
+    total_accounts: number;
+    processed_accounts: number;
+    successful_accounts: number;
+    failed_accounts: number;
+    progress_percentage: number;
+  }>;
+  updated_at: string;
+}
+
 export interface JobCancelRequest {
   reason?: string;
 }

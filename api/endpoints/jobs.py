@@ -277,7 +277,13 @@ async def get_job_progress(
         
         return {
             "job_id": job.id,
+            "name": job.name,
+            "description": job.description,
             "status": job.status,
+            "parallel_execution": job.parallel_execution,
+            "created_at": job.created_at,
+            "started_at": job.started_at,
+            "completed_at": job.completed_at,
             "progress": {
                 "total_steps": total_steps,
                 "completed_steps": completed_steps,

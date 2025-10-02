@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useForm, useFieldArray } from 'react-hook-form';
-import { useQueryClient } from 'react-query';
+import { useQueryClient, useQuery } from 'react-query';
 import { useCreateJob, useValidActionTypes, useJob, useJobs, jobKeys } from '../hooks/useJobs';
 import { useClusters } from '../hooks/useClusters';
-import { useAccounts } from '../hooks/useAccounts';
 import { useFavoriteJobs } from '../hooks/useFavoriteJobs';
 import { JobCreateRequest, JobStepRequest, ActionType, JobResponse } from '../types/api';
+import { jobsApi } from '../services/api';
 import Button from './ui/Button';
 import Input from './ui/Input';
 import Modal from './ui/Modal';
@@ -42,7 +42,15 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
   const { data: clustersData } = useClusters(1, 10000); // Increased limit for autocomplete search
   // Removed large account fetch - now using AccountAutocomplete component
   const { createFavoriteJob } = useFavoriteJobs();
-  const { data: jobsData, isLoading: jobsLoading, refetch: refetchJobs } = useJobs(1, 100); // Fetch jobs for smart numbering
+  // Use a separate query for smart numbering that doesn't auto-poll
+  const { refetch: refetchJobs } = useQuery(
+    jobKeys.list({ page: 1, perPage: 100, status: undefined, includeSteps: true }),
+    () => jobsApi.getJobs(1, 100, undefined, true),
+    {
+      enabled: false, // Only fetch when manually triggered
+      staleTime: 5 * 60 * 1000, // Consider data stale after 5 minutes
+    }
+  );
   const [editingStepIndex, setEditingStepIndex] = useState<number | null>(null);
   // Removed search state - now handled by AccountAutocomplete component
   const [clusterSearchTerms, setClusterSearchTerms] = useState<{ [stepIndex: number]: string }>({});
@@ -110,8 +118,6 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
     let existingJobNames: string[] = [];
     if (cachedJobsData?.jobs) {
       existingJobNames = cachedJobsData.jobs.map((job: any) => job.name);
-    } else if (jobsData?.jobs) {
-      existingJobNames = jobsData.jobs.map((job: any) => job.name);
     } else {
       // No data available, try to refetch
       try {
@@ -216,7 +222,7 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
 
       generateName();
     }
-  }, [isOpen, jobToClone, fullJobData, reset, jobsData]);
+  }, [isOpen, jobToClone, fullJobData, reset]);
 
   // Close suggestions when clicking outside
   useEffect(() => {
