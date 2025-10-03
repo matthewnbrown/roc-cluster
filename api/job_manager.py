@@ -1084,6 +1084,57 @@ class JobManager:
                 "error": str(e)
             }
     
+    async def _execute_bulk_armory_preferences_update(self, account_ids: List[int], parameters: Dict[str, Any], max_retries: int, step: JobStep = None) -> Optional[Dict[str, Any]]:
+        """
+        Execute bulk armory preferences update for multiple accounts in a single database operation
+        
+        Args:
+            account_ids: List of account IDs to update
+            parameters: Action parameters containing weapon_percentages
+            max_retries: Maximum number of retries
+            step: Job step for progress tracking
+            
+        Returns:
+            Result dictionary if bulk operation succeeds, None if it should fall back to individual operations
+        """
+        try:
+            from api.preference_service import PreferenceService
+            from api.database import SessionLocal
+            
+            # Get weapon percentages from parameters
+            weapon_percentages = parameters.get('weapon_percentages', {})
+            if not weapon_percentages:
+                logger.error("No weapon_percentages found in parameters")
+                return None
+            
+            # Execute bulk operation directly with PreferenceService
+            db = SessionLocal()
+            try:
+                result = PreferenceService.bulk_update_armory_preferences(account_ids, weapon_percentages, db)
+                
+                # Update step progress for bulk operation
+                if step:
+                    if result.get("success", False):
+                        step.processed_accounts = len(account_ids)
+                        step.successful_accounts = len(account_ids)
+                        step.failed_accounts = 0
+                        self._update_step_progress_in_memory(step.id, len(account_ids), len(account_ids), 0)
+                    else:
+                        step.processed_accounts = len(account_ids)
+                        step.successful_accounts = 0
+                        step.failed_accounts = len(account_ids)
+                        self._update_step_progress_in_memory(step.id, len(account_ids), 0, len(account_ids))
+                
+                return result
+                
+            finally:
+                db.close()
+            
+        except Exception as e:
+            logger.error(f"Error in bulk armory preferences update: {e}", exc_info=True)
+            # Return None to fall back to individual operations
+            return None
+    
     async def _execute_multi_account_step(self, account_ids: List[int], action_type_enum, parameters: Dict[str, Any], max_retries: int, step: JobStep = None, bulk_cookies: Optional[Dict[int, Dict[str, Any]]] = None, bulk_accounts: Optional[Dict[int, Account]] = None):
         """Execute action for multiple accounts and consolidate results"""
         if not account_ids:
@@ -1097,6 +1148,12 @@ class JobManager:
             step.failed_accounts = 0
             # Initialize in-memory progress tracking (even for delay steps with 0 accounts)
             self._init_step_progress(step.id, step.total_accounts)
+        
+        # Check if this action can be optimized with bulk operations
+        if action_type_enum == self.account_manager.ActionType.UPDATE_ARMORY_PREFERENCES:
+            result = await self._execute_bulk_armory_preferences_update(account_ids, parameters, max_retries, step)
+            if result is not None:
+                return result
         
         # Execute actions for all accounts in parallel with real-time progress updates
         tasks = []

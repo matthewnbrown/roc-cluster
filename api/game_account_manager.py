@@ -869,21 +869,6 @@ class GameAccountManager:
             logger.error(f"Error submitting armory purchase: {e}", exc_info=True)
             return {"success": False, "error": str(e)}
     
-    async def update_armory_preferences(self, weapon_percentages: Dict[str, float]) -> Dict[str, Any]:
-        """Update armory preferences for the account"""
-        try:
-            db = SessionLocal()
-            try:
-                return PreferenceService.update_armory_preferences(self.account.id, weapon_percentages, db)
-            finally:
-                db.close()
-                
-        except Exception as e:
-            stack_trace = traceback.format_exc()
-            logger.error(f"Error updating armory preferences for {self.account.username}: {e}\n{stack_trace}")
-            
-            return {"success": False, "error": [str(e) + "\n" + stack_trace]}
-    
     async def update_training_preferences(self, soldier_type_percentages: Dict[str, float]) -> Dict[str, Any]:
         """Update training preferences for the account"""
         try:

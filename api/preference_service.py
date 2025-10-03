@@ -2,7 +2,7 @@
 Preference service for managing armory and training preferences
 """
 
-from typing import Dict, Any, Tuple, Optional
+from typing import Dict, Any, Tuple, Optional, List
 from sqlalchemy.orm import Session
 import logging
 
@@ -202,4 +202,77 @@ class PreferenceService:
         except Exception as e:
             db.rollback()
             logger.error(f"Error updating training preferences for account {account_id}: {e}")
+            return {"success": False, "error": str(e)}
+    
+    @staticmethod
+    def bulk_update_armory_preferences(account_ids: List[int], weapon_percentages: Dict[str, float], db: Session) -> Dict[str, Any]:
+        """
+        Bulk update armory preferences for multiple accounts in a single database transaction
+        
+        Args:
+            account_ids: List of account IDs to update
+            weapon_percentages: Dictionary of weapon name to percentage mappings
+            db: Database session
+            
+        Returns:
+            Dict with success status, updated_count, and any errors
+        """
+        try:
+            if not account_ids:
+                return {"success": False, "error": "No account IDs provided"}
+            
+            # Validate weapon percentages once
+            is_valid, error_message, weapon_by_name = PreferenceService.validate_weapon_percentages(weapon_percentages, db)
+            if not is_valid:
+                return {"success": False, "error": error_message}
+            
+            # Get all accounts in one query
+            accounts = db.query(Account).filter(Account.id.in_(account_ids)).all()
+            found_account_ids = {account.id for account in accounts}
+            missing_account_ids = set(account_ids) - found_account_ids
+            
+            if missing_account_ids:
+                return {"success": False, "error": f"Accounts not found: {sorted(missing_account_ids)}"}
+            
+            # Get or create preferences for all accounts
+            preferences_list = []
+            for account_id in account_ids:
+                preferences = PreferenceService.get_or_create_armory_preferences(account_id, db)
+                preferences_list.append(preferences)
+            
+            # Delete existing weapon preferences for all accounts in one query
+            preferences_ids = [p.id for p in preferences_list]
+            db.query(ArmoryWeaponPreference).filter(
+                ArmoryWeaponPreference.preferences_id.in_(preferences_ids)
+            ).delete(synchronize_session=False)
+            
+            # Create new weapon preferences for all accounts
+            weapon_preferences_to_add = []
+            for preferences in preferences_list:
+                for weapon_name, percentage in weapon_percentages.items():
+                    if percentage > 0:  # Only create entries for weapons with > 0%
+                        weapon = weapon_by_name[weapon_name]
+                        weapon_preference = ArmoryWeaponPreference(
+                            preferences_id=preferences.id,
+                            weapon_id=weapon.id,
+                            percentage=percentage
+                        )
+                        weapon_preferences_to_add.append(weapon_preference)
+            
+            # Bulk insert all weapon preferences in one operation
+            if weapon_preferences_to_add:
+                db.add_all(weapon_preferences_to_add)
+            
+            db.commit()
+            
+            logger.info(f"Bulk updated armory preferences for {len(account_ids)} accounts")
+            return {
+                "success": True, 
+                "updated_count": len(account_ids),
+                "message": f"Successfully updated armory preferences for {len(account_ids)} accounts"
+            }
+            
+        except Exception as e:
+            db.rollback()
+            logger.error(f"Error bulk updating armory preferences for accounts {account_ids}: {e}")
             return {"success": False, "error": str(e)}
