@@ -1249,7 +1249,7 @@ class GameAccountManager:
             if preloaded_cookies is not None:
                 # Use preloaded cookies
                 self.session.cookie_jar.update_cookies(preloaded_cookies)
-                logger.info(f"Loaded {len(preloaded_cookies)} preloaded cookies for account {self.account.username}: {list(preloaded_cookies.keys())}")
+                logger.debug(f"Loaded {len(preloaded_cookies)} preloaded cookies for account {self.account.username}: {list(preloaded_cookies.keys())}")
             else:
                 # Load cookies from UserCookies table (fallback to original behavior)
                 db = SessionLocal()

@@ -148,7 +148,7 @@ class PreferenceService:
             
             db.commit()
             
-            logger.info(f"Updated armory preferences for account {account_id}")
+            logger.debug(f"Updated armory preferences for account {account_id}")
             return {"success": True }
             
         except Exception as e:
