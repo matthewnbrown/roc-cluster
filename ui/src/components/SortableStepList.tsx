@@ -14,8 +14,6 @@ import {
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
-import { Plus } from 'lucide-react';
-import Button from './ui/Button';
 import SortableStep from './SortableStep';
 import { ActionType } from '../types/api';
 import { UseFormWatch } from 'react-hook-form';
@@ -25,7 +23,6 @@ interface SortableStepListProps {
   watchedSteps: any[];
   editingStepIndex: number | null;
   setEditingStepIndex: (index: number | null) => void;
-  addStep: () => void;
   duplicateStep: (index: number) => void;
   removeStep: (index: number) => void;
   getActionTypeInfo: (actionType: string) => ActionType | undefined;
@@ -54,7 +51,6 @@ const SortableStepList: React.FC<SortableStepListProps> = ({
   watchedSteps,
   editingStepIndex,
   setEditingStepIndex,
-  addStep,
   duplicateStep,
   removeStep,
   getActionTypeInfo,
@@ -102,19 +98,6 @@ const SortableStepList: React.FC<SortableStepListProps> = ({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="text-lg font-medium text-gray-900">Job Steps ({fields.length})</h3>
-        <Button
-          type="button"
-          variant="secondary"
-          onClick={addStep}
-          className="flex items-center gap-2"
-        >
-          <Plus className="h-4 w-4" />
-          Add Step
-        </Button>
-      </div>
-
       {/* Steps Overview */}
       {fields.length > 0 && (
         <div className="bg-gray-50 rounded-lg p-4">

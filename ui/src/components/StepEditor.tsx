@@ -1,5 +1,5 @@
 import React from 'react';
-import { Copy, Trash2, EyeOff, Users, Search, X } from 'lucide-react';
+import { EyeOff, Users, Search, X } from 'lucide-react';
 import Button from './ui/Button';
 import Input from './ui/Input';
 import AccountAutocomplete from './AccountAutocomplete';
@@ -73,28 +73,6 @@ const StepEditor: React.FC<StepEditorProps> = ({
       <div className="flex items-center justify-between">
         <h4 className="font-medium text-gray-900">Edit Step {index + 1}</h4>
         <div className="flex items-center space-x-2">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => duplicateStep(index)}
-            className="text-blue-600 hover:text-blue-700"
-            title="Duplicate this step"
-          >
-            <Copy className="h-4 w-4" />
-          </Button>
-          {fields.length > 1 && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => removeStep(index)}
-              className="text-red-600 hover:text-red-700"
-              title="Delete this step"
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
-          )}
           <Button
             type="button"
             variant="ghost"

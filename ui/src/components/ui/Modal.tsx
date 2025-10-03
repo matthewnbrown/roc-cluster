@@ -7,7 +7,7 @@ interface ModalProps {
   onClose: () => void;
   title?: string;
   children: React.ReactNode;
-  size?: 'sm' | 'md' | 'lg' | 'xl';
+  size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '3xl';
 }
 
 const Modal: React.FC<ModalProps> = ({
@@ -42,6 +42,8 @@ const Modal: React.FC<ModalProps> = ({
     md: 'max-w-lg',
     lg: 'max-w-2xl',
     xl: 'max-w-4xl',
+    '2xl': 'max-w-6xl',
+    '3xl': 'max-w-7xl',
   };
 
   return (
@@ -56,7 +58,7 @@ const Modal: React.FC<ModalProps> = ({
         {/* Modal panel */}
         <div
           className={clsx(
-            'inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle w-full',
+            'inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle w-full max-h-[90vh]',
             sizeClasses[size]
           )}
         >
@@ -71,7 +73,7 @@ const Modal: React.FC<ModalProps> = ({
               </button>
             </div>
           )}
-          <div className="px-6 py-4">
+          <div className="px-6 py-4 max-h-[calc(90vh-80px)] flex flex-col">
             {children}
           </div>
         </div>

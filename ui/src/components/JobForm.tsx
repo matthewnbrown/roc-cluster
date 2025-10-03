@@ -69,6 +69,7 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
     reset,
     watch,
     setValue,
+    getValues,
   } = useForm<FormData>({
     defaultValues: {
       name: '',
@@ -94,11 +95,8 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
 
   const watchedSteps = watch('steps');
 
-  useEffect(() => {
-    if (!isOpen) {
-      reset();
-    }
-  }, [isOpen, reset]);
+  // Note: Removed automatic reset on modal close to preserve user's work
+  // Form will only reset when explicitly creating a job or canceling
 
   // Fetch full job details if needed for cloning
   const shouldFetchJob = !!(isOpen && jobToClone);
@@ -244,9 +242,30 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
 
   const onSubmit = async (data: FormData) => {
     try {
+      // Generate job name and description if not provided
+      let jobName = data.name;
+      let jobDescription = data.description;
+      
+      if (!jobName || jobName.trim() === '') {
+        // Generate a random GUID for the job name
+        jobName = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+          const r = Math.random() * 16 | 0;
+          const v = c === 'x' ? r : (r & 0x3 | 0x8);
+          return v.toString(16);
+        });
+        
+        // Create CSV description from step action types
+        const stepNames = data.steps
+          .map(step => step.action_type)
+          .filter(actionType => actionType && actionType.trim() !== '')
+          .join(', ');
+        
+        jobDescription = stepNames || 'No steps defined';
+      }
+      
       const jobData: JobCreateRequest = {
-        name: data.name,
-        description: data.description || undefined,
+        name: jobName,
+        description: jobDescription || undefined,
         parallel_execution: data.parallel_execution,
         steps: data.steps.map((step) => {
           // Filter out empty parameters and parse JSON objects
@@ -325,6 +344,22 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
       console.log('Submitting job data:', jobData);
       console.log('Raw form data:', data);
       await createJobMutation.mutateAsync(jobData);
+      // Reset the form to clear all fields with explicit default values
+      reset({
+        name: '',
+        description: '',
+        parallel_execution: false,
+        steps: [
+          {
+            action_type: '',
+            account_ids: [],
+            cluster_ids: [],
+            max_retries: 0,
+            is_async: false,
+            parameters: {},
+          },
+        ],
+      });
       onClose();
     } catch (error) {
       console.error('Failed to create job:', error);
@@ -376,6 +411,106 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
         description: data.description || undefined,
         parallel_execution: data.parallel_execution,
         steps: data.steps.map((step) => {
+          // Filter out empty parameters and parse JSON objects
+          let filteredParameters = step.parameters 
+            ? Object.fromEntries(
+                Object.entries(step.parameters)
+                  .filter(([_, value]) => 
+                    value !== undefined && value !== null && value !== ''
+                  )
+                  .map(([key, value]) => {
+                    // Special handling for training_orders - parse from JSON string
+                    if (key === 'training_orders') {
+                      if (typeof value === 'object') {
+                        return [key, value];
+                      } else if (typeof value === 'string') {
+                        try {
+                          return [key, JSON.parse(value)];
+                        } catch (e) {
+                          console.warn('Failed to parse training_orders JSON:', e);
+                          return [key, value];
+                        }
+                      }
+                    }
+                    
+                    // Check if this parameter should be parsed as JSON
+                    const actionInfo = getActionTypeInfo(step.action_type);
+                    const paramInfo = actionInfo?.parameter_details?.[key];
+                    
+                    if (paramInfo?.type === 'object' && typeof value === 'string') {
+                      try {
+                        return [key, JSON.parse(value)];
+                      } catch (e) {
+                        console.warn(`Failed to parse JSON for parameter ${key}:`, e);
+                        return [key, value];
+                      }
+                    }
+                    return [key, value];
+                  })
+              )
+            : {};
+
+          // For purchase_training, only keep training_orders and remove other nested objects
+          if (step.action_type === 'purchase_training') {
+            const cleanParameters: Record<string, any> = {};
+            
+            // Keep only training_orders and other non-nested parameters
+            Object.entries(filteredParameters).forEach(([key, value]) => {
+              // Skip nested objects that are not training_orders
+              if (key === 'training_orders') {
+                cleanParameters[key] = value;
+              } else if (typeof value !== 'object' || value === null) {
+                // Keep primitive values
+                cleanParameters[key] = value;
+              }
+              // Skip nested objects like 'buy', 'train', 'untrain'
+            });
+            
+            filteredParameters = cleanParameters;
+          }
+
+          return {
+            action_type: step.action_type,
+            account_ids: step.original_account_ids || step.account_ids || [],
+            cluster_ids: step.original_cluster_ids || step.cluster_ids || [],
+            parameters: filteredParameters,
+            max_retries: step.max_retries,
+            is_async: step.is_async,
+          };
+        }),
+      };
+
+      await createFavoriteJob({
+        name: favoriteName,
+        description: favoriteDescription || undefined,
+        job_config: jobData,
+      });
+
+      setShowFavoriteModal(false);
+      setFavoriteName('');
+      setFavoriteDescription('');
+    } catch (error) {
+      console.error('Error saving as favorite:', error);
+    }
+  };
+
+  const handleFavoriteFormSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!favoriteName.trim()) {
+      return;
+    }
+
+    try {
+      // Get the current form data
+      const currentFormData = getValues();
+      
+      // Create the job data from current form
+      const jobData: JobCreateRequest = {
+        name: currentFormData.name,
+        description: currentFormData.description || undefined,
+        parallel_execution: currentFormData.parallel_execution,
+        steps: currentFormData.steps.map((step) => {
           // Filter out empty parameters and parse JSON objects
           let filteredParameters = step.parameters 
             ? Object.fromEntries(
@@ -587,28 +722,65 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
 
   const isLoading = createJobMutation.isLoading;
 
+  const handleCancel = () => {
+    // Reset the form to clear all fields with explicit default values
+    reset({
+      name: '',
+      description: '',
+      parallel_execution: false,
+      steps: [
+        {
+          action_type: '',
+          account_ids: [],
+          cluster_ids: [],
+          max_retries: 0,
+          is_async: false,
+          parameters: {},
+        },
+      ],
+    });
+    onClose();
+  };
+
   return (
     <Modal
       isOpen={isOpen}
       onClose={onClose}
       title="Create Job"
-      size="lg"
+      size="2xl"
     >
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-        {/* Basic Job Info */}
-        <div className="space-y-4">
-          <Input
-            label="Job Name"
-            {...register('name', {
-              required: 'Job name is required',
-              minLength: {
-                value: 2,
-                message: 'Job name must be at least 2 characters',
-              },
-            })}
-            error={errors.name?.message}
-            placeholder="Enter job name"
-          />
+      <div className="flex flex-col min-h-0">
+        {/* Fixed Header - Job Info */}
+        <div className="flex-shrink-0 space-y-4 pb-4 border-b border-gray-200">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div>
+              <Input
+                label="Job Name"
+                {...register('name', {
+                  minLength: {
+                    value: 2,
+                    message: 'Job name must be at least 2 characters',
+                  },
+                })}
+                error={errors.name?.message}
+                placeholder="Enter job name (optional - will auto-generate if empty)"
+              />
+            </div>
+            
+            <div className="flex items-start pt-6">
+              <div className="flex items-center">
+                <input
+                  type="checkbox"
+                  id="parallel_execution"
+                  {...register('parallel_execution')}
+                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                />
+                <label htmlFor="parallel_execution" className="ml-2 block text-sm text-gray-900">
+                  Execute steps in parallel
+                </label>
+              </div>
+            </div>
+          </div>
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -618,55 +790,60 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
               {...register('description')}
               className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
               placeholder="Enter job description (optional)"
-              rows={3}
+              rows={2}
             />
-          </div>
-
-          <div className="flex items-center">
-            <input
-              type="checkbox"
-              id="parallel_execution"
-              {...register('parallel_execution')}
-              className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
-            />
-            <label htmlFor="parallel_execution" className="ml-2 block text-sm text-gray-900">
-              Execute steps in parallel
-            </label>
           </div>
         </div>
 
-        {/* Job Steps */}
-        <SortableStepList
-          fields={fields}
-          watchedSteps={watchedSteps}
-          editingStepIndex={editingStepIndex}
-          setEditingStepIndex={setEditingStepIndex}
-          addStep={addStep}
-          duplicateStep={duplicateStep}
-          removeStep={removeStep}
-          getActionTypeInfo={getActionTypeInfo}
-          getSelectedAccounts={getSelectedAccounts}
-          setValue={setValue}
-          register={register}
-          errors={errors}
-          watch={watch}
-          clustersData={clustersData}
-          actionTypesData={actionTypesData}
-          clusterSearchTerms={clusterSearchTerms}
-          setClusterSearchTerms={setClusterSearchTerms}
-          showClusterSuggestions={showClusterSuggestions}
-          setShowClusterSuggestions={setShowClusterSuggestions}
-          selectedClusterSuggestionIndex={selectedClusterSuggestionIndex}
-          setSelectedClusterSuggestionIndex={setSelectedClusterSuggestionIndex}
-          getFilteredClusters={getFilteredClusters}
-          addClusterToStep={addClusterToStep}
-          removeClusterFromStep={removeClusterFromStep}
-          getClusterById={getClusterById}
-          handleClusterKeyDown={handleClusterKeyDown}
-        />
+        {/* Job Steps Header */}
+        <div className="flex-shrink-0 flex items-center justify-between py-4 border-b border-gray-200">
+          <h3 className="text-lg font-medium text-gray-900">Job Steps ({fields.length})</h3>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={addStep}
+            className="flex items-center gap-2"
+          >
+            <Plus className="h-4 w-4" />
+            Add Step
+          </Button>
+        </div>
 
-        {/* Form Actions */}
-        <div className="flex justify-between pt-4 border-t">
+        {/* Scrollable Content - Job Steps */}
+        <div className="flex-1 overflow-y-auto py-4 min-h-0 max-h-[calc(90vh-150px)]">
+          <form onSubmit={handleSubmit(onSubmit)}>
+            <SortableStepList
+              fields={fields}
+              watchedSteps={watchedSteps}
+              editingStepIndex={editingStepIndex}
+              setEditingStepIndex={setEditingStepIndex}
+              duplicateStep={duplicateStep}
+              removeStep={removeStep}
+              getActionTypeInfo={getActionTypeInfo}
+              getSelectedAccounts={getSelectedAccounts}
+              setValue={setValue}
+              register={register}
+              errors={errors}
+              watch={watch}
+              clustersData={clustersData}
+              actionTypesData={actionTypesData}
+              clusterSearchTerms={clusterSearchTerms}
+              setClusterSearchTerms={setClusterSearchTerms}
+              showClusterSuggestions={showClusterSuggestions}
+              setShowClusterSuggestions={setShowClusterSuggestions}
+              selectedClusterSuggestionIndex={selectedClusterSuggestionIndex}
+              setSelectedClusterSuggestionIndex={setSelectedClusterSuggestionIndex}
+              getFilteredClusters={getFilteredClusters}
+              addClusterToStep={addClusterToStep}
+              removeClusterFromStep={removeClusterFromStep}
+              getClusterById={getClusterById}
+              handleClusterKeyDown={handleClusterKeyDown}
+            />
+          </form>
+        </div>
+
+        {/* Fixed Footer - Form Actions */}
+        <div className="flex-shrink-0 flex justify-between pt-4 border-t border-gray-200">
           <Button
             type="button"
             variant="secondary"
@@ -682,13 +859,14 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
             <Button
               type="button"
               variant="secondary"
-              onClick={onClose}
+              onClick={handleCancel}
               disabled={isLoading}
             >
               Cancel
             </Button>
             <Button
-              type="submit"
+              type="button"
+              onClick={handleSubmit(onSubmit)}
               loading={isLoading}
               disabled={isLoading}
             >
@@ -696,7 +874,7 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
             </Button>
           </div>
         </div>
-      </form>
+      </div>
 
       {/* Favorite Job Modal */}
       <Modal
@@ -704,7 +882,7 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
         onClose={() => setShowFavoriteModal(false)}
         title="Save as Favorite Job"
       >
-        <form onSubmit={handleSubmit(handleSaveAsFavorite)} className="space-y-4">
+        <form onSubmit={handleFavoriteFormSubmit} className="space-y-4">
           <div>
             <label htmlFor="favoriteName" className="block text-sm font-medium text-gray-700 mb-1">
               Favorite Name *

@@ -5,6 +5,7 @@ Job endpoints for managing asynchronous bulk operations
 from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Optional
 import logging
+import uuid
 from datetime import datetime, timezone
 
 from api.schemas import (
@@ -57,9 +58,21 @@ async def create_job(
 
             steps_data.append(step_data)
         
+        # Generate job name and description if not provided
+        job_name = request.name
+        job_description = request.description
+        
+        if not job_name or job_name.strip() == '':
+            # Generate a random GUID for the job name
+            job_name = str(uuid.uuid4())
+            
+            # Create CSV description from step action types
+            step_names = [step.action_type for step in request.steps if step.action_type and step.action_type.strip()]
+            job_description = ', '.join(step_names) if step_names else 'No steps defined'
+        
         job = await manager.create_job(
-            name=request.name,
-            description=request.description,
+            name=job_name,
+            description=job_description,
             steps=steps_data,
             parallel_execution=request.parallel_execution
         )

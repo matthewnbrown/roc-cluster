@@ -3,9 +3,10 @@ import {
   useSortable,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { GripVertical } from 'lucide-react';
+import { GripVertical, Copy, Trash2 } from 'lucide-react';
 import { ActionType } from '../types/api';
 import { UseFormWatch } from 'react-hook-form';
+import Button from './ui/Button';
 import StepEditor from './StepEditor';
 
 interface SortableStepProps {
@@ -90,12 +91,14 @@ function SortableStep({
     <div ref={setNodeRef} style={style} className="space-y-2">
       {/* Step Summary - Clickable */}
       <div 
-        className={`flex items-center justify-between bg-white rounded-md p-3 border cursor-pointer transition-colors ${
+        className={`flex items-center justify-between bg-white rounded-md p-3 border transition-colors ${
           isEditing ? 'border-primary-500 bg-primary-50' : 'border-gray-200 hover:border-gray-300'
         } ${isDragging ? 'shadow-lg' : ''}`}
-        onClick={() => setEditingStepIndex(isEditing ? null : index)}
       >
-        <div className="flex items-center space-x-3">
+        <div 
+          className="flex items-center space-x-3 flex-1 cursor-pointer"
+          onClick={() => setEditingStepIndex(isEditing ? null : index)}
+        >
           {/* Drag Handle */}
           <div
             {...attributes}
@@ -152,6 +155,39 @@ function SortableStep({
               Max retries: {step?.max_retries || 0} • {step?.is_async ? 'Async' : 'Sync'}
             </div>
           </div>
+        </div>
+        
+        {/* Action Buttons */}
+        <div className="flex items-center space-x-1 ml-4">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={(e) => {
+              e.stopPropagation();
+              duplicateStep(index);
+            }}
+            className="text-blue-600 hover:text-blue-700"
+            title="Duplicate this step"
+          >
+            <Copy className="h-4 w-4" />
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (fields.length > 1) {
+                removeStep(index);
+              }
+            }}
+            disabled={fields.length <= 1}
+            className={fields.length > 1 ? "text-red-600 hover:text-red-700" : "text-gray-400 cursor-not-allowed"}
+            title={fields.length > 1 ? "Delete this step" : "Cannot delete the last step"}
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
         </div>
       </div>
 

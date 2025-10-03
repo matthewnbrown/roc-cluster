@@ -376,7 +376,7 @@ class JobStepRequest(BaseModel):
 
 class JobCreateRequest(BaseModel):
     """Request for creating a new job"""
-    name: str
+    name: Optional[str] = None
     description: Optional[str] = None
     parallel_execution: bool = False  # Execute steps in parallel instead of sequential
     steps: List[JobStepRequest]
