@@ -262,9 +262,13 @@ const CreditSavingForm: React.FC<{
           Credit Saving <span className="text-red-500">*</span>
         </label>
         <Select
+          {...register(`steps.${stepIndex}.parameters.value`, {
+            required: 'Credit saving value is required',
+          })}
           value={creditSavingValue}
           onChange={(e) => handleCreditSavingChange(e.target.value)}
         >
+          <option value="">Select credit saving setting</option>
           <option value="on">Enable Credit Saving</option>
           <option value="off">Disable Credit Saving</option>
         </Select>

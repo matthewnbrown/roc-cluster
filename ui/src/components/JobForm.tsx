@@ -287,9 +287,15 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
           let filteredParameters = step.parameters 
             ? Object.fromEntries(
                 Object.entries(step.parameters)
-                  .filter(([_, value]) => 
-                    value !== undefined && value !== null && value !== ''
-                  )
+                  .filter(([key, value]) => {
+                    // Check if this is a required parameter
+                    const actionInfo = getActionTypeInfo(step.action_type);
+                    const isRequired = actionInfo?.required_parameters?.includes(key) || false;
+                    
+                    // Keep required parameters even if empty (they'll be validated by the backend)
+                    // Filter out optional parameters that are empty
+                    return isRequired || (value !== undefined && value !== null && value !== '');
+                  })
                   .map(([key, value]) => {
                     // Special handling for training_orders - parse from JSON string
                     if (key === 'training_orders') {
@@ -351,7 +357,7 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
               : undefined,
             max_retries: step.max_retries,
             is_async: step.is_async,
-            parameters: Object.keys(filteredParameters).length > 0 ? filteredParameters : undefined,
+            parameters: step.parameters && Object.keys(step.parameters).length > 0 ? filteredParameters : undefined,
           };
         }),
       };
@@ -446,9 +452,15 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
           let filteredParameters = step.parameters 
             ? Object.fromEntries(
                 Object.entries(step.parameters)
-                  .filter(([_, value]) => 
-                    value !== undefined && value !== null && value !== ''
-                  )
+                  .filter(([key, value]) => {
+                    // Check if this is a required parameter
+                    const actionInfo = getActionTypeInfo(step.action_type);
+                    const isRequired = actionInfo?.required_parameters?.includes(key) || false;
+                    
+                    // Keep required parameters even if empty (they'll be validated by the backend)
+                    // Filter out optional parameters that are empty
+                    return isRequired || (value !== undefined && value !== null && value !== '');
+                  })
                   .map(([key, value]) => {
                     // Special handling for training_orders - parse from JSON string
                     if (key === 'training_orders') {
@@ -546,9 +558,15 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
           let filteredParameters = step.parameters 
             ? Object.fromEntries(
                 Object.entries(step.parameters)
-                  .filter(([_, value]) => 
-                    value !== undefined && value !== null && value !== ''
-                  )
+                  .filter(([key, value]) => {
+                    // Check if this is a required parameter
+                    const actionInfo = getActionTypeInfo(step.action_type);
+                    const isRequired = actionInfo?.required_parameters?.includes(key) || false;
+                    
+                    // Keep required parameters even if empty (they'll be validated by the backend)
+                    // Filter out optional parameters that are empty
+                    return isRequired || (value !== undefined && value !== null && value !== '');
+                  })
                   .map(([key, value]) => {
                     // Special handling for training_orders - parse from JSON string
                     if (key === 'training_orders') {
