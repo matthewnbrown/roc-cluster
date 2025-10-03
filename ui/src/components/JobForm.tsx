@@ -4,8 +4,8 @@ import { useQueryClient, useQuery } from 'react-query';
 import { useCreateJob, useValidActionTypes, useJob, useJobs, jobKeys } from '../hooks/useJobs';
 import { useClusters } from '../hooks/useClusters';
 import { useFavoriteJobs } from '../hooks/useFavoriteJobs';
-import { JobCreateRequest, JobStepRequest, ActionType, JobResponse } from '../types/api';
-import { jobsApi } from '../services/api';
+import { JobCreateRequest, JobStepRequest, ActionType, JobResponse, ValidationError } from '../types/api';
+import { jobsApi, getValidationErrors, getValidationErrorsByStep } from '../services/api';
 import Button from './ui/Button';
 import Input from './ui/Input';
 import Modal from './ui/Modal';
@@ -13,6 +13,7 @@ import AccountAutocomplete from './AccountAutocomplete';
 import SortableStepList from './SortableStepList';
 import { Plus, Trash2, Users, User, ChevronDown, ChevronRight, EyeOff, Search, X, Star, Copy } from 'lucide-react';
 import FriendlyActionParameters from './FriendlyActionParameters';
+import ValidationErrorDisplay from './ValidationErrorDisplay';
 
 interface JobFormProps {
   isOpen: boolean;
@@ -60,6 +61,8 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
   const [showFavoriteModal, setShowFavoriteModal] = useState(false);
   const [favoriteName, setFavoriteName] = useState('');
   const [favoriteDescription, setFavoriteDescription] = useState('');
+  const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
+  const [errorsByStep, setErrorsByStep] = useState<{ [stepIndex: number]: ValidationError[] }>({});
 
   const {
     register,
@@ -225,6 +228,14 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
     }
   }, [isOpen, jobToClone, fullJobData, reset]);
 
+  // Clear validation errors when modal is closed
+  useEffect(() => {
+    if (!isOpen) {
+      setValidationErrors([]);
+      setErrorsByStep({});
+    }
+  }, [isOpen]);
+
   // Close suggestions when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -241,6 +252,10 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
   }, []);
 
   const onSubmit = async (data: FormData) => {
+    // Clear any previous validation errors
+    setValidationErrors([]);
+    setErrorsByStep({});
+    
     try {
       // Generate job name and description if not provided
       let jobName = data.name;
@@ -360,9 +375,25 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
           },
         ],
       });
+      setValidationErrors([]);
       onClose();
     } catch (error) {
       console.error('Failed to create job:', error);
+      
+      // Check if this is a validation error
+      const validationErrors = getValidationErrors(error);
+      if (validationErrors.length > 0) {
+        setValidationErrors(validationErrors);
+        setErrorsByStep(getValidationErrorsByStep(validationErrors));
+        
+        // Scroll to the first step with an error
+        const errorsByStep = getValidationErrorsByStep(validationErrors);
+        const firstErrorStepIndex = Math.min(...Object.keys(errorsByStep).map(Number));
+        const stepElement = document.getElementById(`step-${firstErrorStepIndex}`);
+        if (stepElement) {
+          stepElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }
     }
   };
 
@@ -797,7 +828,14 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
 
         {/* Job Steps Header */}
         <div className="flex-shrink-0 flex items-center justify-between py-4 border-b border-gray-200">
-          <h3 className="text-lg font-medium text-gray-900">Job Steps ({fields.length})</h3>
+          <h3 className="text-lg font-medium text-gray-900">
+            Job Steps ({fields.length})
+            {Object.keys(errorsByStep).length > 0 && (
+              <span className="ml-2 inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                {Object.keys(errorsByStep).length} error{Object.keys(errorsByStep).length !== 1 ? 's' : ''}
+              </span>
+            )}
+          </h3>
           <Button
             type="button"
             variant="secondary"
@@ -812,6 +850,10 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
         {/* Scrollable Content - Job Steps */}
         <div className="flex-1 overflow-y-auto py-4 min-h-0 max-h-[calc(90vh-150px)]">
           <form onSubmit={handleSubmit(onSubmit)}>
+            <ValidationErrorDisplay 
+              errors={validationErrors} 
+              onClose={() => setValidationErrors([])} 
+            />
             <SortableStepList
               fields={fields}
               watchedSteps={watchedSteps}
@@ -838,6 +880,7 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
               removeClusterFromStep={removeClusterFromStep}
               getClusterById={getClusterById}
               handleClusterKeyDown={handleClusterKeyDown}
+              errorsByStep={errorsByStep}
             />
           </form>
         </div>

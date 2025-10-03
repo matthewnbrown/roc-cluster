@@ -4,7 +4,7 @@ import Button from './ui/Button';
 import Input from './ui/Input';
 import AccountAutocomplete from './AccountAutocomplete';
 import FriendlyActionParameters from './FriendlyActionParameters';
-import { ActionType } from '../types/api';
+import { ActionType, ValidationError } from '../types/api';
 import { UseFormWatch } from 'react-hook-form';
 
 interface StepEditorProps {
@@ -34,6 +34,7 @@ interface StepEditorProps {
   removeClusterFromStep: (stepIndex: number, clusterId: number) => void;
   getClusterById: (clusterId: number) => any;
   handleClusterKeyDown: (stepIndex: number, event: React.KeyboardEvent) => void;
+  stepErrors: ValidationError[];
 }
 
 const StepEditor: React.FC<StepEditorProps> = ({
@@ -63,13 +64,18 @@ const StepEditor: React.FC<StepEditorProps> = ({
   removeClusterFromStep,
   getClusterById,
   handleClusterKeyDown,
+  stepErrors,
 }) => {
   // Use the watched steps array which is already reactive to form changes
   const currentStep = watchedSteps[index];
   const actionType = currentStep?.action_type;
   
   return (
-    <div className="border border-primary-200 rounded-lg p-4 space-y-4 bg-primary-50">
+    <div className={`border-l border-r border-b p-4 space-y-4 bg-primary-50 ${
+      stepErrors.length > 0 
+        ? 'border-red-200' 
+        : 'border-primary-200 rounded-b-md'
+    }`}>
       <div className="flex items-center justify-between">
         <h4 className="font-medium text-gray-900">Edit Step {index + 1}</h4>
         <div className="flex items-center space-x-2">

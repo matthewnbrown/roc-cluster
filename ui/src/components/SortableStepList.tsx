@@ -15,7 +15,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import SortableStep from './SortableStep';
-import { ActionType } from '../types/api';
+import { ActionType, ValidationError } from '../types/api';
 import { UseFormWatch } from 'react-hook-form';
 
 interface SortableStepListProps {
@@ -44,6 +44,7 @@ interface SortableStepListProps {
   removeClusterFromStep: (stepIndex: number, clusterId: number) => void;
   getClusterById: (clusterId: number) => any;
   handleClusterKeyDown: (stepIndex: number, event: React.KeyboardEvent) => void;
+  errorsByStep: { [stepIndex: number]: ValidationError[] };
 }
 
 const SortableStepList: React.FC<SortableStepListProps> = ({
@@ -72,6 +73,7 @@ const SortableStepList: React.FC<SortableStepListProps> = ({
   removeClusterFromStep,
   getClusterById,
   handleClusterKeyDown,
+  errorsByStep,
 }) => {
   // Drag and drop sensors
   const sensors = useSensors(
@@ -117,10 +119,11 @@ const SortableStepList: React.FC<SortableStepListProps> = ({
               items={fields.map(field => field.id)}
               strategy={verticalListSortingStrategy}
             >
-              <div className="space-y-2">
+              <div className="space-y-4">
                 {fields.map((field, index) => {
                   const step = watchedSteps[index];
                   const isEditing = editingStepIndex === index;
+                  const stepErrors = errorsByStep[index] || [];
                   
                   return (
                     <SortableStep
@@ -154,6 +157,7 @@ const SortableStepList: React.FC<SortableStepListProps> = ({
                       removeClusterFromStep={removeClusterFromStep}
                       getClusterById={getClusterById}
                       handleClusterKeyDown={handleClusterKeyDown}
+                      stepErrors={stepErrors}
                     />
                   );
                 })}

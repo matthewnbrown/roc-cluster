@@ -10,6 +10,8 @@ import {
   SentCreditLog,
   PaginatedResponse,
   ApiError,
+  ValidationError,
+  ValidationErrorResponse,
   Cluster,
   ClusterResponse,
   ClusterListResponse,
@@ -61,12 +63,53 @@ api.interceptors.request.use(
   }
 );
 
+// Utility function to check if an error is a validation error
+export const isValidationError = (error: any): error is { response: { data: ValidationErrorResponse } } => {
+  return error?.response?.status === 422 && 
+         error?.response?.data?.detail && 
+         Array.isArray(error.response.data.detail);
+};
+
+// Utility function to extract validation errors
+export const getValidationErrors = (error: any): ValidationError[] => {
+  if (isValidationError(error)) {
+    return error.response.data.detail;
+  }
+  return [];
+};
+
+// Utility function to organize validation errors by step index
+export const getValidationErrorsByStep = (errors: ValidationError[]): { [stepIndex: number]: ValidationError[] } => {
+  const errorsByStep: { [stepIndex: number]: ValidationError[] } = {};
+  
+  errors.forEach(error => {
+    // Check if this error is related to a step
+    const stepsIndex = error.loc.findIndex((part, index) => 
+      part === 'steps' && typeof error.loc[index + 1] === 'number'
+    );
+    
+    if (stepsIndex !== -1) {
+      const stepIndex = error.loc[stepsIndex + 1] as number;
+      if (!errorsByStep[stepIndex]) {
+        errorsByStep[stepIndex] = [];
+      }
+      errorsByStep[stepIndex].push(error);
+    }
+  });
+  
+  return errorsByStep;
+};
+
 // Response interceptor for error handling
 api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.data?.detail) {
-      console.error('API Error:', error.response.data.detail);
+      if (isValidationError(error)) {
+        console.error('Validation Error:', error.response.data.detail);
+      } else {
+        console.error('API Error:', error.response.data.detail);
+      }
     } else {
       console.error('API Error:', error.message);
     }

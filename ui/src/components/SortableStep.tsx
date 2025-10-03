@@ -4,7 +4,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { GripVertical, Copy, Trash2 } from 'lucide-react';
-import { ActionType } from '../types/api';
+import { ActionType, ValidationError } from '../types/api';
 import { UseFormWatch } from 'react-hook-form';
 import Button from './ui/Button';
 import StepEditor from './StepEditor';
@@ -39,6 +39,7 @@ interface SortableStepProps {
   removeClusterFromStep: (stepIndex: number, clusterId: number) => void;
   getClusterById: (clusterId: number) => any;
   handleClusterKeyDown: (stepIndex: number, event: React.KeyboardEvent) => void;
+  stepErrors: ValidationError[];
 }
 
 function SortableStep({
@@ -71,6 +72,7 @@ function SortableStep({
   removeClusterFromStep,
   getClusterById,
   handleClusterKeyDown,
+  stepErrors,
 }: SortableStepProps) {
   const {
     attributes,
@@ -88,12 +90,16 @@ function SortableStep({
   };
 
   return (
-    <div ref={setNodeRef} style={style} className="space-y-2">
+    <div ref={setNodeRef} style={style} className="space-y-0" id={`step-${index}`}>
       {/* Step Summary - Clickable */}
       <div 
-        className={`flex items-center justify-between bg-white rounded-md p-3 border transition-colors ${
-          isEditing ? 'border-primary-500 bg-primary-50' : 'border-gray-200 hover:border-gray-300'
-        } ${isDragging ? 'shadow-lg' : ''}`}
+        className={`flex items-center justify-between bg-white p-3 border transition-colors ${
+          isEditing ? 'border-primary-500 bg-primary-50' : 
+          stepErrors.length > 0 ? 'border-red-300 bg-red-50' : 
+          'border-gray-200 hover:border-gray-300'
+        } ${isDragging ? 'shadow-lg' : ''} ${
+          stepErrors.length > 0 || isEditing ? 'rounded-t-md' : 'rounded-md'
+        }`}
       >
         <div 
           className="flex items-center space-x-3 flex-1 cursor-pointer"
@@ -191,6 +197,35 @@ function SortableStep({
         </div>
       </div>
 
+      {/* Step Validation Errors */}
+      {stepErrors.length > 0 && (
+        <div className={`bg-red-50 border-l border-r border-red-200 p-3 ${
+          isEditing ? 'border-b-0' : 'border-b rounded-b-md'
+        }`}>
+          <div className="flex items-start">
+            <div className="flex-shrink-0">
+              <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+              </svg>
+            </div>
+            <div className="ml-3">
+              <h4 className="text-sm font-medium text-red-800">
+                Validation Errors
+              </h4>
+              <div className="mt-1 text-sm text-red-700">
+                <ul className="list-disc list-inside space-y-1">
+                  {stepErrors.map((error, errorIndex) => (
+                    <li key={errorIndex}>
+                      {error.msg}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Step Editor */}
       {isEditing && (
         <StepEditor
@@ -220,6 +255,7 @@ function SortableStep({
           removeClusterFromStep={removeClusterFromStep}
           getClusterById={getClusterById}
           handleClusterKeyDown={handleClusterKeyDown}
+          stepErrors={stepErrors}
         />
       )}
     </div>

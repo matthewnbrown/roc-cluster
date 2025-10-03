@@ -90,6 +90,16 @@ export interface ApiError {
   detail: string;
 }
 
+export interface ValidationError {
+  loc: (string | number)[];
+  msg: string;
+  type: string;
+}
+
+export interface ValidationErrorResponse {
+  detail: ValidationError[];
+}
+
 export interface ApiResponse<T> {
   data?: T;
   error?: string;
