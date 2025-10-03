@@ -39,27 +39,8 @@ export const useJob = (id: number, includeSteps: boolean = false) => {
     {
       enabled: !!id,
       refetchInterval: (data) => {
-        // Refetch every 3 seconds if job is running or pending
         if (data && (data.status === 'running' || data.status === 'pending')) {
-          return 3000; // Refetch every 3 seconds
-        }
-        return false; // Don't refetch if completed, failed, or cancelled
-      },
-    }
-  );
-};
-
-// Get job status (lightweight)
-export const useJobStatus = (id: number) => {
-  return useQuery(
-    jobKeys.status(id),
-    () => jobsApi.getJobStatus(id),
-    {
-      enabled: !!id,
-      refetchInterval: (data) => {
-        // Refetch every 3 seconds if job is running
-        if (data?.status === 'running' || data?.status === 'pending') {
-          return 3000;
+          return 2000; 
         }
         return false;
       },
@@ -67,7 +48,22 @@ export const useJobStatus = (id: number) => {
   );
 };
 
-// Get job progress with step details (lightweight)
+export const useJobStatus = (id: number) => {
+  return useQuery(
+    jobKeys.status(id),
+    () => jobsApi.getJobStatus(id),
+    {
+      enabled: !!id,
+      refetchInterval: (data) => {
+        if (data?.status === 'running' || data?.status === 'pending') {
+          return 2000;
+        }
+        return false;
+      },
+    }
+  );
+};
+
 export const useJobProgress = (id: number) => {
   return useQuery(
     [...jobKeys.all, 'progress', id],

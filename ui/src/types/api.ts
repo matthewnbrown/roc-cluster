@@ -164,6 +164,7 @@ export interface JobStepResponse {
   error_message?: string;
   started_at?: string;
   completed_at?: string;
+  completion_time_seconds?: number;
   total_accounts: number;
   processed_accounts: number;
   successful_accounts: number;

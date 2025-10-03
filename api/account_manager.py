@@ -44,6 +44,7 @@ class AccountManager:
         GET_CARDS = "get_cards"
         SEND_CARDS = "send_cards"
         DELAY = "delay"
+        COLLECT_ASYNC_TASKS = "collect_async_tasks"
 
 
     def __init__(self):

@@ -38,7 +38,8 @@ async def create_job(
         for step in request.steps:
             step_data = {
                 "action_type": step.action_type,
-                "max_retries": step.max_retries
+                "max_retries": step.max_retries,
+                "is_async": step.is_async
             }
             
             # Handle account_ids and/or cluster_ids
@@ -242,38 +243,58 @@ async def get_job_progress(
             failed_steps = job.failed_steps
             total_steps = job.total_steps
         
+        # Calculate overall job progress percentage based on step completion
+        # For async jobs, this represents the percentage of steps that have completed
+        job_progress_percentage = 0
+        if total_steps > 0:
+            job_progress_percentage = round(((completed_steps + failed_steps) / total_steps * 100), 2)
+        
         # Extract step progress information - get real-time data from memory
         step_progress = []
         if job.steps:
             for step in job.steps:
                 # Get real-time step progress from memory
                 memory_progress = manager._get_step_progress(step.id)
-                if memory_progress["total_accounts"] > 0:
-                    # Use in-memory progress data
-                    step_progress.append({
-                        "id": step.id,
-                        "step_order": step.step_order,
-                        "action_type": step.action_type,
-                        "status": step.status.value,
-                        "total_accounts": memory_progress["total_accounts"],
-                        "processed_accounts": memory_progress["processed_accounts"],
-                        "successful_accounts": memory_progress["successful_accounts"],
-                        "failed_accounts": memory_progress["failed_accounts"],
-                        "progress_percentage": round((memory_progress["processed_accounts"] / memory_progress["total_accounts"] * 100) if memory_progress["total_accounts"] > 0 else 0, 2)
-                    })
+                
+                # Debug logging for async steps
+                if step.is_async:
+                    logger.info(f"Async step {step.id} progress: memory={memory_progress}, db_total={step.total_accounts}, db_processed={step.processed_accounts}, status={step.status.value}")
+                
+                # For async steps, prefer memory data if available, otherwise use database
+                # For sync steps, use database data as they complete immediately
+                # Check if memory progress exists (even for delay steps with 0 accounts)
+                if step.id in manager._step_progress:
+                    # Use in-memory progress data (most up-to-date for async steps)
+                    total_accounts = memory_progress["total_accounts"]
+                    processed_accounts = memory_progress["processed_accounts"]
+                    successful_accounts = memory_progress["successful_accounts"]
+                    failed_accounts = memory_progress["failed_accounts"]
                 else:
-                    # Fallback to database data if no memory progress
-                    step_progress.append({
-                        "id": step.id,
-                        "step_order": step.step_order,
-                        "action_type": step.action_type,
-                        "status": step.status.value,
-                        "total_accounts": step.total_accounts,
-                        "processed_accounts": step.processed_accounts,
-                        "successful_accounts": step.successful_accounts,
-                        "failed_accounts": step.failed_accounts,
-                        "progress_percentage": round((step.processed_accounts / step.total_accounts * 100) if step.total_accounts > 0 else 0, 2)
-                    })
+                    # Fallback to database data
+                    total_accounts = step.total_accounts
+                    processed_accounts = step.processed_accounts
+                    successful_accounts = step.successful_accounts
+                    failed_accounts = step.failed_accounts
+                
+                # Calculate progress percentage
+                progress_percentage = 0
+                if total_accounts > 0:
+                    progress_percentage = round((processed_accounts / total_accounts * 100), 2)
+                elif step.action_type == "delay":
+                    # Delay steps with 0 accounts show 100% when completed
+                    progress_percentage = 100 if step.status.value in ["completed", "failed"] else 0
+                
+                step_progress.append({
+                    "id": step.id,
+                    "step_order": step.step_order,
+                    "action_type": step.action_type,
+                    "status": step.status.value,
+                    "total_accounts": total_accounts,
+                    "processed_accounts": processed_accounts,
+                    "successful_accounts": successful_accounts,
+                    "failed_accounts": failed_accounts,
+                    "progress_percentage": progress_percentage
+                })
         
         return {
             "job_id": job.id,
@@ -288,7 +309,7 @@ async def get_job_progress(
                 "total_steps": total_steps,
                 "completed_steps": completed_steps,
                 "failed_steps": failed_steps,
-                "percentage": round((completed_steps / total_steps * 100) if total_steps > 0 else 0, 2)
+                "percentage": job_progress_percentage
             },
             "steps": step_progress,
             "updated_at": datetime.now(timezone.utc).isoformat()

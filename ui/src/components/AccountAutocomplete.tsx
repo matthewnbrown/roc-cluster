@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Search, X, Check, ChevronDown } from 'lucide-react';
-import { useAccountSearch } from '../hooks/useAccounts';
+import { useAccountSearch, useAccountsByIds } from '../hooks/useAccounts';
 import { Account } from '../types/api';
 
 interface AccountAutocompleteProps {
@@ -27,32 +27,12 @@ const AccountAutocomplete: React.FC<AccountAutocompleteProps> = ({
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const { data: searchResults, isLoading } = useAccountSearch(searchTerm);
-  // Store selected account details to avoid losing them when search is cleared
-  const [selectedAccountDetails, setSelectedAccountDetails] = useState<Account[]>([]);
-
+  const { data: accountsByIds, isLoading: isLoadingByIds } = useAccountsByIds(selectedAccountIds);
+  
   const availableAccounts = searchResults?.data || [];
   
-  // Update selected account details when selectedAccountIds changes
-  useEffect(() => {
-    // Add new accounts from search results
-    const newAccounts = availableAccounts.filter(account => 
-      selectedAccountIds.includes(account.id) && 
-      !selectedAccountDetails.some(selected => selected.id === account.id)
-    );
-    
-    if (newAccounts.length > 0) {
-      setSelectedAccountDetails(prev => [...prev, ...newAccounts]);
-    }
-  }, [availableAccounts, selectedAccountIds, selectedAccountDetails]);
-
-  // Remove accounts that are no longer selected
-  useEffect(() => {
-    setSelectedAccountDetails(prev => 
-      prev.filter(account => selectedAccountIds.includes(account.id))
-    );
-  }, [selectedAccountIds]);
-
-  const selectedAccounts = selectedAccountDetails;
+  // Use accounts fetched by IDs as the selected accounts
+  const selectedAccounts = accountsByIds || [];
 
   // Handle keyboard navigation
   useEffect(() => {
@@ -229,23 +209,30 @@ const AccountAutocomplete: React.FC<AccountAutocompleteProps> = ({
           <p className="text-sm font-medium text-gray-700">
             Selected Accounts ({selectedAccountIds.length})
           </p>
-          <div className="flex flex-wrap gap-2">
-            {selectedAccounts.map((account) => (
-              <span
-                key={account.id}
-                className="inline-flex items-center gap-1 px-3 py-1 bg-blue-100 text-blue-800 text-sm rounded-full"
-              >
-                <span>{account.username}</span>
-                <button
-                  onClick={() => onAccountRemove(account.id)}
-                  className="text-blue-600 hover:text-blue-800 focus:outline-none"
-                  disabled={disabled}
+          {isLoadingByIds ? (
+            <div className="flex items-center gap-2 text-sm text-gray-500">
+              <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-primary-600"></div>
+              Loading account details...
+            </div>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {selectedAccounts.map((account) => (
+                <span
+                  key={account.id}
+                  className="inline-flex items-center gap-1 px-3 py-1 bg-blue-100 text-blue-800 text-sm rounded-full"
                 >
-                  <X className="h-3 w-3" />
-                </button>
-              </span>
-            ))}
-          </div>
+                  <span>{account.username}</span>
+                  <button
+                    onClick={() => onAccountRemove(account.id)}
+                    className="text-blue-600 hover:text-blue-800 focus:outline-none"
+                    disabled={disabled}
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>

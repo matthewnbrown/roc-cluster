@@ -867,21 +867,9 @@ const JobExpandedDetails: React.FC<{
             {job.steps.map((step, stepIndex) => {
               // Get real-time progress data for this step by matching step ID
               const progressStep = progressData?.steps?.find(ps => ps.id === step.id);
-              const stepData = progressStep || step;
+              // Use progress data for real-time updates, but fall back to original step for completion_time_seconds
+              const stepData = progressStep ? { ...step, ...progressStep } : step;
               
-              // Debug logging
-              console.log(`Step ${stepIndex} (ID: ${step.id}):`, {
-                stepId: step.id,
-                stepData,
-                progressStep,
-                progressDataSteps: progressData?.steps,
-                progressDataStepsLength: progressData?.steps?.length,
-                progressDataStepAtIndex: progressData?.steps?.[stepIndex],
-                total_accounts: stepData.total_accounts,
-                processed_accounts: stepData.processed_accounts,
-                status: stepData.status,
-                isUsingProgressData: !!progressStep
-              });
               
               return (
               <div key={step.id} className="bg-gray-50 border border-gray-200 rounded-lg p-4">
@@ -907,6 +895,11 @@ const JobExpandedDetails: React.FC<{
                       <div className="space-y-1">
                         <div>
                           {stepData.processed_accounts}/{stepData.total_accounts} accounts processed • {step.is_async ? 'Async' : 'Sync'}
+                          {(stepData as any).completion_time_seconds && (
+                            <span className="ml-2 text-green-600 font-medium">
+                              • {(stepData as any).completion_time_seconds.toFixed(1)}s
+                            </span>
+                          )}
                         </div>
                         {/* Always show progress bar for debugging */}
                         <div className="w-full bg-gray-200 rounded-full h-2">
@@ -927,6 +920,11 @@ const JobExpandedDetails: React.FC<{
                     ) : (
                       <div>
                         {step.account_count} account{step.account_count !== 1 ? 's' : ''} • {step.is_async ? 'Async' : 'Sync'}
+                        {(stepData as any).completion_time_seconds && (
+                          <span className="ml-2 text-green-600 font-medium">
+                            • {(stepData as any).completion_time_seconds.toFixed(1)}s
+                          </span>
+                        )}
                       </div>
                     )}
                   </div>

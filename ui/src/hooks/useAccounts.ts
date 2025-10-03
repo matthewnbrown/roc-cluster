@@ -103,3 +103,22 @@ export const useAccountSearch = (searchTerm: string, debounceMs: number = 300) =
     }
   );
 };
+
+// Hook to fetch multiple accounts by IDs
+export const useAccountsByIds = (accountIds: number[]) => {
+  return useQuery(
+    ['accounts', 'by-ids', accountIds.sort()],
+    async () => {
+      if (accountIds.length === 0) return [];
+      
+      // Fetch each account individually
+      const accountPromises = accountIds.map(id => accountApi.getAccount(id));
+      const accounts = await Promise.all(accountPromises);
+      return accounts;
+    },
+    {
+      enabled: accountIds.length > 0,
+      staleTime: 5 * 60 * 1000, // 5 minutes
+    }
+  );
+};

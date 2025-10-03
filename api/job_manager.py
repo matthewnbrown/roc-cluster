@@ -95,6 +95,7 @@ class JobManager:
             "successful_accounts": 0,
             "failed_accounts": 0
         }
+        logger.info(f"Initialized step progress for step {step_id}: {self._step_progress[step_id]}")
     
     def _update_step_progress_in_memory(self, step_id: int, processed_accounts: int, successful_accounts: int, failed_accounts: int):
         """Update step progress in memory for real-time updates"""
@@ -107,12 +108,14 @@ class JobManager:
     
     def _get_step_progress(self, step_id: int) -> Dict[str, int]:
         """Get current step progress from memory"""
-        return self._step_progress.get(step_id, {
+        progress = self._step_progress.get(step_id, {
             "total_accounts": 0,
             "processed_accounts": 0,
             "successful_accounts": 0,
             "failed_accounts": 0
         })
+        logger.info(f"Getting step progress for step {step_id}: {progress}")
+        return progress
     
     def _cleanup_step_progress(self, step_id: int):
         """Clean up in-memory step progress when step is complete"""
@@ -484,6 +487,30 @@ class JobManager:
                     "data": "object (optional) - contains delay details",
                     "error": "string (optional)"
                 }
+            },
+            "collect_async_tasks": {
+                "description": "Wait for all previous async tasks to complete before continuing",
+                "category": "system_action",
+                "required_parameters": [],
+                "optional_parameters": ["message", "timeout_seconds"],
+                "parameter_details": {
+                    "message": {
+                        "type": "string",
+                        "description": "Optional message to display during the wait (default: 'Waiting for async tasks to complete...')",
+                        "default": "Waiting for async tasks to complete..."
+                    },
+                    "timeout_seconds": {
+                        "type": "number",
+                        "description": "Maximum time to wait for async tasks to complete in seconds (default: 0 for infinite wait). Set to 0 to wait indefinitely.",
+                        "default": 0
+                    }
+                },
+                "output": {
+                    "success": "boolean",
+                    "message": "string (optional) - confirmation message",
+                    "data": "object (optional) - contains task completion details",
+                    "error": "string (optional)"
+                }
             }
         }
         
@@ -517,8 +544,8 @@ class JobManager:
     
     def _get_all_account_ids_for_step(self, step_data: Dict[str, Any], db: Session) -> List[int]:
         """Get all account IDs for a step, combining direct account_ids and cluster expansion"""
-        # Delay steps don't need account IDs
-        if step_data.get("action_type") == "delay":
+        # Delay and collect_async_tasks steps don't need account IDs
+        if step_data.get("action_type") in ["delay", "collect_async_tasks"]:
             return []
         
         all_account_ids = set()
@@ -532,8 +559,8 @@ class JobManager:
             cluster_account_ids = self._expand_clusters_to_accounts(step_data["cluster_ids"], db)
             all_account_ids.update(cluster_account_ids)
         
-        # Validate that we have at least one account ID (except for delay steps)
-        if not all_account_ids and step_data.get("action_type") != "delay":
+        # Validate that we have at least one account ID (except for delay and collect_async_tasks steps)
+        if not all_account_ids and step_data.get("action_type") not in ["delay", "collect_async_tasks"]:
             raise ValueError("Step must specify at least account_ids or cluster_ids")
         
         # Return as sorted list for consistent ordering
@@ -839,9 +866,25 @@ class JobManager:
             if step.parameters:
                 parameters = json.loads(step.parameters)
             
-            # Handle special delay step that doesn't need accounts
+            # Handle special steps that don't need accounts
             if step.action_type == "delay":
+                # Initialize progress tracking for delay steps (they have 0 accounts)
+                step.total_accounts = 0
+                step.processed_accounts = 0
+                step.successful_accounts = 0
+                step.failed_accounts = 0
+                self._init_step_progress(step.id, 0)
+                
                 result = await self._execute_delay_step(parameters)
+            elif step.action_type == "collect_async_tasks":
+                # Initialize progress tracking for collect async tasks steps (they have 0 accounts)
+                step.total_accounts = 0
+                step.processed_accounts = 0
+                step.successful_accounts = 0
+                step.failed_accounts = 0
+                self._init_step_progress(step.id, 0)
+                
+                result = await self._execute_collect_async_tasks_step(step.job_id, parameters)
             else:
                 # Convert string action_type to ActionType enum
                 action_type_enum = self.account_manager.ActionType(step.action_type)
@@ -859,11 +902,23 @@ class JobManager:
             step.error_message = result.get("error") if not result.get("success", False) else None
             step.completed_at = datetime.now(timezone.utc)
             
+            # Commit step status update immediately so it's visible in API
+            db.commit()
+            
             # Update in-memory progress for real-time tracking
             self._update_step_progress(step.job_id, step.status)
             
-            # Clean up in-memory step progress when step is complete
-            self._cleanup_step_progress(step.id)
+            # Update in-memory step progress with final values before cleanup
+            if step.id in self._step_progress:
+                self._step_progress[step.id].update({
+                    "processed_accounts": step.processed_accounts,
+                    "successful_accounts": step.successful_accounts,
+                    "failed_accounts": step.failed_accounts
+                })
+                logger.info(f"Updated final step progress for step {step.id}: {self._step_progress[step.id]}")
+            
+            # Don't cleanup in-memory step progress immediately - let it persist for API access
+            # self._cleanup_step_progress(step.id)
             
         except Exception as e:
             logger.error(f"Error executing step {step.id}: {e}", exc_info=True)
@@ -871,11 +926,23 @@ class JobManager:
             step.error_message = str(e)
             step.completed_at = datetime.now(timezone.utc)
             
+            # Commit step failure status immediately so it's visible in API
+            db.commit()
+            
             # Update in-memory progress for real-time tracking
             self._update_step_progress(step.job_id, step.status)
             
-            # Clean up in-memory step progress when step fails
-            self._cleanup_step_progress(step.id)
+            # Update in-memory step progress with final values before cleanup
+            if step.id in self._step_progress:
+                self._step_progress[step.id].update({
+                    "processed_accounts": step.processed_accounts,
+                    "successful_accounts": step.successful_accounts,
+                    "failed_accounts": step.failed_accounts
+                })
+                logger.info(f"Updated final failed step progress for step {step.id}: {self._step_progress[step.id]}")
+            
+            # Don't cleanup in-memory step progress immediately - let it persist for API access
+            # self._cleanup_step_progress(step.id)
 
             raise
     
@@ -931,6 +998,93 @@ class JobManager:
                 "error": str(e)
             }
     
+    async def _execute_collect_async_tasks_step(self, job_id: int, parameters: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute a collect async tasks step - wait for all previous async tasks to complete"""
+        try:
+            message = parameters.get("message", "Waiting for async tasks to complete...")
+            timeout_seconds = parameters.get("timeout_seconds", 0)  # Default infinite wait
+            
+            # Validate timeout
+            try:
+                timeout_seconds = float(timeout_seconds)
+                if timeout_seconds < 0:
+                    return {
+                        "success": False,
+                        "error": "timeout_seconds must be non-negative"
+                    }
+            except (ValueError, TypeError):
+                return {
+                    "success": False,
+                    "error": "timeout_seconds must be a valid number"
+                }
+            
+            logger.info(f"Collect async tasks step: {message}")
+            
+            # Get all running async tasks for this job
+            if job_id in self._running_step_tasks:
+                async_tasks = self._running_step_tasks[job_id].copy()
+                if async_tasks:
+                    logger.info(f"Waiting for {len(async_tasks)} async tasks to complete for job {job_id}")
+                    
+                    # Wait for all async tasks to complete with optional timeout
+                    try:
+                        if timeout_seconds == 0:
+                            # Wait indefinitely if timeout_seconds is 0
+                            logger.info(f"Waiting indefinitely for {len(async_tasks)} async tasks to complete for job {job_id}")
+                            await asyncio.gather(*async_tasks, return_exceptions=True)
+                        else:
+                            # Wait with timeout
+                            await asyncio.wait_for(
+                                asyncio.gather(*async_tasks, return_exceptions=True),
+                                timeout=timeout_seconds
+                            )
+                        logger.info(f"All async tasks completed for job {job_id}")
+                        
+                        return {
+                            "success": True,
+                            "message": f"Successfully waited for {len(async_tasks)} async tasks to complete: {message}",
+                            "data": {
+                                "tasks_waited_for": len(async_tasks),
+                                "message": message,
+                                "completed_at": datetime.now(timezone.utc).isoformat()
+                            }
+                        }
+                    except asyncio.TimeoutError:
+                        logger.warning(f"Timeout waiting for async tasks to complete for job {job_id}")
+                        return {
+                            "success": False,
+                            "error": f"Timeout after {timeout_seconds} seconds waiting for async tasks to complete"
+                        }
+                else:
+                    logger.info(f"No async tasks running for job {job_id}")
+                    return {
+                        "success": True,
+                        "message": f"No async tasks were running: {message}",
+                        "data": {
+                            "tasks_waited_for": 0,
+                            "message": message,
+                            "completed_at": datetime.now(timezone.utc).isoformat()
+                        }
+                    }
+            else:
+                logger.info(f"No running step tasks found for job {job_id}")
+                return {
+                    "success": True,
+                    "message": f"No async tasks were running: {message}",
+                    "data": {
+                        "tasks_waited_for": 0,
+                        "message": message,
+                        "completed_at": datetime.now(timezone.utc).isoformat()
+                    }
+                }
+            
+        except Exception as e:
+            logger.error(f"Error in collect async tasks step: {e}", exc_info=True)
+            return {
+                "success": False,
+                "error": str(e)
+            }
+    
     async def _execute_multi_account_step(self, account_ids: List[int], action_type_enum, parameters: Dict[str, Any], max_retries: int, step: JobStep = None, bulk_cookies: Optional[Dict[int, Dict[str, Any]]] = None, bulk_accounts: Optional[Dict[int, Account]] = None):
         """Execute action for multiple accounts and consolidate results"""
         if not account_ids:
@@ -942,7 +1096,7 @@ class JobManager:
             step.processed_accounts = 0
             step.successful_accounts = 0
             step.failed_accounts = 0
-            # Initialize in-memory progress tracking
+            # Initialize in-memory progress tracking (even for delay steps with 0 accounts)
             self._init_step_progress(step.id, step.total_accounts)
         
         # Execute actions for all accounts in parallel with real-time progress updates
@@ -1582,23 +1736,63 @@ class JobManager:
         """Execute steps sequentially with support for async steps"""
         async_tasks = []  # Track async tasks that are running
         
+        # Single pass: Launch async steps immediately, execute sync steps concurrently
         for step in steps:
             # Check if job was cancelled
             db.refresh(job)
             if job.status == JobStatus.CANCELLED:
                 break
             
+            # Refresh step from database to see latest status updates from async tasks
+            db.refresh(step)
+            
+            # Skip steps that are already completed or failed
+            if step.status in [JobStatus.COMPLETED, JobStatus.FAILED]:
+                print(f"Skipping step {step.id} for job {job.id} - already {step.status.value}")
+                continue
+            
+            # Yield control to allow async tasks to make progress
+            await asyncio.sleep(0)
+            
+            print(f"Executing step {step.id} for job {job.id}")
             try:
                 if step.is_async:
-                    # Launch async step without waiting
-                    task = asyncio.create_task(self._execute_step_safe(step, db, bulk_cookies, bulk_accounts))
+                    # Initialize step progress immediately for async steps so it shows up in API
+                    # if step.action_type == "delay":
+                    #     # Delay steps have 0 accounts
+                    #     step.total_accounts = 0
+                    #     step.processed_accounts = 0
+                    #     step.successful_accounts = 0
+                    #     step.failed_accounts = 0
+                    #     self._init_step_progress(step.id, 0)
+                    #     logger.info(f"Initialized delay step {step.id} progress: total_accounts=0")
+                    # else:
+                        # For other steps, get account count and initialize progress
+                    account_ids = json.loads(step.account_ids) if step.account_ids else []
+                    step.total_accounts = len(account_ids)
+                    step.processed_accounts = 0
+                    step.successful_accounts = 0
+                    step.failed_accounts = 0
+                    self._init_step_progress(step.id, step.total_accounts)
+                    logger.info(f"Initialized async step {step.id} progress: total_accounts={step.total_accounts}")
+                
+                    # Commit progress initialization immediately so it's visible in API
+                    db.commit()
+                    
+                    # Launch async step without waiting (pass None for db so it creates its own session)
+                    task = asyncio.create_task(self._execute_step_safe(step, None, bulk_cookies, bulk_accounts))
                     async_tasks.append(task)
                     # Track the task for cancellation
                     self._add_running_step_task(job.id, task)
                     logger.info(f"Launched async step {step.id} for job {job.id}")
                 else:
-                    # Execute sync step and wait for completion
+                    # Execute sync step and wait for completion while async tasks continue in background
+                    # Add a small yield to allow async tasks to make progress
+                    await asyncio.sleep(0)
                     await self._execute_step(step, db, bulk_cookies, bulk_accounts)
+                    # Yield again after sync step completion to allow async tasks to continue
+                    await asyncio.sleep(0)
+                    logger.info(f"Completed sync step {step.id} for job {job.id}")
                     
             except Exception as e:
                 logger.error(f"Error executing step {step.id}: {e}", exc_info=True)
@@ -1614,9 +1808,9 @@ class JobManager:
         if steps:
             await self._update_job_progress(steps[0].job_id, db)
         
-        # Wait for all async tasks to complete
+        # Wait for any remaining async tasks to complete
         if async_tasks:
-            logger.info(f"Waiting for {len(async_tasks)} async tasks to complete for job {job.id}")
+            logger.info(f"Waiting for {len(async_tasks)} remaining async tasks to complete for job {job.id}")
             await asyncio.gather(*async_tasks, return_exceptions=True)
             logger.info(f"All async tasks completed for job {job.id}")
             
@@ -1629,6 +1823,28 @@ class JobManager:
         # Create tasks for all steps - each gets its own database session
         tasks = []
         for step in steps:
+            # Initialize step progress immediately for parallel steps so it shows up in API
+            if step.action_type in ["delay", "collect_async_tasks"]:
+                # Delay and collect_async_tasks steps have 0 accounts
+                step.total_accounts = 0
+                step.processed_accounts = 0
+                step.successful_accounts = 0
+                step.failed_accounts = 0
+                self._init_step_progress(step.id, 0)
+                logger.info(f"Initialized parallel {step.action_type} step {step.id} progress: total_accounts=0")
+            else:
+                # For other steps, get account count and initialize progress
+                account_ids = json.loads(step.account_ids) if step.account_ids else []
+                step.total_accounts = len(account_ids)
+                step.processed_accounts = 0
+                step.successful_accounts = 0
+                step.failed_accounts = 0
+                self._init_step_progress(step.id, step.total_accounts)
+                logger.info(f"Initialized parallel step {step.id} progress: total_accounts={step.total_accounts}")
+            
+            # Commit progress initialization immediately so it's visible in API
+            db.commit()
+            
             task = asyncio.create_task(self._execute_step_safe(step, None, bulk_cookies, bulk_accounts))
             tasks.append(task)
             # Track the task for cancellation
@@ -1700,18 +1916,34 @@ class JobManager:
         if db is None:
             own_db = SessionLocal()
             db = own_db
+            # Re-query the step object to get a fresh copy attached to our own session
+            step_id = step.id
+            step = db.query(JobStep).filter(JobStep.id == step_id).first()
+            if not step:
+                logger.error(f"Step {step_id} not found in new database session")
+                return
         
         try:
             await self._execute_step(step, db, bulk_cookies, bulk_accounts)
+            # Commit changes for async steps to ensure progress updates are persisted
+            if own_db:
+                db.commit()
+                # Update job progress for async steps
+                await self._update_job_progress(step.job_id, db)
         except Exception as e:
             logger.error(f"Error executing step {step.id}: {e}", exc_info=True)
             step.status = JobStatus.FAILED
             step.error_message = str(e)
             step.completed_at = datetime.now(timezone.utc)
             
-            # Don't update progress or commit here - let the main loop handle it
-            # This avoids database contention in parallel execution
-            raise  # Re-raise to be caught by gather()
+            # Commit failure status for async steps
+            if own_db:
+                db.commit()
+                # Update job progress for failed async steps
+                await self._update_job_progress(step.job_id, db)
+            
+            # Re-raise to be caught by gather()
+            raise
         finally:
             # Close own database session if we created it
             if own_db:
@@ -1733,6 +1965,11 @@ class JobManager:
                 original_cluster_ids = json.loads(step.original_cluster_ids) if step.original_cluster_ids else None
                 original_account_ids = json.loads(step.original_account_ids) if step.original_account_ids else None
                 
+                # Calculate completion time if both start and end times are available
+                completion_time_seconds = None
+                if step.started_at and step.completed_at:
+                    completion_time_seconds = (step.completed_at - step.started_at).total_seconds()
+                
                 step_response = JobStepResponse(
                     id=step.id,
                     step_order=step.step_order,
@@ -1749,6 +1986,7 @@ class JobManager:
                     error_message=step.error_message,
                     started_at=step.started_at,
                     completed_at=step.completed_at,
+                    completion_time_seconds=completion_time_seconds,
                     total_accounts=step.total_accounts,
                     processed_accounts=step.processed_accounts,
                     successful_accounts=step.successful_accounts,

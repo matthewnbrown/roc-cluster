@@ -635,7 +635,7 @@ const JobDetails: React.FC<JobDetailsProps> = ({ jobId, onBack }) => {
                               )}
                             </div>
                           ) : (
-                            <div>{(originalStep as any).account_ids.length} Account{(originalStep as any).account_ids.length !== 1 ? 's' : ''}</div>
+                            <div>{(originalStep as any).account_ids?.length || 0} Account{((originalStep as any).account_ids?.length || 0) !== 1 ? 's' : ''}</div>
                           )}
                         </div>
                         <div className="w-24 flex-shrink-0">
@@ -647,10 +647,8 @@ const JobDetails: React.FC<JobDetailsProps> = ({ jobId, onBack }) => {
                           </span>
                         </div>
                         <div className="text-sm text-gray-500 w-28 flex-shrink-0">
-                          {(originalStep as any).started_at && (originalStep as any).completed_at ? (
-                            (() => {
-                              return calculateDuration((originalStep as any).started_at, (originalStep as any).completed_at);
-                            })()
+                          {(originalStep as any).completion_time_seconds ? (
+                            `${(originalStep as any).completion_time_seconds.toFixed(1)}s`
                           ) : (originalStep as any).started_at ? (
                             'Running...'
                           ) : (
@@ -725,7 +723,7 @@ const JobDetails: React.FC<JobDetailsProps> = ({ jobId, onBack }) => {
                           <h5 className="text-sm font-medium text-gray-900 mb-2">Step Details</h5>
                           <div className="space-y-2 text-sm">
                             <div><span className="font-medium">Action:</span> {step.action_type}</div>
-                              <div><span className="font-medium">Accounts:</span> {stepData.total_accounts > 0 ? `${stepData.processed_accounts}/${stepData.total_accounts} processed` : `${(originalStep as any).account_ids.length} account${(originalStep as any).account_ids.length !== 1 ? 's' : ''}`}</div>
+                              <div><span className="font-medium">Accounts:</span> {stepData.total_accounts > 0 ? `${stepData.processed_accounts}/${stepData.total_accounts} processed` : `${(originalStep as any).account_ids?.length || 0} account${((originalStep as any).account_ids?.length || 0) !== 1 ? 's' : ''}`}</div>
                             {stepData.total_accounts > 0 && (stepData.successful_accounts > 0 || stepData.failed_accounts > 0) && (
                               <div><span className="font-medium">Results:</span> ✓ {stepData.successful_accounts} successful • ✗ {stepData.failed_accounts} failed</div>
                             )}
@@ -733,10 +731,8 @@ const JobDetails: React.FC<JobDetailsProps> = ({ jobId, onBack }) => {
                             <div><span className="font-medium">Status:</span> {stepData.status}</div>
                             <div><span className="font-medium">Started:</span> {(originalStep as any).started_at ? formatDate((originalStep as any).started_at) : 'Not started'}</div>
                             <div><span className="font-medium">Completed:</span> {(originalStep as any).completed_at ? formatDate((originalStep as any).completed_at) : 'Not completed'}</div>
-                            {(originalStep as any).started_at && (originalStep as any).completed_at && (
-                              <div><span className="font-medium">Duration:</span> {(() => {
-                                return calculateDuration((originalStep as any).started_at, (originalStep as any).completed_at);
-                              })()}</div>
+                            {(originalStep as any).completion_time_seconds && (
+                              <div><span className="font-medium">Duration:</span> {(originalStep as any).completion_time_seconds.toFixed(1)} seconds</div>
                             )}
                           </div>
                         </div>

@@ -163,25 +163,26 @@ const StepEditor: React.FC<StepEditorProps> = ({
             </p>
           )}
         </div>
-      </div>
 
-      {/* Async Execution */}
-      <div className="col-span-1">
-        <div className="flex items-center">
-          <input
-            type="checkbox"
-            id={`steps.${index}.is_async`}
-            {...register(`steps.${index}.is_async`)}
-            className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
-          />
-          <label htmlFor={`steps.${index}.is_async`} className="ml-2 block text-sm text-gray-900">
-            Execute asynchronously (don't wait for completion)
-          </label>
+        {/* Async Execution */}
+        <div className="col-span-1">
+          <div className="flex items-center h-full">
+            <input
+              type="checkbox"
+              id={`steps.${index}.is_async`}
+              {...register(`steps.${index}.is_async`)}
+              defaultChecked={false}
+              className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+            />
+            <label htmlFor={`steps.${index}.is_async`} className="ml-2 block text-sm text-gray-900">
+              Execute asynchronously
+            </label>
+          </div>
         </div>
       </div>
 
-      {/* Runners - Hide for delay steps */}
-      {actionType !== 'delay' && (
+      {/* Runners - Hide for delay and collect_async_tasks steps */}
+      {actionType !== 'delay' && actionType !== 'collect_async_tasks' && (
         <div className="space-y-4">
           <h5 className="font-medium text-gray-900">Runners</h5>
         
@@ -196,7 +197,7 @@ const StepEditor: React.FC<StepEditorProps> = ({
           
           {/* Account Autocomplete */}
           <AccountAutocomplete
-            selectedAccountIds={watchedSteps[index]?.account_ids || []}
+            selectedAccountIds={watchedSteps[index]?.account_ids || watchedSteps[index]?.original_account_ids || []}
             onAccountSelect={(account: any) => {
               const currentAccountIds = watchedSteps[index]?.account_ids || [];
               if (!currentAccountIds.includes(account.id)) {

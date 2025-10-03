@@ -365,8 +365,8 @@ class JobStepRequest(BaseModel):
     
     def __init__(self, **data):
         super().__init__(**data)
-        # Validate that at least one of account_ids or cluster_ids is provided (except for delay steps)
-        if not self.account_ids and not self.cluster_ids and self.action_type != "delay":
+        # Validate that at least one of account_ids or cluster_ids is provided (except for delay and collect_async_tasks steps)
+        if not self.account_ids and not self.cluster_ids and self.action_type not in ["delay", "collect_async_tasks"]:
             raise ValueError("Either account_ids or cluster_ids must be provided")
         
         # Validate action_type (basic validation - detailed validation happens in job manager)
@@ -399,6 +399,7 @@ class JobStepResponse(BaseModel):
     error_message: Optional[str] = None
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
+    completion_time_seconds: Optional[float] = None  # Duration in seconds from start to completion
     total_accounts: int = 0
     processed_accounts: int = 0
     successful_accounts: int = 0
