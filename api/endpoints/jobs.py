@@ -37,6 +37,10 @@ async def create_job(
         # Convert steps to the format expected by JobManager
         steps_data = []
         for step in request.steps:
+            # Skip empty steps (no action_type or empty action_type)
+            if not step.action_type or not step.action_type.strip():
+                continue
+                
             step_data = {
                 "action_type": step.action_type,
                 "max_retries": step.max_retries,
@@ -50,13 +54,21 @@ async def create_job(
                 step_data["cluster_ids"] = step.cluster_ids
             
             # Validate that at least one targeting method is provided (except for delay steps)
-            if step.action_type != "delay" and not step.account_ids and not step.cluster_ids:
+            has_account_ids = step.account_ids and len(step.account_ids) > 0
+            has_cluster_ids = step.cluster_ids and len(step.cluster_ids) > 0
+            
+            if (step.action_type != "delay" and 
+                not has_account_ids and not has_cluster_ids):
                 raise HTTPException(status_code=400, detail="Step must specify at least account_ids or cluster_ids")
             
             if step.parameters:
                 step_data["parameters"] = step.parameters
 
             steps_data.append(step_data)
+        
+        # Ensure there's at least one valid step
+        if not steps_data:
+            raise HTTPException(status_code=400, detail="Job must have at least one valid step")
         
         # Generate job name and description if not provided
         job_name = request.name

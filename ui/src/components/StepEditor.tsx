@@ -369,7 +369,25 @@ const StepEditor: React.FC<StepEditorProps> = ({
                     </label>
                     <p className="text-xs text-gray-500">{paramInfo.description}</p>
                     
-                    {paramInfo.type === 'string' && (
+                    {paramInfo.type === 'string' && paramInfo.enum ? (
+                      <select
+                        {...register(`steps.${index}.parameters.${paramName}`, {
+                          required: isRequired ? `${paramName} is required` : false,
+                        })}
+                        className={`block w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm ${
+                          errors.steps?.[index]?.parameters?.[paramName] 
+                            ? 'border-red-300 focus:ring-red-500 focus:border-red-500' 
+                            : 'border-gray-300'
+                        }`}
+                      >
+                        <option value="">Select {paramName}</option>
+                        {paramInfo.enum.map((option: string) => (
+                          <option key={option} value={option}>
+                            {option}
+                          </option>
+                        ))}
+                      </select>
+                    ) : paramInfo.type === 'string' && (
                       <input
                         type="text"
                         {...register(`steps.${index}.parameters.${paramName}`, {
