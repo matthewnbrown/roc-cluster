@@ -114,7 +114,6 @@ class JobManager:
             "successful_accounts": 0,
             "failed_accounts": 0
         })
-        logger.info(f"Getting step progress for step {step_id}: {progress}")
         return progress
     
     def _cleanup_step_progress(self, step_id: int):
