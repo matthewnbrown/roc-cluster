@@ -23,7 +23,7 @@ def main():
         "HOST": "0.0.0.0",
         "PORT": "8000",
         "DEBUG": "False",
-        "LOG_LEVEL": "DEBUG",
+        "LOG_LEVEL": "INFO",
         "LOG_FILE": "",
         "USE_IN_MEMORY_DB": "False",
         "AUTO_SAVE_ENABLED": "True",
