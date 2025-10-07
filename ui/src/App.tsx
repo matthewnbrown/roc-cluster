@@ -14,6 +14,7 @@ import JobList from './components/JobList';
 import JobForm from './components/JobForm';
 import JobDetails from './components/JobDetails';
 import FavoriteJobsManager from './components/FavoriteJobsManager';
+import { ScheduledJobsManager } from './components/ScheduledJobsManager';
 import SystemNotifications from './components/SystemNotifications';
 import SystemStatus from './components/SystemStatus';
 
@@ -161,6 +162,10 @@ const AppContent: React.FC = () => {
     navigate('/jobs');
   };
 
+  const handleShowScheduledJobs = () => {
+    navigate('/scheduled-jobs');
+  };
+
   // Form close handlers
   const handleAccountFormClose = () => {
     setAccountFormModalOpen(false);
@@ -216,12 +221,22 @@ const AppContent: React.FC = () => {
                 <button
                   onClick={handleShowJobs}
                   className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                    location.pathname.startsWith('/jobs')
+                    location.pathname.startsWith('/jobs') && !location.pathname.startsWith('/scheduled-jobs')
                       ? 'bg-primary-100 text-primary-700'
                       : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
                   }`}
                 >
                   Jobs
+                </button>
+                <button
+                  onClick={handleShowScheduledJobs}
+                  className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                    location.pathname.startsWith('/scheduled-jobs')
+                      ? 'bg-primary-100 text-primary-700'
+                      : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+                  }`}
+                >
+                  Scheduled Jobs
                 </button>
                 <div className="relative">
                   <button
@@ -277,6 +292,7 @@ const AppContent: React.FC = () => {
               </div>
             } />
             <Route path="/jobs/:id" element={<JobDetailsWrapper onBack={handleBackToJobs} />} />
+            <Route path="/scheduled-jobs" element={<ScheduledJobsManager />} />
           </Routes>
         </div>
       </main>

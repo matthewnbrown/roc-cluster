@@ -299,7 +299,6 @@ async def get_auto_save_status():
                 "in_memory_db": settings.USE_IN_MEMORY_DB,
                 "auto_save_enabled": settings.AUTO_SAVE_ENABLED,
                 "auto_save_interval": settings.AUTO_SAVE_INTERVAL,
-                "auto_save_only_critical": settings.AUTO_SAVE_ONLY_CRITICAL,
                 "auto_save_background": settings.AUTO_SAVE_BACKGROUND,
                 "auto_save_memory_snapshot": settings.AUTO_SAVE_MEMORY_SNAPSHOT,
                 "running": auto_save_service._running

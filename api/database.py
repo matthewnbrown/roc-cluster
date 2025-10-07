@@ -78,7 +78,7 @@ def copy_data_to_memory_db():
             Cluster, ClusterUser, ArmoryPreferences, ArmoryWeaponPreference,
             TrainingPreferences, TrainingSoldierTypePreference,
             RocUser, RocUserStats, RocUserSoldiers, RocUserWeapons,
-            PageQueue, FavoriteJob, DatabaseMigration
+            PageQueue, FavoriteJob, ScheduledJob, ScheduledJobExecution, DatabaseMigration
         )
         
         # Copy data from file to memory
@@ -188,18 +188,27 @@ def copy_data_to_memory_db():
                 for job in favorite_jobs:
                     memory_db.merge(job)
                 
+                # Copy scheduled jobs and executions
+                scheduled_jobs = safe_query_all(ScheduledJob, "scheduled_jobs")
+                for job in scheduled_jobs:
+                    memory_db.merge(job)
+                
+                scheduled_job_executions = safe_query_all(ScheduledJobExecution, "scheduled_job_executions")
+                for execution in scheduled_job_executions:
+                    memory_db.merge(execution)
+                
                 # Copy database migrations
                 database_migrations = safe_query_all(DatabaseMigration, "database_migrations")
                 for migration in database_migrations:
                     memory_db.merge(migration)
                 
                 memory_db.commit()
-                print(f"✅ Copied {len(accounts)} accounts, {len(jobs)} jobs, {len(job_steps)} steps, {len(account_logs)} logs, {len(clusters)} clusters, {len(database_migrations)} migrations to in-memory database")
+                print(f"[SUCCESS] Copied {len(accounts)} accounts, {len(jobs)} jobs, {len(job_steps)} steps, {len(account_logs)} logs, {len(clusters)} clusters, {len(scheduled_jobs)} scheduled jobs, {len(database_migrations)} migrations to in-memory database")
         
         file_engine.dispose()
         
     except Exception as e:
-        print(f"⚠️  Warning: Could not copy data to in-memory database: {e}")
+        print(f"[WARNING] Could not copy data to in-memory database: {e}")
         print("Starting with empty in-memory database")
         raise
 
@@ -233,13 +242,15 @@ def save_memory_to_file():
             Cluster, ClusterUser, ArmoryPreferences, ArmoryWeaponPreference,
             TrainingPreferences, TrainingSoldierTypePreference,
             RocUser, RocUserStats, RocUserSoldiers, RocUserWeapons,
-            PageQueue, FavoriteJob, DatabaseMigration
+            PageQueue, FavoriteJob, ScheduledJob, ScheduledJobExecution, DatabaseMigration
         )
         
         # Copy data from memory to file
         with SessionLocal() as memory_db:
             with FileSessionLocal() as file_db:
                 # Clear existing data in file database (in reverse dependency order)
+                file_db.query(ScheduledJobExecution).delete()
+                file_db.query(ScheduledJob).delete()
                 file_db.query(JobStep).delete()
                 file_db.query(Job).delete()
                 file_db.query(FavoriteJob).delete()
@@ -361,17 +372,26 @@ def save_memory_to_file():
                 for job in favorite_jobs:
                     file_db.merge(job)
                 
+                # Copy scheduled jobs and executions
+                scheduled_jobs = memory_db.query(ScheduledJob).all()
+                for job in scheduled_jobs:
+                    file_db.merge(job)
+                
+                scheduled_job_executions = memory_db.query(ScheduledJobExecution).all()
+                for execution in scheduled_job_executions:
+                    file_db.merge(execution)
+                
                 database_migrations = memory_db.query(DatabaseMigration).all()
                 for migration in database_migrations:
                     file_db.merge(migration)
                 
                 file_db.commit()
-                print(f"✅ Saved {len(accounts)} accounts, {len(jobs)} jobs, {len(job_steps)} steps, {len(account_logs)} logs, {len(clusters)} clusters, {len(database_migrations)} migrations to file database")
+                print(f"[SUCCESS] Saved {len(accounts)} accounts, {len(jobs)} jobs, {len(job_steps)} steps, {len(account_logs)} logs, {len(clusters)} clusters, {len(scheduled_jobs)} scheduled jobs, {len(database_migrations)} migrations to file database")
         
         file_engine.dispose()
         
     except Exception as e:
-        print(f"❌ Error saving in-memory data to file: {e}")
+        print(f"[ERROR] Error saving in-memory data to file: {e}")
 
 def create_memory_snapshot() -> Dict[str, Any]:
     """Create a fast memory snapshot of all database data"""
@@ -386,7 +406,7 @@ def create_memory_snapshot() -> Dict[str, Any]:
             Cluster, ClusterUser, ArmoryPreferences, ArmoryWeaponPreference,
             TrainingPreferences, TrainingSoldierTypePreference,
             RocUser, RocUserStats, RocUserSoldiers, RocUserWeapons,
-            PageQueue, FavoriteJob, DatabaseMigration
+            PageQueue, FavoriteJob, ScheduledJob, ScheduledJobExecution, DatabaseMigration
         )
         
         snapshot = {}
@@ -416,6 +436,8 @@ def create_memory_snapshot() -> Dict[str, Any]:
             snapshot['roc_user_weapons'] = [obj.__dict__.copy() for obj in db.query(RocUserWeapons).all()]
             snapshot['page_queues'] = [obj.__dict__.copy() for obj in db.query(PageQueue).all()]
             snapshot['favorite_jobs'] = [obj.__dict__.copy() for obj in db.query(FavoriteJob).all()]
+            snapshot['scheduled_jobs'] = [obj.__dict__.copy() for obj in db.query(ScheduledJob).all()]
+            snapshot['scheduled_job_executions'] = [obj.__dict__.copy() for obj in db.query(ScheduledJobExecution).all()]
             snapshot['database_migrations'] = [obj.__dict__.copy() for obj in db.query(DatabaseMigration).all()]
             
             # Clean up SQLAlchemy internal state
@@ -461,11 +483,13 @@ def save_snapshot_to_file(snapshot: Dict[str, Any]):
             Cluster, ClusterUser, ArmoryPreferences, ArmoryWeaponPreference,
             TrainingPreferences, TrainingSoldierTypePreference,
             RocUser, RocUserStats, RocUserSoldiers, RocUserWeapons,
-            PageQueue, FavoriteJob, DatabaseMigration
+            PageQueue, FavoriteJob, ScheduledJob, ScheduledJobExecution, DatabaseMigration
         )
         
         with FileSessionLocal() as file_db:
             # Clear existing data
+            file_db.query(ScheduledJobExecution).delete()
+            file_db.query(ScheduledJob).delete()
             file_db.query(JobStep).delete()
             file_db.query(Job).delete()
             file_db.query(FavoriteJob).delete()
@@ -516,6 +540,8 @@ def save_snapshot_to_file(snapshot: Dict[str, Any]):
                 'roc_user_weapons': RocUserWeapons,
                 'page_queues': PageQueue,
                 'favorite_jobs': FavoriteJob,
+                'scheduled_jobs': ScheduledJob,
+                'scheduled_job_executions': ScheduledJobExecution,
                 'database_migrations': DatabaseMigration
             }
             

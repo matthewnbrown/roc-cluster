@@ -41,6 +41,11 @@ import {
   SystemNotification,
   SystemNotificationsResponse,
   PruningStatsResponse,
+  ScheduledJobCreateRequest,
+  ScheduledJobResponse,
+  ScheduledJobListResponse,
+  ScheduledJobExecutionResponse,
+  ScheduledJobExecutionListResponse,
 } from '../types/api';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000/api/v1';
@@ -538,6 +543,51 @@ export const systemApi = {
 
   async triggerFullVacuum(): Promise<{ success: boolean; message: string; details?: any }> {
     const response = await api.post('/system/vacuum/full');
+    return response.data;
+  },
+};
+
+// Scheduled Jobs API
+export const scheduledJobsApi = {
+  async list(status?: string): Promise<ScheduledJobListResponse> {
+    const params: any = {};
+    if (status) params.status = status;
+    const response: AxiosResponse<ScheduledJobListResponse> = await api.get('/scheduled-jobs/', { params });
+    return response.data;
+  },
+
+  async get(id: number): Promise<ScheduledJobResponse> {
+    const response: AxiosResponse<ScheduledJobResponse> = await api.get(`/scheduled-jobs/${id}`);
+    return response.data;
+  },
+
+  async create(data: ScheduledJobCreateRequest): Promise<ScheduledJobResponse> {
+    const response: AxiosResponse<ScheduledJobResponse> = await api.post('/scheduled-jobs/', data);
+    return response.data;
+  },
+
+  async update(id: number, data: ScheduledJobCreateRequest): Promise<ScheduledJobResponse> {
+    const response: AxiosResponse<ScheduledJobResponse> = await api.put(`/scheduled-jobs/${id}`, data);
+    return response.data;
+  },
+
+  async updateStatus(id: number, status: string): Promise<void> {
+    await api.patch(`/scheduled-jobs/${id}/status`, { status });
+  },
+
+  async delete(id: number): Promise<void> {
+    await api.delete(`/scheduled-jobs/${id}`);
+  },
+
+  async getExecutions(id: number, limit: number = 50): Promise<ScheduledJobExecutionListResponse> {
+    const response: AxiosResponse<ScheduledJobExecutionListResponse> = await api.get(`/scheduled-jobs/${id}/executions`, {
+      params: { limit },
+    });
+    return response.data;
+  },
+
+  async triggerExecution(id: number): Promise<{ message: string; job_id?: number }> {
+    const response: AxiosResponse<{ message: string; job_id?: number }> = await api.post(`/scheduled-jobs/${id}/trigger`);
     return response.data;
   },
 };

@@ -446,6 +446,70 @@ class FavoriteJob(Base):
     last_used_at = Column(UTCDateTime, nullable=True)  # When it was last used
 
 
+class ScheduledJobStatus(enum.Enum):
+    """Scheduled job status enumeration"""
+    ACTIVE = "active"
+    PAUSED = "paused"
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"
+    FAILED = "failed"
+
+
+class ScheduledJobScheduleType(enum.Enum):
+    """Scheduled job schedule type enumeration"""
+    ONCE = "once"  # Run at specific date/time
+    CRON = "cron"  # Cron-based recurring
+    DAILY = "daily"  # Daily schedule with time ranges
+
+
+class ScheduledJob(Base):
+    """Scheduled job model for storing job schedules"""
+    __tablename__ = "scheduled_jobs"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), nullable=False)  # User-friendly name
+    description = Column(Text, nullable=True)  # Optional description
+    job_config = Column(Text, nullable=False)  # JSON string of the complete job configuration (same as favorite jobs)
+    schedule_type = Column(Enum(ScheduledJobScheduleType), nullable=False)  # once, cron, daily
+    
+    # Schedule configuration - stored as JSON
+    schedule_config = Column(Text, nullable=False)  # JSON string of schedule-specific configuration
+    
+    # Status and execution tracking
+    status = Column(Enum(ScheduledJobStatus), default=ScheduledJobStatus.ACTIVE, nullable=False)
+    created_at = Column(UTCDateTime, server_default=func.now())
+    updated_at = Column(UTCDateTime, onupdate=func.now())
+    
+    # Execution tracking
+    last_executed_at = Column(UTCDateTime, nullable=True)  # When it was last executed
+    next_execution_at = Column(UTCDateTime, nullable=True)  # When it should run next
+    execution_count = Column(Integer, default=0, nullable=False)  # How many times it has been executed
+    failure_count = Column(Integer, default=0, nullable=False)  # How many times it has failed
+    
+    # Relationships
+    executions = relationship("ScheduledJobExecution", back_populates="scheduled_job", cascade="all, delete-orphan")
+
+
+class ScheduledJobExecution(Base):
+    """Track individual executions of scheduled jobs"""
+    __tablename__ = "scheduled_job_executions"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    scheduled_job_id = Column(Integer, ForeignKey("scheduled_jobs.id"), nullable=False)
+    job_id = Column(Integer, ForeignKey("jobs.id"), nullable=True)  # Reference to the created job
+    
+    # Execution details
+    scheduled_at = Column(UTCDateTime, nullable=False)  # When this execution was scheduled to run
+    started_at = Column(UTCDateTime, nullable=True)  # When execution actually started
+    completed_at = Column(UTCDateTime, nullable=True)  # When execution completed
+    status = Column(Enum(JobStatus), default=JobStatus.PENDING, nullable=False)
+    error_message = Column(Text, nullable=True)  # Error message if execution failed
+    
+    # Relationships
+    scheduled_job = relationship("ScheduledJob", back_populates="executions")
+    job = relationship("Job")
+
+
 class DatabaseMigration(Base):
     """Track executed database migration scripts"""
     __tablename__ = "database_migrations"

@@ -16,7 +16,7 @@ from api.database import init_db, get_db, auto_save_service
 from api.db_models import Account, Cluster, ClusterUser
 from api.schemas import AccountCreate, AccountResponse
 from api.account_manager import AccountManager
-from api.endpoints import accounts, actions, clusters, jobs, armory, reference_data, page_queue, favorite_jobs, system
+from api.endpoints import accounts, actions, clusters, jobs, armory, reference_data, page_queue, favorite_jobs, scheduled_jobs, system
 from api.async_logger import async_logger
 from api.captcha_feedback_service import captcha_feedback_service
 from api.page_data_service import page_data_service
@@ -73,6 +73,7 @@ else:
 # Global instances
 account_manager: Optional[AccountManager] = None
 job_manager: Optional[Any] = None
+scheduler_service: Optional[Any] = None
 
 async def create_initial_all_users_cluster():
     """Create the initial all_users cluster and add all existing users to it"""
@@ -127,7 +128,7 @@ async def create_initial_all_users_cluster():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize and cleanup resources"""
-    global account_manager, job_manager
+    global account_manager, job_manager, scheduler_service
     
     # Initialize database
     init_db()
@@ -173,6 +174,28 @@ async def lifespan(app: FastAPI):
     job_manager = JobManager(account_manager)
     logger.info("Job manager initialized")
     
+    # Initialize scheduler service
+    from api.scheduler_service import SchedulerService
+    scheduler_service = SchedulerService(job_manager)
+    
+    # Clean up expired scheduled jobs before starting scheduler
+    try:
+        processed_count = await scheduler_service.cleanup_expired_scheduled_jobs()
+        if processed_count > 0:
+            logger.info(f"Processed {processed_count} expired scheduled jobs during startup (canceled once jobs, recalculated recurring jobs)")
+        else:
+            logger.info("No expired scheduled jobs found during startup")
+    except Exception as e:
+        logger.error(f"Error cleaning up expired scheduled jobs during startup: {e}")
+        # Don't fail startup if cleanup fails
+    
+    await scheduler_service.start_scheduler()
+    logger.info("Scheduler service initialized and started")
+    
+    # Set scheduler service in endpoints
+    from api.endpoints import scheduled_jobs
+    scheduled_jobs.set_scheduler_service(scheduler_service)
+    
     # Start job pruning service
     await job_pruning_service.start()
     logger.info("Job pruning service started")
@@ -186,6 +209,11 @@ async def lifespan(app: FastAPI):
     # Stop auto-save service
     await auto_save_service.stop()
     logger.info("Auto-save service stopped")
+    
+    # Stop scheduler service
+    if scheduler_service:
+        await scheduler_service.stop_scheduler()
+        logger.info("Scheduler service stopped")
     
     # Stop job pruning service
     await job_pruning_service.stop()
@@ -242,6 +270,7 @@ app.include_router(armory.router, prefix="/api/v1/armory", tags=["armory"])
 app.include_router(reference_data.router, prefix="/api/v1/reference-data", tags=["reference-data"])
 app.include_router(page_queue.router, prefix="/api/v1/page-queue", tags=["page-queue"])
 app.include_router(favorite_jobs.router, prefix="/api/v1/favorite-jobs", tags=["favorite-jobs"])
+app.include_router(scheduled_jobs.router, prefix="/api/v1/scheduled-jobs", tags=["scheduled-jobs"])
 app.include_router(system.router, prefix="/api/v1/system", tags=["system"])
 
 @app.get("/")

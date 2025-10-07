@@ -27,6 +27,8 @@ python-dotenv>=0.19.0,<1.1.0
 
 # Job Scheduling
 APScheduler>=3.10.0,<3.11.0
+croniter>=1.4.0,<2.0.0
+pytz>=2023.3
 
 # Optional: Database drivers
 # For PostgreSQL: psycopg2-binary>=2.9.0,<2.10.0

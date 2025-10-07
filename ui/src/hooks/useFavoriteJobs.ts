@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { favoriteJobsApi } from '../services/api';
 import { FavoriteJobResponse, FavoriteJobCreateRequest } from '../types/api';
 import { getCurrentTimestamp } from '../utils/dateUtils';
@@ -7,13 +7,18 @@ export const useFavoriteJobs = () => {
   const [favoriteJobs, setFavoriteJobs] = useState<FavoriteJobResponse[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const hasFetched = useRef(false);
 
-  const fetchFavoriteJobs = async () => {
+  const fetchFavoriteJobs = async (force = false) => {
+    // Prevent multiple simultaneous requests
+    if (loading && !force) return;
+    
     setLoading(true);
     setError(null);
     try {
       const response = await favoriteJobsApi.list();
       setFavoriteJobs(response.favorite_jobs);
+      hasFetched.current = true;
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to fetch favorite jobs');
     } finally {
@@ -79,7 +84,9 @@ export const useFavoriteJobs = () => {
   };
 
   useEffect(() => {
-    fetchFavoriteJobs();
+    if (!hasFetched.current) {
+      fetchFavoriteJobs();
+    }
   }, []);
 
   return {

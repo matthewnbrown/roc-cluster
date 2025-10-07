@@ -245,6 +245,78 @@ export interface FavoriteJobCreateRequest {
   job_config: Record<string, any>;
 }
 
+// Scheduled Job Types
+export interface DailyScheduleRange {
+  start_time: string; // "HH:MM" format
+  end_time: string;   // "HH:MM" format
+  interval_minutes: number;
+  random_noise_minutes?: number; // Random variation in minutes (Gaussian distribution)
+}
+
+export interface DailyScheduleConfig {
+  ranges: DailyScheduleRange[];
+  timezone?: string; // IANA timezone identifier (e.g., "America/New_York")
+}
+
+export interface OnceScheduleConfig {
+  execution_time: string; // ISO datetime string
+}
+
+export interface CronScheduleConfig {
+  cron_expression: string;
+}
+
+export interface ScheduledJobCreateRequest {
+  name: string;
+  description?: string;
+  job_config: Record<string, any>; // Same as favorite jobs
+  schedule_type: 'once' | 'cron' | 'daily';
+  
+  // Schedule-specific configuration
+  once_config?: OnceScheduleConfig;
+  cron_config?: CronScheduleConfig;
+  daily_config?: DailyScheduleConfig;
+}
+
+export interface ScheduledJobResponse {
+  id: number;
+  name: string;
+  description?: string;
+  job_config: Record<string, any>;
+  schedule_type: string;
+  schedule_config: Record<string, any>; // Parsed schedule configuration
+  
+  // Status and tracking
+  status: string;
+  created_at: string;
+  updated_at?: string;
+  last_executed_at?: string;
+  next_execution_at?: string;
+  execution_count: number;
+  failure_count: number;
+}
+
+export interface ScheduledJobListResponse {
+  scheduled_jobs: ScheduledJobResponse[];
+  total: number;
+}
+
+export interface ScheduledJobExecutionResponse {
+  id: number;
+  scheduled_job_id: number;
+  job_id?: number;
+  scheduled_at: string;
+  started_at?: string;
+  completed_at?: string;
+  status: string;
+  error_message?: string;
+}
+
+export interface ScheduledJobExecutionListResponse {
+  executions: ScheduledJobExecutionResponse[];
+  total: number;
+}
+
 export interface FavoriteJobResponse {
   id: number;
   name: string;

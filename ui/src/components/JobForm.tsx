@@ -16,9 +16,11 @@ import FriendlyActionParameters from './FriendlyActionParameters';
 import ValidationErrorDisplay from './ValidationErrorDisplay';
 
 interface JobFormProps {
-  isOpen: boolean;
+  isOpen?: boolean;
   onClose: () => void;
   jobToClone?: JobResponse | null;
+  onSuccess?: (jobConfig: any) => void; // For scheduled job mode
+  isScheduledJobMode?: boolean; // When true, return config instead of creating job
 }
 
 interface FormData {
@@ -37,7 +39,7 @@ interface FormData {
   }>;
 }
 
-const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
+const JobForm: React.FC<JobFormProps> = ({ isOpen = true, onClose, jobToClone, onSuccess, isScheduledJobMode = false }) => {
   const queryClient = useQueryClient();
   const createJobMutation = useCreateJob();
   const { data: actionTypesData } = useValidActionTypes();
@@ -364,25 +366,36 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
 
       console.log('Submitting job data:', jobData);
       console.log('Raw form data:', data);
-      await createJobMutation.mutateAsync(jobData);
-      // Reset the form to clear all fields with explicit default values
-      reset({
-        name: '',
-        description: '',
-        parallel_execution: false,
-        steps: [
-          {
-            action_type: '',
-            account_ids: [],
-            cluster_ids: [],
-            max_retries: 0,
-            is_async: false,
-            parameters: {},
-          },
-        ],
-      });
-      setValidationErrors([]);
-      onClose();
+      
+      if (isScheduledJobMode) {
+        // Return the job configuration instead of creating the job
+        const jobConfig = {
+          steps: jobData.steps,
+          parallel_execution: jobData.parallel_execution
+        };
+        onSuccess?.(jobConfig);
+      } else {
+        // Create the actual job
+        await createJobMutation.mutateAsync(jobData);
+        // Reset the form to clear all fields with explicit default values
+        reset({
+          name: '',
+          description: '',
+          parallel_execution: false,
+          steps: [
+            {
+              action_type: '',
+              account_ids: [],
+              cluster_ids: [],
+              max_retries: 0,
+              is_async: false,
+              parameters: {},
+            },
+          ],
+        });
+        setValidationErrors([]);
+        onClose();
+      }
     } catch (error) {
       console.error('Failed to create job:', error);
       
@@ -795,7 +808,7 @@ const JobForm: React.FC<JobFormProps> = ({ isOpen, onClose, jobToClone }) => {
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="Create Job"
+      title={isScheduledJobMode ? "Create Job Configuration" : "Create Job"}
       size="2xl"
     >
       <div className="flex flex-col min-h-0">

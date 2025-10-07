@@ -480,6 +480,96 @@ class FavoriteJobListResponse(BaseModel):
     total: int
 
 
+# Scheduled Job Schemas
+class DailyScheduleRange(BaseModel):
+    """Daily schedule time range configuration"""
+    start_time: str  # "HH:MM" format
+    end_time: str    # "HH:MM" format
+    interval_minutes: int  # Minutes between executions within this range
+    random_noise_minutes: Optional[int] = 0  # Random variation in minutes (Gaussian distribution)
+
+
+class DailyScheduleConfig(BaseModel):
+    """Daily schedule configuration"""
+    ranges: List[DailyScheduleRange]  # List of time ranges with intervals
+
+
+class OnceScheduleConfig(BaseModel):
+    """One-time schedule configuration"""
+    execution_time: datetime  # When to execute
+
+
+class CronScheduleConfig(BaseModel):
+    """Cron schedule configuration"""
+    cron_expression: str  # Standard cron expression
+
+
+class ScheduledJobCreateRequest(BaseModel):
+    """Request for creating a scheduled job"""
+    name: str
+    description: Optional[str] = None
+    job_config: Dict[str, Any]  # Complete job configuration (same as favorite jobs)
+    schedule_type: str  # "once", "cron", or "daily"
+    
+    # Schedule-specific configuration
+    once_config: Optional[OnceScheduleConfig] = None
+    cron_config: Optional[CronScheduleConfig] = None
+    daily_config: Optional[DailyScheduleConfig] = None
+
+
+class ScheduledJobResponse(BaseModel):
+    """Response for a scheduled job"""
+    id: int
+    name: str
+    description: Optional[str] = None
+    job_config: Dict[str, Any]
+    schedule_type: str
+    schedule_config: Dict[str, Any]  # Parsed schedule configuration
+    
+    # Status and tracking
+    status: str
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    last_executed_at: Optional[datetime] = None
+    next_execution_at: Optional[datetime] = None
+    execution_count: int
+    failure_count: int
+
+    class Config:
+        json_encoders = {
+            datetime: datetime_encoder
+        }
+
+
+class ScheduledJobExecutionResponse(BaseModel):
+    """Response for a scheduled job execution"""
+    id: int
+    scheduled_job_id: int
+    job_id: Optional[int] = None
+    scheduled_at: datetime
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    status: str
+    error_message: Optional[str] = None
+
+    class Config:
+        json_encoders = {
+            datetime: datetime_encoder
+        }
+
+
+class ScheduledJobListResponse(BaseModel):
+    """Response for listing scheduled jobs"""
+    scheduled_jobs: List[ScheduledJobResponse]
+    total: int
+
+
+class ScheduledJobExecutionListResponse(BaseModel):
+    """Response for listing scheduled job executions"""
+    executions: List[ScheduledJobExecutionResponse]
+    total: int
+
+
 # Weapon Schemas
 class WeaponResponse(BaseModel):
     """Response schema for weapons"""
