@@ -6,6 +6,7 @@ import asyncio
 import json
 import logging
 from datetime import datetime, timezone
+import random
 from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
@@ -601,7 +602,8 @@ class JobManager:
                 # Get all account IDs from both direct account_ids and cluster expansion
                 all_account_ids = self._get_all_account_ids_for_step(step_data, db)
                 
-                # Create one step that handles all accounts
+                random.shuffle(all_account_ids)
+
                 step = JobStep(
                     job_id=job.id,
                     step_order=step_order,
