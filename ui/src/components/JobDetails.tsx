@@ -206,6 +206,16 @@ const JobDetails: React.FC<JobDetailsProps> = ({ jobId, onBack }) => {
         );
         break;
         
+      case 'purchase_armory_by_preferences':
+        actionSpecificItems.push(
+          { key: 'total_weapons_purchased', label: 'Weapons Purchased', value: summary.total_weapons_purchased, color: 'text-green-600' },
+          { key: 'total_gold_spent', label: 'Gold Spent', value: formatNumber(summary.total_gold_spent), color: 'text-yellow-600' },
+          { key: 'purchases_successful', label: 'Purchases Successful', value: summary.purchases_successful, color: 'text-green-600' },
+          { key: 'purchases_failed', label: 'Purchases Failed', value: summary.purchases_failed, color: 'text-red-600' },
+          { key: 'weapon_types_purchased', label: 'Weapon Types', value: summary.weapon_types_purchased, color: 'text-blue-600' }
+        );
+        break;
+        
       case 'purchase_training':
         actionSpecificItems.push(
           { key: 'purchases_successful', label: 'Purchases Successful', value: summary.purchases_successful, color: 'text-green-600' },

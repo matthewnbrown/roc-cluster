@@ -269,6 +269,14 @@ const JobList: React.FC<JobListProps> = ({ onViewJob, onCreateJob, onCloneJob })
         );
         break;
         
+      case 'purchase_armory_by_preferences':
+        actionSpecificItems.push(
+          { key: 'total_weapons_purchased', label: 'Weapons', value: summary.total_weapons_purchased, color: 'text-green-600' },
+          { key: 'total_gold_spent', label: 'Gold Spent', value: formatNumber(summary.total_gold_spent), color: 'text-yellow-600' },
+          { key: 'weapon_types_purchased', label: 'Types', value: summary.weapon_types_purchased, color: 'text-blue-600' }
+        );
+        break;
+        
       case 'purchase_training':
         actionSpecificItems.push(
           { key: 'soldiers_trained', label: 'Soldiers', value: summary.soldiers_trained, color: 'text-blue-600' },

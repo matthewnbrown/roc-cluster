@@ -25,6 +25,7 @@ from sqlalchemy import false
 from api.db_models import Account, UserCookies, ArmoryPreferences, ArmoryWeaponPreference, Weapon
 from api.page_parsers.attack import parse_attack_page
 from api.page_parsers.cardpage_parser import parse_cards_page
+from api.page_parsers.common import get_clockbar_stats
 from api.page_parsers.metadata_parser import parse_metadata_data
 from api.page_parsers.spy_parser import parse_recon_data
 from api.page_parsers.sab_parser import parse_sabotage_page
@@ -747,25 +748,27 @@ class GameAccountManager:
                 if not preferences:
                     return {"success": False, "error": "No armory preferences found for this account"}
                 
-                logger.info(f"Found {len(preferences.weapon_preferences)} weapon preferences for account {self.account.id}")
-                
-                # Get current gold from metadata
-                metadata_result = await self.get_metadata()
-                if not metadata_result or not metadata_result.get("success"):
-                    return {"success": False, "error": "Failed to get account metadata"}
-                
-                current_gold = metadata_result["data"].gold
+                logger.debug(f"Found {len(preferences.weapon_preferences)} weapon preferences for account {self.account.id}")
                 
                 # Load armory page
                 armory_url = self.url_generator.armory()
                 
+                
                 armory_resp = await self.__get_page(armory_url)
                 armory_text = await armory_resp.text()
+                
+                stats = get_clockbar_stats(armory_text)
+                name = stats.get("name")
+                current_gold = stats.get("gold", -1)
+                if not name or current_gold < 0:
+                    return {"success": False, "error": "Failed to get current user gold"}
+                
+                
                 # Parse armory data
                 armory_data = parse_armory_data(armory_text)
                 
                 # Log available weapons in armory
-                logger.info(f"Available weapons in armory: {[w.get('id') for w in armory_data.get('weapons', [])]}")
+                logger.debug(f"Available weapons in armory: {[w.get('id') for w in armory_data.get('weapons', [])]}")
                 
                 # Calculate weapon portions based on preferences and available gold
                 weapon_purchases = self._calculate_weapon_purchases(
@@ -785,7 +788,40 @@ class GameAccountManager:
                     return {"success": False, "error": "Failed to purchase armory items"}
                 
                 else:
-                    return {"success": True, "data": weapon_purchases}
+                    # Calculate summary data
+                    total_weapons_purchased = sum(weapon_purchases.values())
+                    total_gold_spent = armory_data["current_user"]["gold"] - purchase_result_data["current_user"]["gold"]
+                    
+                    # Create detailed weapon breakdown
+                    weapon_breakdown = []
+                    for weapon_id, quantity in weapon_purchases.items():
+                        # Find weapon details
+                        weapon_data = None
+                        for weapon in armory_data.get('weapons', []):
+                            if str(weapon['id']) == str(weapon_id):
+                                weapon_data = weapon
+                                break
+                        
+                        if weapon_data:
+                            weapon_breakdown.append({
+                                "weapon_id": weapon_id,
+                                "weapon_name": weapon_data.get('name', 'Unknown'),
+                                "quantity": quantity,
+                                "unit_cost": weapon_data.get('cost', 0),
+                                "total_cost": weapon_data.get('cost', 0) * quantity
+                            })
+                    
+                    return {
+                        "success": True, 
+                        "data": weapon_purchases,
+                        "summary": {
+                            "total_weapons_purchased": total_weapons_purchased,
+                            "total_gold_spent": total_gold_spent,
+                            "weapon_breakdown": weapon_breakdown,
+                            "weapons_purchased": total_weapons_purchased,
+                            "cost": total_gold_spent
+                        }
+                    }
                         
             finally:
                 db.close()
@@ -805,7 +841,7 @@ class GameAccountManager:
             if weapon_pref.percentage <= 0:
                 continue
                 
-            logger.info(f"Processing weapon preference: {weapon_pref.weapon.display_name} (ROC ID: {weapon_pref.weapon.roc_weapon_id}, Percentage: {weapon_pref.percentage}%)")
+            logger.debug(f"Processing weapon preference: {weapon_pref.weapon.display_name} (ROC ID: {weapon_pref.weapon.roc_weapon_id}, Percentage: {weapon_pref.percentage}%)")
                 
             # Find weapon in armory data using the roc_weapon_id
             weapon_data = None
@@ -829,7 +865,7 @@ class GameAccountManager:
             weapon_cost = weapon_data['cost']
             max_weapons = gold_for_weapon // weapon_cost
             
-            logger.info(f"Weapon {weapon_pref.weapon.display_name}: Gold allocated: {gold_for_weapon}, Cost: {weapon_cost}, Max weapons: {max_weapons}")
+            logger.debug(f"Weapon {weapon_pref.weapon.display_name}: Gold allocated: {gold_for_weapon}, Cost: {weapon_cost}, Max weapons: {max_weapons}")
             
             if max_weapons > 0:
                 weapon_purchases[str(weapon_pref.weapon.roc_weapon_id)] = max_weapons

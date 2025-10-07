@@ -292,6 +292,7 @@ class JobManager:
                     "success": "boolean",
                     "message": "string (optional)",
                     "data": "object (optional) - contains purchase details",
+                    "summary": "object (optional) - contains totals and breakdown of weapons purchased and gold spent",
                     "error": "string (optional)"
                 }
             },
@@ -1369,6 +1370,8 @@ class JobManager:
             summary.update(self._summarize_recruit_results(successful_results))
         elif action_type == "purchase_armory":
             summary.update(self._summarize_purchase_armory_results(successful_results))
+        elif action_type == "purchase_armory_by_preferences":
+            summary.update(self._summarize_purchase_armory_by_preferences_results(successful_results))
         elif action_type == "purchase_training":
             summary.update(self._summarize_purchase_training_results(successful_results))
         elif action_type == "become_officer":
@@ -1548,6 +1551,37 @@ class JobManager:
                     summary["total_cost"] += result_data.get("cost", 0)
                     summary["weapons_sold"] += result_data.get("weapons_sold", 0)
                     summary["total_revenue"] += result_data.get("revenue", 0)
+                else:
+                    summary["purchases_failed"] += 1
+        
+        return summary
+    
+    def _summarize_purchase_armory_by_preferences_results(self, successful_results: List[Dict]) -> Dict[str, Any]:
+        """Summarize purchase armory by preferences action results"""
+        summary = {
+            "total_weapons_purchased": 0,
+            "total_gold_spent": 0,
+            "purchases_successful": 0,
+            "purchases_failed": 0,
+            "total_retries": 0,
+            "weapon_types_purchased": 0
+        }
+        
+        for result in successful_results:
+            result_data = result.get("result", {})
+            if isinstance(result_data, dict):
+                summary["total_retries"] += result_data.get("retries", 0)
+                if result_data.get("success"):
+                    summary["purchases_successful"] += 1
+                    
+                    # Extract summary data from the result
+                    summary_data = result_data.get("summary", {})
+                    summary["total_weapons_purchased"] += summary_data.get("total_weapons_purchased", 0)
+                    summary["total_gold_spent"] += summary_data.get("total_gold_spent", 0)
+                    
+                    # Count unique weapon types purchased
+                    weapon_breakdown = summary_data.get("weapon_breakdown", [])
+                    summary["weapon_types_purchased"] += len(weapon_breakdown)
                 else:
                     summary["purchases_failed"] += 1
         
