@@ -44,6 +44,9 @@ class Settings:
     DB_MAX_OVERFLOW: int = int(os.getenv("DB_MAX_OVERFLOW", "-1"))
     DB_POOL_RECYCLE: int = int(os.getenv("DB_POOL_RECYCLE", "3600"))  # 1 hour
     
+    # Job Pruning Settings
+    JOB_PRUNE_KEEP_COUNT: int = int(os.getenv("JOB_PRUNE_KEEP_COUNT", "50"))  # Number of latest jobs to keep
+    
     # Concurrency Control
     MAX_CONCURRENT_OPERATIONS: int = int(os.getenv("MAX_CONCURRENT_OPERATIONS", "100"))
     

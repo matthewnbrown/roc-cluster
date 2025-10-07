@@ -17,6 +17,7 @@ from sqlalchemy import and_, func, text
 from api.database import SessionLocal
 from api.db_models import Job, JobStep, JobStatus, AccountLog
 from api.async_logger import async_logger
+from config import settings
 import json
 
 logger = logging.getLogger(__name__)
@@ -129,19 +130,20 @@ class JobPruningService:
             logger.error(f"Error stopping job pruning service: {e}")
     
     async def _prune_job_steps(self):
-        """Remove all job steps from the oldest jobs, keeping the latest 10 jobs"""
-        logger.info("Starting job steps pruning process")
+        """Remove all job steps from the oldest jobs, keeping the latest N jobs (configurable)"""
+        keep_count = settings.JOB_PRUNE_KEEP_COUNT
+        logger.info(f"Starting job steps pruning process (keeping latest {keep_count} jobs)")
         
         db = SessionLocal()
         try:
-            # Find the oldest jobs that haven't been pruned yet (keep the latest 10 jobs, remove steps from the rest)
-            # Order by created_at DESC to get newest first, then offset(10) to skip the 10 newest
+            # Find the oldest jobs that haven't been pruned yet (keep the latest N jobs, remove steps from the rest)
+            # Order by created_at DESC to get newest first, then offset(N) to skip the N newest
             jobs_to_prune = db.query(Job).filter(
                 Job.pruned == False
-            ).order_by(Job.created_at.desc()).offset(10).all()
+            ).order_by(Job.created_at.desc()).offset(keep_count).all()
             
             if not jobs_to_prune:
-                logger.info("No unpruned jobs found beyond the latest 10 jobs - nothing to prune")
+                logger.info(f"No unpruned jobs found beyond the latest {keep_count} jobs - nothing to prune")
                 return
             
             total_steps_removed = 0
@@ -193,7 +195,7 @@ class JobPruningService:
                 'jobs_affected': jobs_affected
             }
             
-            logger.info(f"Job steps pruning completed: {total_steps_removed} steps removed from {len(jobs_affected)} old jobs (keeping latest 10 jobs)")
+            logger.info(f"Job steps pruning completed: {total_steps_removed} steps removed from {len(jobs_affected)} old jobs (keeping latest {keep_count} jobs)")
             
             # Log to async logger for persistence
             await async_logger.log(

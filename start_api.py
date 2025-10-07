@@ -28,9 +28,9 @@ def main():
         "USE_IN_MEMORY_DB": "False",
         "AUTO_SAVE_ENABLED": "True",
         "AUTO_SAVE_INTERVAL": "300",
-        "AUTO_SAVE_ONLY_CRITICAL": "False",
         "AUTO_SAVE_BACKGROUND": "True",
-        "AUTO_SAVE_MEMORY_SNAPSHOT": "True"
+        "AUTO_SAVE_MEMORY_SNAPSHOT": "True",
+        "JOB_PRUNE_KEEP_COUNT": "50"
     }
     
     for key, default_value in env_vars.items():
@@ -50,7 +50,7 @@ def main():
     print(f"In-Memory DB: {os.environ['USE_IN_MEMORY_DB']}")
     if os.environ['USE_IN_MEMORY_DB'].lower() == 'true':
         print(f"Auto-Save: {os.environ['AUTO_SAVE_ENABLED']} (every {os.environ['AUTO_SAVE_INTERVAL']}s)")
-        print(f"Critical-Only: {os.environ['AUTO_SAVE_ONLY_CRITICAL']}, Background: {os.environ['AUTO_SAVE_BACKGROUND']}")
+        print(f"Background: {os.environ['AUTO_SAVE_BACKGROUND']}")
         print(f"Memory Snapshot: {os.environ['AUTO_SAVE_MEMORY_SNAPSHOT']}")
     print("=" * 50)
     print("📚 API Documentation will be available at:")
