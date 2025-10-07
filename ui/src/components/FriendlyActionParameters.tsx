@@ -105,10 +105,8 @@ const TrainingForm: React.FC<{
     { key: 'untrain[untrained_mercs]', label: 'Untrain Untrained Mercs', description: 'Untrain untrained mercenaries' },
   ];
 
-  // Initialize training orders from current params (only once)
+  // Initialize training orders from current params
   useEffect(() => {
-    if (initializedRef.current) return;
-    
     console.log('TrainingForm - currentParams:', currentParams);
     console.log('TrainingForm - currentParams.training_orders:', currentParams.training_orders);
     console.log('TrainingForm - typeof currentParams.training_orders:', typeof currentParams.training_orders);
@@ -127,11 +125,11 @@ const TrainingForm: React.FC<{
       }
     }
     
-    if (Object.keys(currentOrders).length > 0) {
-      console.log('Initializing training orders from params:', currentOrders);
-      setTrainingOrders(currentOrders);
-      initializedRef.current = true;
-    }
+    // Always update the training orders state when currentParams change
+    // This ensures cloned jobs get properly initialized with their step data
+    console.log('Setting training orders from params:', currentOrders);
+    setTrainingOrders(currentOrders);
+    initializedRef.current = true;
   }, [currentParams]);
 
   const handleFieldChange = (fieldKey: string, value: string) => {
@@ -249,6 +247,13 @@ const CreditSavingForm: React.FC<{
 }> = ({ stepIndex, currentParams, register, setValue }) => {
   const [creditSavingValue, setCreditSavingValue] = useState<string>(currentParams.value || 'on');
 
+  // Update state when currentParams change (for cloning support)
+  useEffect(() => {
+    if (currentParams.value !== undefined) {
+      setCreditSavingValue(currentParams.value || 'on');
+    }
+  }, [currentParams.value]);
+
   const handleCreditSavingChange = (value: string) => {
     setCreditSavingValue(value);
     // Set the value in the form
@@ -302,6 +307,24 @@ const ArmoryPreferencesForm: React.FC<{
     const total = Object.values(newPercentages).reduce((sum, percentage) => sum + percentage, 0);
     setTotalPercentage(total);
   }, [weapons, currentParams.weapon_percentages]);
+
+  // Also update when the entire currentParams object changes (for cloning support)
+  useEffect(() => {
+    if (currentParams.weapon_percentages) {
+      const currentWeaponPercentages = currentParams.weapon_percentages;
+      const newPercentages: Record<string, number> = {};
+      
+      weapons.forEach(weapon => {
+        newPercentages[weapon.name] = currentWeaponPercentages[weapon.name] || 0;
+      });
+      
+      setWeaponPercentages(newPercentages);
+      
+      // Calculate total percentage
+      const total = Object.values(newPercentages).reduce((sum, percentage) => sum + percentage, 0);
+      setTotalPercentage(total);
+    }
+  }, [currentParams, weapons]);
 
   const handlePercentageChange = (weaponName: string, value: string) => {
     const numValue = Math.max(0, Math.min(100, parseFloat(value) || 0));
