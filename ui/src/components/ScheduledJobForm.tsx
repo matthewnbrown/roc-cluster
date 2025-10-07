@@ -202,6 +202,21 @@ export const ScheduledJobForm: React.FC<ScheduledJobFormProps> = ({
         onClose={() => setShowJobForm(false)}
         onSuccess={(jobConfig) => handleJobCreated(jobConfig)}
         isScheduledJobMode={true}
+        jobToClone={formData.job_config ? {
+          id: 0,
+          name: 'Scheduled Job Configuration',
+          description: '',
+          status: 'pending' as any,
+          parallel_execution: formData.job_config.parallel_execution || false,
+          created_at: new Date().toISOString(),
+          started_at: undefined,
+          completed_at: undefined,
+          total_steps: formData.job_config.steps?.length || 0,
+          completed_steps: 0,
+          failed_steps: 0,
+          error_message: undefined,
+          steps: formData.job_config.steps || []
+        } : null}
       />
     );
   }
