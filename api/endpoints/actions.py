@@ -285,19 +285,21 @@ async def purchase_armory(
     request: ArmoryPurchaseRequest,
     manager: AccountManager = Depends(get_account_manager)
 ):
-    """Purchase items from armory"""
+    """Purchase and/or sell items in armory"""
     try:
         result = await manager.execute_action(
             id_type=request.acting_user.id_type,
             id=request.acting_user.id,
             action=AccountManager.ActionType.PURCHASE_ARMORY,
             max_retries=request.max_retries,
-            items=request.items
+            buy_items=request.buy_items,
+            sell_items=request.sell_items
         )
         
         return ActionResponse(
             success=result["success"],
             message=result.get("message"),
+            data=result.get("data"),
             error=result.get("error"),
             timestamp=datetime.now(timezone.utc)
         )

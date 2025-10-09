@@ -185,8 +185,9 @@ class RecruitRequest(SelfActionRequest):
 
 
 class ArmoryPurchaseRequest(SelfActionRequest):
-    """Purchase from armory"""
-    items: Dict[str, int]  # item_name: quantity
+    """Purchase and/or sell items in armory"""
+    buy_items: Optional[Dict[str, int]] = None  # weapon_id: quantity to buy
+    sell_items: Optional[Dict[str, int]] = None  # weapon_id: quantity to sell
 
 
 class TrainingPurchaseRequest(SelfActionRequest):

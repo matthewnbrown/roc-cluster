@@ -720,12 +720,200 @@ class GameAccountManager:
             return {"success": False, "error": str(e)}
     
     # not implemented
-    async def purchase_armory(self, items: Dict[str, int]) -> Dict[str, Any]:
-        """Purchase items from armory"""
-       
+    async def purchase_armory(self, buy_items: Dict[str, int] = None, sell_items: Dict[str, int] = None) -> Dict[str, Any]:
+        """Purchase and/or sell items in armory
+        
+        Args:
+            buy_items: Dictionary mapping weapon IDs (as strings) to quantities to buy
+                      e.g. {"1": 10, "5": 20} to buy 10 of weapon 1 and 20 of weapon 5
+            sell_items: Dictionary mapping weapon IDs (as strings) to quantities to sell
+                       e.g. {"3": 5, "8": 15} to sell 5 of weapon 3 and 15 of weapon 8
+        
+        Returns:
+            Dict with success status and transaction details
+        """
         try:
-            # Implement armory purchase logic
-            return {"success": True, "messages": [f"Purchased armory items: {items}"]}
+            if not buy_items and not sell_items:
+                return {"success": False, "errors": ["Must provide at least buy_items or sell_items"]}
+            
+            if (buy_items and not isinstance(buy_items, dict)) or (sell_items and not isinstance(sell_items, dict)):
+                return {"success": False, "errors": ["buy_items and sell_items must be dictionaries"]}
+            
+            # Validate all items
+            validated_purchases = {}
+            validated_sales = {}
+            db = SessionLocal()
+            try:
+                # First pass: validate quantities and collect all weapon IDs
+                temp_purchases = {}
+                temp_sales = {}
+                all_weapon_ids = set()
+                
+                # Validate buy items quantities
+                if buy_items:
+                    for weapon_id, quantity in buy_items.items():
+                        # Convert to string if needed
+                        weapon_id_str = str(weapon_id)
+                        
+                        # Validate quantity
+                        try:
+                            quantity_int = int(quantity)
+                        except (ValueError, TypeError):
+                            return {"success": False, "error": f"Invalid buy quantity for weapon {weapon_id}: {quantity}. Must be an integer."}
+                        
+                        if quantity_int < 0:
+                            return {"success": False, "error": f"Invalid buy quantity for weapon {weapon_id}: {quantity}. Must be non-negative."}
+                        
+                        # Skip weapons with 0 quantity
+                        if quantity_int == 0:
+                            continue
+                        
+                        temp_purchases[weapon_id_str] = quantity_int
+                        all_weapon_ids.add(weapon_id_str)
+                
+                # Validate sell items quantities
+                if sell_items:
+                    for weapon_id, quantity in sell_items.items():
+                        # Convert to string if needed
+                        weapon_id_str = str(weapon_id)
+                        
+                        # Validate quantity
+                        try:
+                            quantity_int = int(quantity)
+                        except (ValueError, TypeError):
+                            return {"success": False, "errors": [f"Invalid sell quantity for weapon {weapon_id}: {quantity}. Must be an integer."]}
+                        
+                        if quantity_int < 0:
+                            return {"success": False, "errors": [f"Invalid sell quantity for weapon {weapon_id}: {quantity}. Must be non-negative."]}
+                        
+                        # Skip weapons with 0 quantity
+                        if quantity_int == 0:
+                            continue
+                        
+                        temp_sales[weapon_id_str] = quantity_int
+                        all_weapon_ids.add(weapon_id_str)
+                
+                if not temp_purchases and not temp_sales:
+                    return {"success": False, "errors": ["No valid weapons to buy or sell (all quantities are 0 or items are empty)"]}
+                
+                # Single database query to fetch all weapons at once
+                weapons = db.query(Weapon).filter(Weapon.roc_weapon_id.in_(all_weapon_ids)).all()
+                valid_weapon_ids = {str(weapon.roc_weapon_id) for weapon in weapons}
+                
+                # Check if any weapon IDs are invalid
+                invalid_weapon_ids = all_weapon_ids - valid_weapon_ids
+                if invalid_weapon_ids:
+                    return {"success": False, "errors": [f"Invalid weapon IDs not found in database: {', '.join(sorted(invalid_weapon_ids))}"]}
+                
+                # All weapon IDs are valid, use the validated quantities
+                validated_purchases = temp_purchases
+                validated_sales = temp_sales
+                
+            finally:
+                db.close()
+            
+            armory_url = self.url_generator.armory()
+             
+            def get_armory_page():
+                return self.__get_page(armory_url)
+            armory_resp = await self.__retry_login_wrapper(get_armory_page)
+            armory_text = await armory_resp.text()
+            
+            stats = get_clockbar_stats(armory_text)
+            current_gold = stats.get("gold", -1)
+            if current_gold < 0:
+                return {"success": False, "errors": ["Failed to get current user gold"]}
+            
+            # Parse armory data to get weapon details
+            armory_data = parse_armory_data(armory_text)
+            
+            # Submit purchase/sell
+            purchase_result = await self._submit_armory_purchase(
+                weapon_purchases=validated_purchases if validated_purchases else None,
+                weapon_sales=validated_sales if validated_sales else None
+            )
+            
+            # Parse result to verify transaction
+            purchase_result_text = await purchase_result.text()
+            purchase_result_data = parse_armory_data(purchase_result_text)
+            
+            # Get gold after transaction
+            gold_after = purchase_result_data.get("current_user", {}).get("gold", current_gold)
+            gold_change = gold_after - current_gold
+            
+            # Determine if transaction was successful (gold should change)
+            if  validated_purchases:
+                if "gbg fullcap" not in purchase_result_text:
+                    return {"success": False, "errors": ["Failed to complete armory transaction. Missing purchase recap message"]}
+            elif validated_sales and gold_change < 0:
+                return {"success": False, "errors": ["Failed to complete armory transaction. Gold did not change"]}
+            
+            # Calculate summary data
+            total_weapons_purchased = sum(validated_purchases.values()) if validated_purchases else 0
+            total_weapons_sold = sum(validated_sales.values()) if validated_sales else 0
+            
+            # Create detailed weapon breakdowns
+            buy_breakdown = []
+            sell_breakdown = []
+            
+            # Build buy breakdown
+            if validated_purchases:
+                for weapon_id, quantity in validated_purchases.items():
+                    weapon_data = None
+                    for weapon in armory_data.get('weapons', []):
+                        if str(weapon['id']) == str(weapon_id):
+                            weapon_data = weapon
+                            break
+                    
+                    if weapon_data:
+                        buy_breakdown.append({
+                            "weapon_id": weapon_id,
+                            "weapon_name": weapon_data.get('name', 'Unknown'),
+                            "quantity": quantity,
+                            "unit_cost": weapon_data.get('cost', 0),
+                            "total_cost": weapon_data.get('cost', 0) * quantity
+                        })
+            
+            # Build sell breakdown
+            if validated_sales:
+                for weapon_id, quantity in validated_sales.items():
+                    weapon_data = None
+                    for weapon in armory_data.get('weapons', []):
+                        if str(weapon['id']) == str(weapon_id):
+                            weapon_data = weapon
+                            break
+                    
+                    if weapon_data:
+                        # Selling gives back 70% of the purchase price
+                        sell_price = int(weapon_data.get('cost', 0) * 0.7)
+                        sell_breakdown.append({
+                            "weapon_id": weapon_id,
+                            "weapon_name": weapon_data.get('name', 'Unknown'),
+                            "quantity": quantity,
+                            "unit_price": sell_price,
+                            "total_gained": sell_price * quantity
+                        })
+            
+            return {
+                "success": True, 
+                "data": {
+                    "purchases": validated_purchases,
+                    "sales": validated_sales,
+                    "gold_change": gold_change,
+                    "gold_before": current_gold,
+                    "gold_after": gold_after
+                },
+                "summary": {
+                    "total_weapons_purchased": total_weapons_purchased,
+                    "total_weapons_sold": total_weapons_sold,
+                    "gold_change": gold_change,
+                    "gold_before": current_gold,
+                    "gold_after": gold_after,
+                    "buy_breakdown": buy_breakdown,
+                    "sell_breakdown": sell_breakdown
+                }
+            }
+                
         except Exception as e:
             logger.error(f"Error in purchase_armory for {self.account.username}: {e}", exc_info=True)
             return {"success": False, "error": str(e)}
@@ -872,16 +1060,22 @@ class GameAccountManager:
         
         return weapon_purchases
     
-    async def _submit_armory_purchase(self, weapon_purchases: Dict[str, int]) -> Dict[str, Any]:
-        """Submit armory purchase form with calculated weapon amounts"""
+    async def _submit_armory_purchase(self, weapon_purchases: Dict[str, int] = None, weapon_sales: Dict[str, int] = None) -> Dict[str, Any]:
+        """Submit armory purchase/sell form with calculated weapon amounts
+        
+        Args:
+            weapon_purchases: Dict mapping weapon IDs to quantities to buy
+            weapon_sales: Dict mapping weapon IDs to quantities to sell
+        
+        Returns:
+            Response from the armory submission
+        """
         try:
             armory_url = self.url_generator.armory()
             
-            # Build form data
             form_data = {
-                "email": "self.account.email",
-                "password": "",
-                "submit": "Sell/Buy+Weapons"
+                "email": self.account.email,
+                "password": self.account.password if sum(weapon_sales.values()) > 0 else "",
             }
             
             # Initialize all sell fields to empty
@@ -893,8 +1087,14 @@ class GameAccountManager:
                 form_data[f"buy[{i}]"] = ""
             
             # Set the weapon purchases
-            for weapon_id, quantity in weapon_purchases.items():
-                form_data[f"buy[{weapon_id}]"] = str(quantity)
+            if weapon_purchases:
+                for weapon_id, quantity in weapon_purchases.items():
+                    form_data[f"buy[{weapon_id}]"] = str(quantity)
+            
+            # Set the weapon sales
+            if weapon_sales:
+                for weapon_id, quantity in weapon_sales.items():
+                    form_data[f"sell[{weapon_id}]"] = str(quantity)
             
             # Submit the form
             async def _submit():
@@ -902,7 +1102,7 @@ class GameAccountManager:
             
             return await self.__retry_login_wrapper(_submit)
         except Exception as e:
-            logger.error(f"Error submitting armory purchase: {e}", exc_info=True)
+            logger.error(f"Error submitting armory purchase/sell: {e}", exc_info=True)
             return {"success": False, "error": str(e)}
 
     async def update_armory_preferences(self, weapon_percentages: Dict[str, float]) -> Dict[str, Any]:
