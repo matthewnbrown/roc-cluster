@@ -24,7 +24,8 @@ class ROCDecryptUrlGenerator():
             "roc_send_credits": self._rocburl + "sendcredits.php",
             "roc_intel_detail": self._rocburl + "intel_detail.php",
             "roc_upgrades": self._rocburl + "upgrades.php",
-            "roc_sendcards": self._rocburl + "sendcards.php"
+            "roc_sendcards": self._rocburl + "sendcards.php",
+            "roc_marketpost": self._rocburl + "marketpost.php"
         }
 
     def get_page_url(self, page: str) -> str:
@@ -105,4 +106,7 @@ class ROCDecryptUrlGenerator():
             return self.get_page_url("roc_sendcards") + f"?to={target_id}"
         else:
             return self.get_page_url("roc_sendcards")
+    
+    def market_post(self) -> str:
+        return self.get_page_url("roc_marketpost")
         

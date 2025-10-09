@@ -11,7 +11,7 @@ from api.schemas import (
     AccountIdentifier, AccountIdentifierType, AttackRequest, CaptchaSolutionItem, SabotageRequest, SpyRequest, BecomeOfficerRequest, SendCreditsRequest,
     RecruitRequest, ArmoryPurchaseRequest, TrainingPurchaseRequest, 
     SetCreditSavingRequest, PurchaseUpgradeRequest, BuyUpgradeRequest, ActionResponse,
-    GetCardsRequest, SendCardsRequest
+    GetCardsRequest, SendCardsRequest, MarketPurchaseRequest
 )
 from api.account_manager import AccountManager
 from api.database import get_db
@@ -226,6 +226,31 @@ async def send_cards(
         )
     except Exception as e:
         logger.error(f"Error in send cards action: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@router.post("/market-purchase", response_model=ActionResponse)
+async def market_purchase(
+    request: MarketPurchaseRequest,
+    manager: AccountManager = Depends(get_account_manager)
+):
+    """Purchase an item from the market"""
+    try:
+        result = await manager.execute_action(
+            id_type=request.acting_user.id_type,
+            id=request.acting_user.id,
+            action=AccountManager.ActionType.MARKET_PURCHASE,
+            max_retries=request.max_retries,
+            listing_id=request.listing_id
+        )
+        
+        return ActionResponse(
+            success=result["success"],
+            message=result.get("message"),
+            error=result.get("error"),
+            timestamp=datetime.now(timezone.utc)
+        )
+    except Exception as e:
+        logger.error(f"Error in market purchase action: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 # Self Actions

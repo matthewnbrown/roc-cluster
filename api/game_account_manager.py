@@ -1250,6 +1250,40 @@ class GameAccountManager:
         except Exception as e:
             logger.error(f"Error sending single card {card_id} for {self.account.username}: {e}", exc_info=True)
             return {"success": False, "error": str(e)}
+    
+    async def market_purchase(self, listing_id: str) -> Dict[str, Any]:
+        """Purchase an item from the market"""
+        try:
+            market_url = self.url_generator.market_post()
+            
+            payload = {
+                "do": "it",
+                "id": listing_id,
+                "click": "Buy+Now"
+            }
+            
+            async def _submit_purchase():
+                return await self.__submit_page(market_url, payload, PageSubmit.UPGRADE)
+            
+            errors = []
+            for i in range(self.max_retries+1):
+                result = await self.__retry_login_wrapper(_submit_purchase)
+                
+                page_text = await result.text()
+                page_text = page_text.lower()
+                
+                if 'have enough to cover the final cost of' in page_text:
+                    return {"success": True, "message": f"Can't afford to purchase listing {listing_id}", "retries": i}
+                if 'logview' in result.url.path:
+                    return {"success": True, "message": f"Successfully purchased listing {listing_id}", "retries": i}
+
+                errors.append(f"Error purchasing listing {listing_id}: Check page response for details")
+
+            return {"success": False, "error": "Failed to purchase from market:\n" + "\n".join(errors)}
+            
+        except Exception as e:
+            logger.error(f"Error purchasing from market for {self.account.username}: {e}", exc_info=True)
+            return {"success": False, "error": str(e)}
 
     ###################
     ### END ACTIONS ###

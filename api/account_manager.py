@@ -43,6 +43,7 @@ class AccountManager:
         UPDATE_TRAINING_PREFERENCES = "update_training_preferences"
         GET_CARDS = "get_cards"
         SEND_CARDS = "send_cards"
+        MARKET_PURCHASE = "market_purchase"
         DELAY = "delay"
         COLLECT_ASYNC_TASKS = "collect_async_tasks"
 
@@ -174,6 +175,7 @@ class AccountManager:
                 "update_training_preferences": roc_account.update_training_preferences,
                 "get_cards": roc_account.get_cards,
                 "send_cards": roc_account.send_cards,
+                "market_purchase": roc_account.market_purchase,
             }
             
             if action.value not in action_map:

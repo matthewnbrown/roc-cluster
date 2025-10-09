@@ -220,6 +220,11 @@ class SendCardsRequest(UserActionRequest):
     comment: Optional[str] = ""
 
 
+class MarketPurchaseRequest(SelfActionRequest):
+    """Purchase an item from the market"""
+    listing_id: str
+
+
 # Action Response Schemas
 class ActionResponse(BaseModel):
     """Response for action execution"""
