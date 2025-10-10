@@ -421,6 +421,37 @@ class GameAccountManager:
             logger.error(f"Failed to get metadata for {self.account.username}: {e}", exc_info=True)
             return None
     
+    async def get_armory(self) -> Dict[str, Any]:
+        """Get current armory data from ROC website"""
+        try:
+            armory_url = self.url_generator.armory()
+            request_time = datetime.now(timezone.utc)
+            
+            # Use the retry login wrapper to ensure we're logged in
+            async def _get_armory_page():
+                return await self.__get_page(armory_url)
+            
+            response = await self.__retry_login_wrapper(_get_armory_page)
+            page_text = await response.text()
+            
+            # Push page to queue for processing
+            await self._push_page_to_queue(
+                page_content=page_text,
+                request_url=armory_url,
+                response_url=str(response.url),
+                request_method="GET",
+                request_time=request_time
+            )
+            
+            # Parse armory data
+            armory_data = parse_armory_data(page_text)
+            
+            return {"success": True, "data": armory_data}
+            
+        except Exception as e:
+            logger.error(f"Failed to get armory data for {self.account.username}: {e}", exc_info=True)
+            return {"success": False, "error": str(e)}
+    
     async def attack(self, target_id: str, turns: int = -1) -> Dict[str, Any]:
         """Attack another user"""
 

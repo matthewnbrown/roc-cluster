@@ -11,7 +11,7 @@ from api.schemas import (
     AccountIdentifier, AccountIdentifierType, AttackRequest, CaptchaSolutionItem, SabotageRequest, SpyRequest, BecomeOfficerRequest, SendCreditsRequest,
     RecruitRequest, ArmoryPurchaseRequest, TrainingPurchaseRequest, 
     SetCreditSavingRequest, PurchaseUpgradeRequest, BuyUpgradeRequest, ActionResponse,
-    GetCardsRequest, SendCardsRequest, MarketPurchaseRequest
+    GetCardsRequest, SendCardsRequest, MarketPurchaseRequest, GetArmoryRequest
 )
 from api.account_manager import AccountManager
 from api.database import get_db
@@ -434,6 +434,35 @@ async def get_account_metadata(
         raise
     except Exception as e:
         logger.error(f"Error getting metadata for account {account_id}: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get("/account/{account_id}/armory")
+async def get_account_armory(
+    account_id: int,
+    max_retries: int = 0,
+    manager: AccountManager = Depends(get_account_manager)
+):
+    """Get account armory data from ROC website"""
+    try:
+        result = await manager.execute_action(
+            id_type=AccountIdentifierType.ID,
+            id=account_id,
+            action=AccountManager.ActionType.GET_ARMORY,
+            max_retries=max_retries)
+        
+        if not result.get("success", False):
+            raise HTTPException(
+                status_code=503, 
+                detail=result.get("error", "Failed to retrieve armory data")
+            )
+        
+        return result.get("data")
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting armory data for account {account_id}: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 

@@ -38,6 +38,7 @@ class AccountManager:
         SET_CREDIT_SAVING = "set_credit_saving"
         BUY_UPGRADE = "buy_upgrade"
         GET_METADATA = "get_metadata"
+        GET_ARMORY = "get_armory"
         GET_SOLVED_CAPTCHAS = "get_solved_captchas"
         UPDATE_ARMORY_PREFERENCES = "update_armory_preferences"
         UPDATE_TRAINING_PREFERENCES = "update_training_preferences"
@@ -170,6 +171,7 @@ class AccountManager:
                 "set_credit_saving": roc_account.set_credit_saving,
                 "buy_upgrade": roc_account.buy_upgrade,
                 "get_metadata": roc_account.get_metadata,
+                "get_armory": roc_account.get_armory,
                 "get_solved_captchas": roc_account.get_solved_captchas,
                 "update_armory_preferences": roc_account.update_armory_preferences,
                 "update_training_preferences": roc_account.update_training_preferences,

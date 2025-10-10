@@ -215,6 +215,11 @@ class GetCardsRequest(SelfActionRequest):
     pass
 
 
+class GetArmoryRequest(SelfActionRequest):
+    """Get armory page data"""
+    pass
+
+
 class SendCardsRequest(UserActionRequest):
     """Send cards to a target user"""
     card_id: str  # Card ID or 'all' to send all cards
