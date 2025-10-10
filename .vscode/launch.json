@@ -13,6 +13,16 @@
             "console": "integratedTerminal",
             "python": "${command:python.interpreterPath}",
             "args": "${command:pickArgs}"
+        },
+            
+        {
+            "name": "Python Debugger: Selloff",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "scripts/automate_market_selloff.py",
+            "console": "integratedTerminal",
+            "python": "${command:python.interpreterPath}",
+            "args": ""
         }
     ]
 }

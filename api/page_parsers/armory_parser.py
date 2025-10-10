@@ -11,7 +11,7 @@ def parse_armory_data(armory_page: str | BeautifulSoup):
         armory_soup = BeautifulSoup(armory_page, 'html.parser')
     
     # Parse weapons from main armory file
-    weapons = __parse_weapon_data(armory_soup, is_repair_page=False)
+    weapons = __parse_weapon_data(armory_soup)
     
     # Parse stats and distribution from main armory file
     stats = parse_stats_table(armory_soup)
@@ -35,9 +35,12 @@ def __calculate_total_sell_value(weapons):
         total += weapon['owned_count'] * weapon['sell_value']
     return total
 
-def __parse_weapon_data(soup, is_repair_page=False):
+def __parse_weapon_data(soup):
     """Parse weapon data from armory page"""
     weapons = []
+    
+    # Auto-detect if this is a repair page by checking for repair elements
+    is_repair_page = soup.find('input', class_='repair') is not None
     
     # Parse inventory weapons (owned weapons)
     inventory_items = soup.find_all('li', class_=lambda x: x and 'inventory' in x and 'typeheader' not in x)
@@ -141,25 +144,24 @@ def __parse_weapon_data(soup, is_repair_page=False):
             if cost_match:
                 existing_weapon['cost'] = int(cost_match.group(1).replace(',', ''))
         
-        # Extract full strength
+        # Extract strength value from buy section
         strength_span = weapon.find('span', class_='strength')
+        damaged_strength = 0.0
         if strength_span:
             strength_text = strength_span.get_text().strip()
-            # Extract number from strength text (e.g., "3,000 Attack" -> 3000)
-            strength_match = re.search(r'([\d,]+)', strength_text)
+            # Extract number from strength text (e.g., "3,000 Attack" -> 3000 or "2,995.527 Attack" -> 2995.527)
+            strength_match = re.search(r'([\d,]+\.?\d*)', strength_text)
             if strength_match:
-                existing_weapon['full_strength'] = int(strength_match.group(1).replace(',', ''))
-            else:
-                existing_weapon['full_strength'] = 0
-        else:
-            existing_weapon['full_strength'] = 0
+                damaged_strength = float(strength_match.group(1).replace(',', ''))
         
-        # Extract repair cost if this is a repair page
+        # Extract repair data if present (auto-detected repair page)
+        repair_value_points = 0.0
         if is_repair_page:
             repair_input = weapon.find('input', class_='repair')
             if repair_input:
                 repair_value = repair_input.get('value', '0')
-                existing_weapon['repair_value'] = float(repair_value)
+                repair_value_points = float(repair_value)
+                existing_weapon['repair_value'] = repair_value_points
                 
                 # Extract repair cost from label text
                 repair_label = weapon.find('label', class_='repaircost')
@@ -169,5 +171,14 @@ def __parse_weapon_data(soup, is_repair_page=False):
                     repair_match = re.search(r'([\d,]+)', repair_text)
                     if repair_match:
                         existing_weapon['repair_cost'] = int(repair_match.group(1).replace(',', ''))
+        
+        # Calculate full strength
+        # On repair pages: repair_value is the points of strength missing
+        # So full_strength = current damaged strength + repair points
+        # On normal pages: strength shown is already full
+        if is_repair_page and repair_value_points > 0 and damaged_strength > 0:
+            existing_weapon['full_strength'] = round(damaged_strength + repair_value_points)
+        else:
+            existing_weapon['full_strength'] = damaged_strength
     
     return weapons

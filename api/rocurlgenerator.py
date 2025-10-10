@@ -25,7 +25,8 @@ class ROCDecryptUrlGenerator():
             "roc_intel_detail": self._rocburl + "intel_detail.php",
             "roc_upgrades": self._rocburl + "upgrades.php",
             "roc_sendcards": self._rocburl + "sendcards.php",
-            "roc_marketpost": self._rocburl + "marketpost.php"
+            "roc_marketpost": self._rocburl + "marketpost.php",
+            "roc_marketpostnew": self._rocburl + "marketpostnew.php"
         }
 
     def get_page_url(self, page: str) -> str:
@@ -109,4 +110,7 @@ class ROCDecryptUrlGenerator():
     
     def market_post(self) -> str:
         return self.get_page_url("roc_marketpost")
+    
+    def market_postnew(self) -> str:
+        return self.get_page_url("roc_marketpostnew")
         

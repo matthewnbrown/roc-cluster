@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 
 from api.schemas import (
     AccountIdentifier, AccountIdentifierType, AttackRequest, CaptchaSolutionItem, SabotageRequest, SpyRequest, BecomeOfficerRequest, SendCreditsRequest,
-    RecruitRequest, ArmoryPurchaseRequest, TrainingPurchaseRequest, 
+    RecruitRequest, ArmoryPurchaseRequest, TrainingPurchaseRequest, SelfActionRequest,
     SetCreditSavingRequest, PurchaseUpgradeRequest, BuyUpgradeRequest, ActionResponse,
     GetCardsRequest, SendCardsRequest, MarketPurchaseRequest, GetArmoryRequest
 )
@@ -305,6 +305,31 @@ async def purchase_armory(
         )
     except Exception as e:
         logger.error(f"Error in armory purchase action: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@router.post("/armory-purchase-by-preferences", response_model=ActionResponse)
+async def purchase_armory_by_preferences(
+    request: SelfActionRequest,
+    manager: AccountManager = Depends(get_account_manager)
+):
+    """Purchase armory items based on user's saved preferences"""
+    try:
+        result = await manager.execute_action(
+            id_type=request.acting_user.id_type,
+            id=request.acting_user.id,
+            action=AccountManager.ActionType.PURCHASE_ARMORY_BY_PREFERENCES,
+            max_retries=request.max_retries
+        )
+        
+        return ActionResponse(
+            success=result["success"],
+            message=result.get("message"),
+            data=result.get("data"),
+            error=result.get("error"),
+            timestamp=datetime.now(timezone.utc)
+        )
+    except Exception as e:
+        logger.error(f"Error in armory purchase by preferences action: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @router.post("/training-purchase", response_model=ActionResponse)

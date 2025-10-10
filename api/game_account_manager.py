@@ -434,15 +434,6 @@ class GameAccountManager:
             response = await self.__retry_login_wrapper(_get_armory_page)
             page_text = await response.text()
             
-            # Push page to queue for processing
-            await self._push_page_to_queue(
-                page_content=page_text,
-                request_url=armory_url,
-                response_url=str(response.url),
-                request_method="GET",
-                request_time=request_time
-            )
-            
             # Parse armory data
             armory_data = parse_armory_data(page_text)
             
