@@ -963,8 +963,9 @@ class GameAccountManager:
                 # Load armory page
                 armory_url = self.url_generator.armory()
                 
-                
-                armory_resp = await self.__get_page(armory_url)
+                def get_armory_page():
+                    return self.__get_page(armory_url)
+                armory_resp = await self.__retry_login_wrapper(get_armory_page)
                 armory_text = await armory_resp.text()
                 
                 stats = get_clockbar_stats(armory_text)
@@ -1097,7 +1098,7 @@ class GameAccountManager:
             
             form_data = {
                 "email": self.account.email,
-                "password": self.account.password if sum(weapon_sales.values()) > 0 else "",
+                "password": self.account.password if weapon_sales and sum(weapon_sales.values()) > 0 else "",
             }
             
             # Initialize all sell fields to empty
