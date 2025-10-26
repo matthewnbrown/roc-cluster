@@ -940,103 +940,91 @@ class GameAccountManager:
             logger.error(f"Error in purchase_armory for {self.account.username}: {e}", exc_info=True)
             return {"success": False, "error": str(e)}
     
-    async def purchase_armory_by_preferences(self, preference_id = -1) -> Dict[str, Any]:
+    async def purchase_armory_by_preferences(self, preferences: ArmoryPreferences) -> Dict[str, Any]:
         """Purchase armory items based on user preferences"""
         #TODO: Login check, preference_id check get default if -1
         try:
-            # Get user preferences from database with relationships loaded
+            if not preferences:
+                return {"success": False, "error": "No armory preferences found for this account"}
             
-
+            logger.debug(f"Found {len(preferences.weapon_preferences)} weapon preferences for account {self.account.id}")
+            
+            # Load armory page
+            armory_url = self.url_generator.armory()
+            
+            def get_armory_page():
+                return self.__get_page(armory_url)
+            armory_resp = await self.__retry_login_wrapper(get_armory_page)
+            armory_text = await armory_resp.text()
+            
+            stats = get_clockbar_stats(armory_text)
+            name = stats.get("name")
+            current_gold = stats.get("gold", -1)
+            if not name or current_gold < 0:
+                return {"success": False, "error": "Failed to get current user gold"}
+            
+            
+            # Parse armory data
+            armory_data = parse_armory_data(armory_text)
+            
+            # Log available weapons in armory
+            logger.debug(f"Available weapons in armory: {[w.get('id') for w in armory_data.get('weapons', [])]}")
+            
+            # Calculate weapon portions based on preferences and available gold
             db = SessionLocal()
             try:
-                preferences = db.query(ArmoryPreferences).options(
-                    joinedload(ArmoryPreferences.weapon_preferences).joinedload(ArmoryWeaponPreference.weapon)
-                ).filter(
-                    ArmoryPreferences.account_id == self.account.id
-                ).first()
-                
-                if not preferences:
-                    return {"success": False, "error": "No armory preferences found for this account"}
-                
-                logger.debug(f"Found {len(preferences.weapon_preferences)} weapon preferences for account {self.account.id}")
-                
-                # Load armory page
-                armory_url = self.url_generator.armory()
-                
-                def get_armory_page():
-                    return self.__get_page(armory_url)
-                armory_resp = await self.__retry_login_wrapper(get_armory_page)
-                armory_text = await armory_resp.text()
-                
-                stats = get_clockbar_stats(armory_text)
-                name = stats.get("name")
-                current_gold = stats.get("gold", -1)
-                if not name or current_gold < 0:
-                    return {"success": False, "error": "Failed to get current user gold"}
-                
-                
-                # Parse armory data
-                armory_data = parse_armory_data(armory_text)
-                
-                # Log available weapons in armory
-                logger.debug(f"Available weapons in armory: {[w.get('id') for w in armory_data.get('weapons', [])]}")
-                
-                # Calculate weapon portions based on preferences and available gold
                 weapon_purchases = self._calculate_weapon_purchases(
                     armory_data, preferences, current_gold, db
                 )
-                
-                if not weapon_purchases:
-                    return {"success": True, "messages": ["No weapons to purchase based on current gold and preferences"]}
-                
-                # Submit purchase form
-                purchase_result = await self._submit_armory_purchase(weapon_purchases)
-                
-                purchase_result_text = await purchase_result.text()
-                purchase_result_data = parse_armory_data(purchase_result_text)
-                
-                if armory_data["current_user"]["gold"] <= purchase_result_data["current_user"]["gold"]:
-                    return {"success": False, "error": "Failed to purchase armory items"}
-                
-                else:
-                    # Calculate summary data
-                    total_weapons_purchased = sum(weapon_purchases.values())
-                    total_gold_spent = armory_data["current_user"]["gold"] - purchase_result_data["current_user"]["gold"]
-                    
-                    # Create detailed weapon breakdown
-                    weapon_breakdown = []
-                    for weapon_id, quantity in weapon_purchases.items():
-                        # Find weapon details
-                        weapon_data = None
-                        for weapon in armory_data.get('weapons', []):
-                            if str(weapon['id']) == str(weapon_id):
-                                weapon_data = weapon
-                                break
-                        
-                        if weapon_data:
-                            weapon_breakdown.append({
-                                "weapon_id": weapon_id,
-                                "weapon_name": weapon_data.get('name', 'Unknown'),
-                                "quantity": quantity,
-                                "unit_cost": weapon_data.get('cost', 0),
-                                "total_cost": weapon_data.get('cost', 0) * quantity
-                            })
-                    
-                    return {
-                        "success": True, 
-                        "data": weapon_purchases,
-                        "summary": {
-                            "total_weapons_purchased": total_weapons_purchased,
-                            "total_gold_spent": total_gold_spent,
-                            "weapon_breakdown": weapon_breakdown,
-                            "weapons_purchased": total_weapons_purchased,
-                            "cost": total_gold_spent
-                        }
-                    }
-                        
             finally:
                 db.close()
+            if not weapon_purchases:
+                return {"success": True, "messages": ["No weapons to purchase based on current gold and preferences"]}
+            
+            # Submit purchase form
+            purchase_result = await self._submit_armory_purchase(weapon_purchases)
+            
+            purchase_result_text = await purchase_result.text()
+            purchase_result_data = parse_armory_data(purchase_result_text)
+            
+            if armory_data["current_user"]["gold"] <= purchase_result_data["current_user"]["gold"]:
+                return {"success": False, "error": "Failed to purchase armory items"}
+            
+            else:
+                # Calculate summary data
+                total_weapons_purchased = sum(weapon_purchases.values())
+                total_gold_spent = armory_data["current_user"]["gold"] - purchase_result_data["current_user"]["gold"]
                 
+                # Create detailed weapon breakdown
+                weapon_breakdown = []
+                for weapon_id, quantity in weapon_purchases.items():
+                    # Find weapon details
+                    weapon_data = None
+                    for weapon in armory_data.get('weapons', []):
+                        if str(weapon['id']) == str(weapon_id):
+                            weapon_data = weapon
+                            break
+                    
+                    if weapon_data:
+                        weapon_breakdown.append({
+                            "weapon_id": weapon_id,
+                            "weapon_name": weapon_data.get('name', 'Unknown'),
+                            "quantity": quantity,
+                            "unit_cost": weapon_data.get('cost', 0),
+                            "total_cost": weapon_data.get('cost', 0) * quantity
+                        })
+                
+                return {
+                    "success": True, 
+                    "data": weapon_purchases,
+                    "summary": {
+                        "total_weapons_purchased": total_weapons_purchased,
+                        "total_gold_spent": total_gold_spent,
+                        "weapon_breakdown": weapon_breakdown,
+                        "weapons_purchased": total_weapons_purchased,
+                        "cost": total_gold_spent
+                    }
+                }
         except Exception as e:
             logger.error(f"Error purchasing armory by preferences for {self.account.username}: {e}", exc_info=True)
             return {"success": False, "error": str(e)}

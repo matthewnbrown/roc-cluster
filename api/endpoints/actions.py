@@ -3,7 +3,7 @@ Action endpoints for ROC account operations
 """
 
 from fastapi import APIRouter, Depends, HTTPException
-from typing import List
+from typing import List, Optional
 import logging
 from datetime import datetime, timezone
 
@@ -14,10 +14,10 @@ from api.schemas import (
     GetCardsRequest, SendCardsRequest, MarketPurchaseRequest, GetArmoryRequest
 )
 from api.account_manager import AccountManager
-from api.database import get_db
-from api.db_models import Weapon
+from api.database import SessionLocal, get_db
+from api.db_models import Account, ArmoryPreferences, ArmoryWeaponPreference, Weapon
 from api.target_rate_limiter import roc_target_rate_limiter
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -314,16 +314,33 @@ async def purchase_armory_by_preferences(
 ):
     """Purchase armory items based on user's saved preferences"""
     try:
+        account = get_account_from_db(request.acting_user.id_type, request.acting_user.id)
+        
+        if account:
+            db = SessionLocal()
+            preferences = db.query(ArmoryPreferences).options(
+                joinedload(ArmoryPreferences.weapon_preferences).joinedload(ArmoryWeaponPreference.weapon)
+            ).filter(
+                ArmoryPreferences.account_id == account.id
+            ).first()
+        else:
+            return ActionResponse(
+            success=False,
+            error="Could not find prerefences for user",
+            timestamp=datetime.now(timezone.utc)
+        )
+          
         result = await manager.execute_action(
             id_type=request.acting_user.id_type,
             id=request.acting_user.id,
             action=AccountManager.ActionType.PURCHASE_ARMORY_BY_PREFERENCES,
-            max_retries=request.max_retries
+            max_retries=request.max_retries,
+            preferences=preferences
         )
-        
+        message = ",".join(result.get("messages", ["No Messages"]))
         return ActionResponse(
             success=result["success"],
-            message=result.get("message"),
+            message=message,
             data=result.get("data"),
             error=result.get("error"),
             timestamp=datetime.now(timezone.utc)
@@ -518,3 +535,18 @@ async def get_target_rate_limit_stats(target_id: str):
     except Exception as e:
         logger.error(f"Error getting target rate limit stats for {target_id}: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
+
+def get_account_from_db(id_type: AccountIdentifierType, id: str) -> Optional[Account]:
+    """Get account from database by ID"""
+    from api.database import SessionLocal
+    
+    db = SessionLocal()
+    try:
+        if id_type == AccountIdentifierType.ID:
+            return db.query(Account).filter(Account.id == id).first()
+        elif id_type == AccountIdentifierType.USERNAME:
+            return db.query(Account).filter(Account.username.ilike(id)).first()
+        elif id_type == AccountIdentifierType.ROC_ID:
+            return db.query(Account).filter(Account.roc_id == id).first()
+    finally:
+        db.close()

@@ -3,16 +3,17 @@ Job Manager for handling asynchronous job execution
 """
 
 import asyncio
+from collections import defaultdict
 import json
 import logging
 from datetime import datetime, timezone
 import random
 from typing import List, Dict, Any, Optional
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import and_
 
 from api.database import SessionLocal
-from api.db_models import Job, JobStep, JobStatus, Account, ClusterUser
+from api.db_models import ArmoryPreferences, ArmoryWeaponPreference, Job, JobStep, JobStatus, Account, ClusterUser
 from api.account_manager import AccountManager
 from api.schemas import AccountIdentifierType, JobStepResponse, JobResponse
 
@@ -1138,6 +1139,22 @@ class JobManager:
             # Return None to fall back to individual operations
             return None
     
+    def _get_armory_prefs(self, account_ids: List[int]) -> Dict[int, ArmoryPreferences]:
+        db = SessionLocal()
+        try: 
+            prefs = db.query(ArmoryPreferences).options(
+                    joinedload(ArmoryPreferences.weapon_preferences).joinedload(ArmoryWeaponPreference.weapon)
+                ).filter(
+                    ArmoryPreferences.account_id.in_(account_ids)
+                ).all()
+            user_pref_map = {}
+            for pref in prefs:
+                user_pref_map[pref.account_id] = pref
+                
+            return user_pref_map
+        finally:
+            db.close()
+
     async def _execute_multi_account_step(self, account_ids: List[int], action_type_enum, parameters: Dict[str, Any], max_retries: int, step: JobStep = None, bulk_cookies: Optional[Dict[int, Dict[str, Any]]] = None, bulk_accounts: Optional[Dict[int, Account]] = None):
         """Execute action for multiple accounts and consolidate results"""
         if not account_ids:
@@ -1152,17 +1169,23 @@ class JobManager:
             # Initialize in-memory progress tracking (even for delay steps with 0 accounts)
             self._init_step_progress(step.id, step.total_accounts)
         
+        extra_user_params=defaultdict(dict)
+        
         # Check if this action can be optimized with bulk operations
         if action_type_enum == self.account_manager.ActionType.UPDATE_ARMORY_PREFERENCES:
             result = await self._execute_bulk_armory_preferences_update(account_ids, parameters, max_retries, step)
             if result is not None:
                 return result
-        
+        elif action_type_enum == self.account_manager.ActionType.PURCHASE_ARMORY_BY_PREFERENCES:
+            known_prefs = self._get_armory_prefs(account_ids)
+            for accountid, pref in known_prefs.items():
+                extra_user_params[accountid]["preferences"] = pref
+                        
         # Execute actions for all accounts in parallel with real-time progress updates
         tasks = []
         for account_id in account_ids:
             task = asyncio.create_task(
-                self._execute_single_account_action(account_id, action_type_enum, parameters, max_retries, bulk_cookies, bulk_accounts)
+                self._execute_single_account_action(account_id, action_type_enum, parameters, max_retries, bulk_cookies, bulk_accounts, **extra_user_params[accountid])
             )
             # Store account_id as an attribute on the task for later retrieval
             task.account_id = account_id
@@ -1783,7 +1806,7 @@ class JobManager:
         
         return summary
     
-    async def _execute_single_account_action(self, account_id: int, action_type_enum, parameters: Dict[str, Any], max_retries: int, bulk_cookies: Optional[Dict[int, Dict[str, Any]]] = None, bulk_accounts: Optional[Dict[int, Account]] = None):
+    async def _execute_single_account_action(self, account_id: int, action_type_enum, parameters: Dict[str, Any], max_retries: int, bulk_cookies: Optional[Dict[int, Dict[str, Any]]] = None, bulk_accounts: Optional[Dict[int, Account]] = None, **kwargs):
         """Execute action for a single account"""
         # Get account from preloaded data or fallback to database
         account = None
@@ -1819,7 +1842,8 @@ class JobManager:
             id=account_id,
             action=action_type_enum,
             bypass_semaphore=False,
-            **action_params
+            **action_params,
+            **kwargs
         )
         
         return result
@@ -1846,7 +1870,6 @@ class JobManager:
             # Yield control to allow async tasks to make progress
             await asyncio.sleep(0)
             
-            print(f"Executing step {step.id} for job {job.id}")
             try:
                 if step.is_async:
                     # Initialize step progress immediately for async steps so it shows up in API
