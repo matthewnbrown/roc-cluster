@@ -1185,7 +1185,7 @@ class JobManager:
         tasks = []
         for account_id in account_ids:
             task = asyncio.create_task(
-                self._execute_single_account_action(account_id, action_type_enum, parameters, max_retries, bulk_cookies, bulk_accounts, **extra_user_params[accountid])
+                self._execute_single_account_action(account_id, action_type_enum, parameters, max_retries, bulk_cookies, bulk_accounts, **extra_user_params[account_id])
             )
             # Store account_id as an attribute on the task for later retrieval
             task.account_id = account_id
@@ -1813,7 +1813,6 @@ class JobManager:
         if bulk_accounts and account_id in bulk_accounts:
             account = bulk_accounts[account_id]
         else:
-            # Fallback to database query (should rarely happen now)
             db = SessionLocal()
             try:
                 account = db.query(Account).filter(Account.id == account_id).first()
